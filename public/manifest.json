@@ -1,0 +1,17 @@
+{
+  "name": "Grimoire Spellcasting & Combat HUD",
+  "version": "1.0.0",
+  "manifest_version": 1,
+  "author": "Full-Stack-boi",
+  "icon": "/cast.svg",
+  "homepage_url": "https://github.com/Full-Stack-boi/grimoire-spellcasting",
+  "background_url": "/background.html",
+  "description": "Baldur's Gate 3 Action Dock HUD, D&D Beyond Character Sync, 3D Tactical Targeting & Grimoire Combat Suite for Owlbear Rodeo.",
+  "action": {
+    "title": "Grimoire Combat & Spells",
+    "icon": "/cast.svg",
+    "popover": "/",
+    "height": 600,
+    "width": 400
+  }
+}

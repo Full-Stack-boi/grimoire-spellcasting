@@ -1,0 +1,2694 @@
+{
+    "dancing_lights": {
+        "name": "Dancing Lights",
+        "minTargets": 1,
+        "thumbnail": "Cantrip/Dancing_Lights/DancingLights_01_Yellow_Thumb.webp",
+        "replicate": "all",
+        "copy": 0,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "yellow",
+                "content": [
+                    { "value": "blue_teal", "label": "Blue teal" },
+                    { "value": "blue_yellow", "label": "Blue and yellow" },
+                    { "value": "green", "label": "Green" },
+                    { "value": "pink", "label": "Pink" },
+                    { "value": "purple_green", "label": "Purple and green" },
+                    { "value": "red", "label": "Red" },
+                    { "value": "yellow", "label": "Yellow" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 1,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Lightsource",
+                "id": "light",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["dancing_lights.", "$color"]
+                },
+                "duration": -1,
+                "metadata": {
+                    "name": "if",
+                    "arguments": [
+                        "$light",
+                        {
+                            "com.battle-system.smoke/hasVision": true,
+                            "com.battle-system.smoke/isTorch": true,
+                            "com.battle-system.smoke/visionFallOff": "1",
+                            "com.battle-system.smoke/visionRange": "10"
+                        }
+                    ]
+                },
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "eldritch_blast": {
+        "name": "Eldritch Blast",
+        "minTargets": 2,
+        "thumbnail": "Cantrip/Eldritch_Blast/EldritchBlast_01_Regular_Purple_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 200,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "eldritch_blast",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "fire_bolt": {
+        "name": "Fire Bolt",
+        "minTargets": 2,
+        "thumbnail": "Cantrip/Fire_Bolt/FireBolt_01_Regular_Orange_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "fire_bolt",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "frostbite": {
+        "name": "Frostbite",
+        "thumbnail": "Generic/Ice/SnowflakeBurst_01_Regular_BlueWhite_Loop_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.ice.snowflake_burst.complete",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "mind_sliver": {
+        "name": "Mind Sliver",
+        "thumbnail": "Generic/Healing/HealingAbility_01_Purple_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.healing.purple",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "ray_of_frost": {
+        "name": "Ray of Frost",
+        "minTargets": 2,
+        "thumbnail": "Cantrip/Ray_Of_Frost/RayOfFrost_01_Regular_Blue_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "ray_of_frost",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "sacred_flame": {
+        "name": "Sacred Flame",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "Cantrip/Sacred_Flame/SacredFlameSource_01_Regular_Yellow_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "sacred_flame.source",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "sacred_flame.target",
+                "delay": 3000,
+                "effectProperties": {
+                    "source": "$targets[1].position",
+                    "size": "$targets[1].size"
+                }
+            }
+        ]
+    },
+    "toll_the_dead": {
+        "name": "Toll the Dead",
+        "minTargets": 1,
+        "thumbnail": "Cantrip/Toll_The_Dead/TollTheDead_01_Regular_Green_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "toll_the_dead.simple",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "arms_of_hadar": {
+        "name": "Arms of Hadar",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Arms_Of_Hadar/ArmsOfHadar_01_Dark_Purple_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "arms_of_hadar.transparent",
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "sum",
+                        "arguments": ["$radius", "$targets[0].size"]
+                    }
+                }
+            }
+        ]
+    },
+    "bless": {
+        "name": "Bless",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Bless/Bless_01_Regular_Yellow_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "bless.intro",
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "bless.loop",
+                "delay": 4000,
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "burning_hands": {
+        "name": "Burning Hands",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "1st_Level/Burning_Hands/BurningHands_01_Regular_Orange_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Length (in cells)",
+                "id": "length",
+                "type": "number",
+                "defaultValue": 3,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "burning_hands",
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "rotation": {
+                        "name": "rotation",
+                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                    },
+                    "size": "$length"
+                }
+            }
+        ]
+    },
+    "cure_wounds": {
+        "name": "Cure Wounds",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Cure_Wounds/CureWounds_01_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "cure_wounds",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "detect_magic": {
+        "name": "Detect Magic",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Detect_Magic/DetectMagicCircle_01_Regular_Blue_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Area of effect",
+                "id": "aoe_type",
+                "type": "options",
+                "defaultValue": "circle",
+                "content": [
+                    { "value": "circle", "label": "Circle" },
+                    { "value": "cone", "label": "Cone" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 12,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["detect_magic.", "$aoe_type"]
+                },
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "entangle": {
+        "name": "Entangle",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Entangle/Entangle02_02_Regular_Green_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "entangle.transparent.complete",
+                "duration": 7000,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "entangle.transparent.loop",
+                "duration": -1,
+                "delay": 6000,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "fog_cloud": {
+        "name": "Fog Cloud",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Fog_Cloud/FogCloud_01_White_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 8,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "fog_cloud.transparent",
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "grease": {
+        "name": "Grease",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Grease/Grease_Dark_Brown_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 2,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "grease",
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "guiding_bolt": {
+        "name": "Guiding Bolt",
+        "minTargets": 2,
+        "thumbnail": "1st_Level/Guiding_Bolt/GuidingBolt_01_Regular_BlueYellow_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 200,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "guiding_bolt",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            },
+            {
+                "id": "generic.item.glint.many",
+                "delay": 3500,
+                "duration": -1,
+                "disableHit": true,
+                "attachedTo": "$targets[1].id",
+                "type": "effect",
+                "effectProperties": {
+                    "source": "$targets[1].position",
+                    "size": "$targets[1].size"
+                }
+            }
+        ]
+    },
+    "hex": {
+        "name": "Hex",
+        "minTargets": 1,
+        "thumbnail": "Generic/Marker/MarkerHorror_02_Regular_Purple_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.marker.simple.purple.complete",
+                "layer": "PROP",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 2]
+                    }
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.marker.horror.2",
+                "duration": -1,
+                "delay": 2000,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "hunters_mark": {
+        "name": "Hunter's Mark",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Hunters_Mark/HuntersMark_01_Regular_Green_Pulse_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "hunters_mark.pulse",
+                "zIndex": 10,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "hunters_mark.loop",
+                "delay": 2500,
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "zIndex": 1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 0.5]
+                    }
+                }
+            }
+        ]
+    },
+    "ice_knife": {
+        "name": "Ice Knife",
+        "minTargets": 2,
+        "thumbnail": "Generic/Ice/IceSpikesRadialBurst_01_Regular_White_Thumb.webp",
+        "target": "first_to_all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 1,
+                "content": {
+                    "min": 3
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.weapon_attacks.ranged.dagger.throw",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            },
+            {
+                "type": "effect",
+                "delay": 1500,
+                "id": "generic.ice.ice_spikes.radial.burst",
+                "effectProperties": {
+                    "source": "$targets[1].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "magic_missiles": {
+        "name": "Magic Missiles",
+        "minTargets": 2,
+        "thumbnail": "1st_Level/Magic_Missile/MagicMissile_01_Regular_Purple_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 0,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "magic_missile",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "shield": {
+        "name": "Shield",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Shield/Shield_01_Regular_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "shield.intro",
+                "duration": 1200,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": [1.5, "$targets[0].size"]
+                    }
+                }
+            },
+            {
+                "type": "effect",
+                "id": "shield.loop",
+                "delay": 1100,
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": [1.5, "$targets[0].size"]
+                    }
+                }
+            }
+        ],
+        "onDestroyBlueprints": [
+            {
+                "type": "effect",
+                "id": "shield.outro.fade",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "shield_of_faith": {
+        "name": "Shield of Faith",
+        "thumbnail": "Generic/Marker/MarkerShieldRampart01_01_Regular_Orange_Thumb.webp",
+        "minTargets": 1,
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "id": "generic.marker.shield_rampart.complete",
+                "attachedTo": "$targets[0].id",
+                "blueprints": [],
+                "type": "effect",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            },
+            {
+                "id": "generic.marker.shield_rampart.loop",
+                "attachedTo": "$targets[0].id",
+                "delay": 6200,
+                "duration": -1,
+                "disableHit": true,
+                "blueprints": [],
+                "type": "effect",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "sleep": {
+        "name": "Sleep",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Sleep/SleepSymbol01_01_Dark_Pink_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "dark_pink",
+                "content": [
+                    { "value": "dark_pink", "label": "Dark Pink" },
+                    { "value": "regular_pink", "label": "Regular Pink" }
+                ]
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["sleep.symbol.", "$color"]
+                },
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "witch_bolt": {
+        "name": "Witch Bolt",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "1st_Level/Witch_Bolt/WitchBolt_01_Regular_Blue_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "witch_bolt",
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "sourceId": "$targets[0].id",
+                    "destination": "$targets[1].position",
+                    "destinationId": "$targets[1].id",
+                    "copies": 1
+                }
+            }
+        ]
+    },
+    "cloud_of_daggers": {
+        "name": "Cloud of Daggers",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Cloud_Of_Daggers/CloudOfDaggers_01_Light_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "light_blue",
+                "content": [
+                    { "value": "light_blue", "label": "Light Blue" },
+                    { "value": "light_green", "label": "Light Green" },
+                    { "value": "light_purple", "label": "Light Purple" },
+                    { "value": "light_red", "label": "Light Red" },
+                    { "value": "light_yellow", "label": "Light Yellow" },
+                    { "value": "light_orange", "label": "Light Orange" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 1,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["cloud_of_daggers.", "$color"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "darkness": {
+        "name": "Darkness",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Darkness/Darkness_01_Black_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 6,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": false
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "darkness.black.transparent",
+                "layer": "CHARACTER",
+                "zIndex": -1,
+                "duration": -1,
+                "disableHit": false,
+                "metadata": {
+                    "eu.armindo.embers/darkness-zone": {
+                        "radiusFeet": 15,
+                        "transparent": "$transparent"
+                    }
+                },
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "flaming_sphere": {
+        "name": "Flaming Sphere",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Flaming_Sphere/FlamingSphere_02_Orange_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "orange.2",
+                "content": [
+                    { "value": "blue", "label": "Blue" },
+                    { "value": "green", "label": "Green" },
+                    { "value": "orange.1", "label": "Orange" },
+                    { "value": "orange.2", "label": "Fire" },
+                    { "value": "pink", "label": "Pink" },
+                    { "value": "purple", "label": "Purple" },
+                    { "value": "red", "label": "Red" },
+                    { "value": "green_to_blue", "label": "Green to blue" },
+                    { "value": "rainbow", "label": "Rainbow" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 1,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": false
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "flaming_sphere.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent.", "opaque."]
+                        },
+                        "$color"
+                    ]
+                },
+                "duration": -1,
+                "disableHit": false,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "misty_step": {
+        "name": "Misty Step",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "2nd_Level/Misty_Step/MistyStep_02_Regular_Blue_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "misty_step.out",
+                "effectProperties": {
+                    "size": "$targets[0].size",
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "hide",
+                "delay": 1000,
+                "for": "CASTER",
+                "arguments": ["$targets[0].id"]
+            },
+            {
+                "type": "effect",
+                "id": "misty_step.in",
+                "delay": 1500,
+                "effectProperties": {
+                    "size": "$targets[0].size",
+                    "source": "$targets[1].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "move",
+                "delay": 1500,
+                "for": "CASTER",
+                "arguments": ["$targets[0].id", "$targets[1].position"]
+            },
+            {
+                "type": "action",
+                "id": "show",
+                "delay": 3000,
+                "for": "CASTER",
+                "arguments": ["$targets[0].id"]
+            }
+        ]
+    },
+    "gust_of_wind": {
+        "name": "Gust of Wind",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "2nd_Level/Gust_Of_Wind/GustOfWind_01_White_Thumb.webp",
+        "replicate": "no",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Length (in cells)",
+                "id": "length",
+                "type": "number",
+                "defaultValue": 12,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "gust_of_wind",
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "rotation": {
+                        "name": "rotation",
+                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                    },
+                    "size": "$length"
+                }
+            }
+        ]
+    },
+    "hold_person": {
+        "name": "Hold Person",
+        "minTargets": 1,
+        "thumbnail": "Generic/Marker/MarkerChainSpectralStandard01_02_Regular_Blue_Complete_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "blue",
+                "content": [
+                    { "value": "blue", "label": "Blue" },
+                    { "value": "red", "label": "Red" }
+                ]
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["generic.marker.simple.", "$color", ".complete"]
+                },
+                "layer": "PROP",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 2]
+                    }
+                }
+            },
+            {
+                "type": "effect",
+                "id": {
+                    "name": "if",
+                    "arguments": [
+                        {
+                            "name": "equals",
+                            "arguments": ["$color", "blue"]
+                        },
+                        "generic.marker.spectral_chain.loop",
+                        "generic.marker.red_chain.loop"
+                    ]
+                },
+                "delay": 350,
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 1.5]
+                    }
+                }
+            }
+        ]
+    },
+    "moonbeam": {
+        "name": "Moonbeam",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Moonbeam/Moonbeam_01_Regular_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 2,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "moonbeam.intro",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "moonbeam.regular",
+                "duration": -1,
+                "delay": 2000,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "scorching_ray": {
+        "name": "Scorching Ray",
+        "minTargets": 2,
+        "thumbnail": "2nd_Level/Scorching_Ray/ScorchingRay_01_Regular_Orange_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 500,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "scorching_ray",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "shatter": {
+        "name": "Shatter",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Shatter/Shatter_01_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "shatter",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "silence": {
+        "name": "Silence",
+        "minTargets": 1,
+        "thumbnail": "Generic/Marker/MarkerMute_03_Dark_Red_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 8
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.energy.soundwave.smooth",
+                "disableHit": true,
+                "duration": -1,
+                "effectProperties": {
+                    "size": "$radius",
+                    "source": "$targets[0].position"
+                }
+            }
+        ]
+    },
+    "spiritual_weapon": {
+        "name": "Spiritual Weapon",
+        "minTargets": 1,
+        "maxTargets": 1,
+        "thumbnail": "2nd_Level/Spiritual_Weapon/SpiritualWeapon_GreatAxe01_02_Spectral_Green_Thumb.webp",
+        "replicate": "no",
+        "copy": 0,
+        "parameters": [
+            {
+                "name": "Weapon variant",
+                "id": "weapon_variant",
+                "type": "options",
+                "defaultValue": "spectral_green_greataxe",
+                "content": [
+                    { "value": "spectral_green_club", "label": "Spectral Green Club" },
+                    { "value": "spectral_green_dagger", "label": "Spectral Green Dagger" },
+                    { "value": "spectral_green_falchion", "label": "Spectral Green Falchion" },
+                    { "value": "spectral_green_glaive", "label": "Spectral Green Glaive" },
+                    { "value": "spectral_green_greataxe", "label": "Spectral Green Greataxe" },
+                    { "value": "spectral_green_greatclub", "label": "Spectral Green Greatclub" },
+                    { "value": "spectral_green_greatsword", "label": "Spectral Green Greatsword" },
+                    { "value": "spectral_green_halberd", "label": "Spectral Green Halberd" },
+                    { "value": "spectral_green_hammer1", "label": "Spectral Green Hammer (1)" },
+                    { "value": "spectral_green_hammer2", "label": "Spectral Green Hammer (2)" },
+                    { "value": "spectral_green_handaxe", "label": "Spectral Green Handaxe" },
+                    { "value": "spectral_green_javelin", "label": "Spectral Green Javelin" },
+                    { "value": "spectral_green_katana", "label": "Spectral Green Katana" },
+                    { "value": "regular_blue_laserspear", "label": "Regular Blue Laserspear" },
+                    { "value": "regular_blue_lasersword1", "label": "Regular Blue Lasersword1" },
+                    { "value": "regular_blue_lasersword2", "label": "Regular Blue Lasersword2" },
+                    { "value": "spectral_green_longsword", "label": "Spectral Green Longsword" },
+                    { "value": "flaming_yellow_mace", "label": "Flaming Yellow Mace" },
+                    { "value": "spectral_blue_mace", "label": "Spectral Blue Mace" },
+                    { "value": "spectral_green_mace", "label": "Spectral Green Mace" },
+                    { "value": "flaming_yellow_maul", "label": "Flaming Yellow Maul" },
+                    { "value": "spectral_blue_maul", "label": "Spectral Blue Maul" },
+                    { "value": "spectral_green_maul", "label": "Spectral Green Maul" },
+                    { "value": "spectral_green_quarterstaff", "label": "Spectral Green Quarterstaff" },
+                    { "value": "spectral_green_rapier", "label": "Spectral Green Rapier" },
+                    { "value": "spectral_green_scimitar", "label": "Spectral Green Scimitar" },
+                    { "value": "spectral_green_scythe", "label": "Spectral Green Scythe" },
+                    { "value": "spectral_green_shortsword", "label": "Spectral Green Shortsword" },
+                    { "value": "spectral_green_spear", "label": "Spectral Green Spear" },
+                    { "value": "spectral_green_trident", "label": "Spectral Green Trident" },
+                    { "value": "spectral_green_warhammer", "label": "Spectral Green Warhammer" },
+                    { "value": "spectral_green_wrench", "label": "Spectral Green Wrench" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 1,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["spiritual_weapon.", "$weapon_variant"]
+                },
+                "duration": -1,
+                "effectProperties": {
+                    "size": "$radius",
+                    "source": "$targets[0].position"
+                }
+            }
+        ]
+    },
+    "web": {
+        "name": "Web",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Web/Web_01_White_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Mode",
+                "id": "mode",
+                "type": "options",
+                "defaultValue": "simple",
+                "content": [
+                    { "value": "simple", "label": "Simple" },
+                    { "value": "spiders", "label": "Spiders" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "web.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent.", "opaque."]
+                        },
+                        "$mode"
+                    ]
+                },
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "call_lightning": {
+        "name": "Call Lightning",
+        "minTargets": 1,
+        "thumbnail": "3rd_Level/Call_Lightning/CallLightning_01_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "blue",
+                "content": [
+                    { "value": "blue", "label": "Blue" },
+                    { "value": "blue_orange", "label": "Blue and orange" },
+                    { "value": "green", "label": "Green" },
+                    { "value": "pink_yellow", "label": "Pink and yellow" },
+                    { "value": "purple", "label": "Purple" },
+                    { "value": "red", "label": "Red" },
+                    { "value": "yellow", "label": "Yellow" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 25,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "call_lightning.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent.", "opaque."]
+                        },
+                        "$color"
+                    ]
+                },
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "fireball": {
+        "name": "Fireball",
+        "minTargets": 1,
+        "thumbnail": "3rd_Level/Fireball/FireballExplosion_01_Orange_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 10,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "fireball.beam",
+                "disabled": {
+                    "name": "lesser_than",
+                    "arguments": ["$targets.length", 2]
+                },
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "fireball.explosion",
+                "delay": {
+                    "name": "if",
+                    "arguments": [
+                        {
+                            "name": "lesser_than",
+                            "arguments": ["$targets.length", 2]
+                        },
+                        null,
+                        3000
+                    ]
+                },
+                "effectProperties": {
+                    "source": {
+                        "name": "if",
+                        "arguments": [
+                            {
+                                "name": "lesser_than",
+                                "arguments": ["$targets.length", 2]
+                            },
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
+                    },
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "lightning_bolt": {
+        "name": "Lightning Bolt",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "3rd_Level/Lightning_Bolt/LightningBolt_01_Regular_Blue_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Length (in cells)",
+                "id": "length",
+                "type": "number",
+                "defaultValue": 20,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "lightning_bolt",
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "rotation": {
+                        "name": "rotation",
+                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                    },
+                    "size": "$length"
+                }
+            }
+        ]
+    },
+    "wind_wall": {
+        "name": "Wind Wall",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "3rd_Level/Wind_Wall/WindWall_01_Thumb.webp",
+        "replicate": "no",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "if",
+                    "arguments": ["$transparent", "wind_wall.transparent", "wind_wall.opaque"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            }
+        ]
+    },
+    "sleet_storm": {
+        "name": "Sleet Storm",
+        "minTargets": 1,
+        "thumbnail": "3rd_Level/Sleet_Storm/SleetStorm_01_Blue_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Mode",
+                "id": "mode",
+                "type": "options",
+                "defaultValue": "1",
+                "content": [
+                    { "value": "1", "label": "Mode #1" },
+                    { "value": "2", "label": "Mode #2" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 5,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "sleet_storm.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent", "opaque"]
+                        },
+                        {
+                            "name": "if",
+                            "arguments": [
+                                "$transparent",
+                                {
+                                    "name": "concat",
+                                    "arguments": [".", "$mode"]
+                                },
+                                ""
+                            ]
+                        }
+                    ]
+                },
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "spirit_guardians": {
+        "name": "Spirit Guardians",
+        "minTargets": 1,
+        "thumbnail": "3rd_Level/Spirit_Guardians/SpiritGuardians_01_Light_BlueYellow_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 6,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "spirit_guardians",
+                "duration": -1,
+                "attachedTo": "$targets[0].id",
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "sum",
+                        "arguments": ["$radius", "$targets[0].size"]
+                    }
+                }
+            }
+        ]
+    },
+    "thunder_step": {
+        "name": "Thunder Step",
+        "minTargets": 2,
+        "maxTargets": 3,
+        "for": "GM",
+        "thumbnail": "Generic/Explosion/Explosion_02_Blue_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "misty_step.out",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0]
+                },
+                "effectProperties": {
+                    "size": "$targets[0].size",
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.explosion.blue1",
+                "delay": 900,
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0]
+                },
+                "effectProperties": {
+                    "size": "$radius",
+                    "source": "$globalTargets[0].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "hide",
+                "delay": 1000,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id"]
+            },
+            {
+                "type": "action",
+                "id": "move",
+                "delay": 1100,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id", "$globalTargets[-1].position"]
+            },
+            {
+                "type": "action",
+                "id": "move",
+                "delay": 1100,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [1, -2]
+                },
+                "arguments": [
+                    "$targets[0].id",
+                    {
+                        "name": "add",
+                        "arguments": [
+                            "$globalTargets[-1].position",
+                            {
+                                "name": "subtract",
+                                "arguments": ["$targets[0].position", "$globalTargets[0].position"]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "action",
+                "id": "show",
+                "delay": 2500,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id"]
+            },
+            {
+                "type": "effect",
+                "id": "misty_step.in",
+                "delay": 1000,
+                "disabled": {
+                    "name": "target_in_range",
+                    "arguments": [0, -2]
+                },
+                "effectProperties": {
+                    "size": "$globalTargets[0].size",
+                    "source": "$targets[0].position"
+                }
+            }
+        ]
+    },
+    "banishment": {
+        "name": "Banishment",
+        "minTargets": 2,
+        "thumbnail": "Generic/Portals/Portal_Bright_Yellow_V_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.ranged_spell.instant.yellow",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.portals.horizontal",
+                "layer": "PROP",
+                "delay": 200,
+                "duration": 3000,
+                "effectProperties": {
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[1].size", 2.5]
+                    },
+                    "source": "$targets[1].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "stretch",
+                "delay": 250,
+                "for": "CASTER",
+                "arguments": ["$targets[1].id", {"x": 0.01, "y": 0.01}, 300, "EASE_IN"]
+            },
+            {
+                "type": "action",
+                "id": "hide",
+                "delay": 1000,
+                "for": "CASTER",
+                "arguments": ["$targets[1].id"]
+            },
+            {
+                "type": "action",
+                "id": "scale",
+                "delay": 1500,
+                "for": "CASTER",
+                "arguments": ["$targets[1].id", {"x": 100, "y": 100}]
+            }
+        ]
+    },
+    "black_tentacles": {
+        "name": "Black Tentacles",
+        "minTargets": 1,
+        "thumbnail": "4th_Level/Black_Tentacles/BlackTentacles_01_Dark_Purple_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "black_tentacles",
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "dimension_door": {
+        "name": "Dimension Door",
+        "minTargets": 2,
+        "maxTargets": 3,
+        "for": "GM",
+        "thumbnail": "Generic/Portals/Portal_Bright_Yellow_H_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.portals.horizontal",
+                "layer": "PROP",
+                "duration": 3000,
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$globalTargets[0].size", 2.5]
+                    },
+                    "source": "$globalTargets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.portals.horizontal",
+                "layer": "PROP",
+                "duration": 3000,
+                "disabled": {
+                    "name": "target_in_range",
+                    "arguments": [0]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$globalTargets[0].size", 2.5]
+                    },
+                    "source": "$globalTargets[-1].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "stretch",
+                "delay": 1000,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id", {"x": 0.01, "y": 0.01}, 300, "EASE_IN"]
+            },
+            {
+                "type": "action",
+                "id": "slide",
+                "delay": 1000,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [1, -2]
+                },
+                "arguments": ["$targets[0].id", "$globalTargets[0].position", 300, "EASE_IN"]
+            },
+            {
+                "type": "action",
+                "id": "hide",
+                "delay": 1300,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id"]
+            },
+            {
+                "type": "action",
+                "id": "move",
+                "delay": 1500,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id", "$globalTargets[-1].position"]
+            },
+            {
+                "type": "action",
+                "id": "show",
+                "delay": 1900,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id"]
+            },
+            {
+                "type": "action",
+                "id": "stretch",
+                "delay": 2000,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [0, -2]
+                },
+                "arguments": ["$targets[0].id", {"x": 100, "y": 100}, 300, "EASE_OUT"]
+            },
+            {
+                "type": "action",
+                "id": "slide",
+                "delay": 2000,
+                "for": "CASTER",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [1, -2]
+                },
+                "arguments": [
+                    "$targets[0].id",
+                    {
+                        "name": "add",
+                        "arguments": [
+                            "$globalTargets[-1].position",
+                            {
+                                "name": "subtract",
+                                "arguments": ["$targets[0].position", "$globalTargets[0].position"]
+                            }
+                        ]
+                    },
+                    300,
+                    "EASE_OUT"
+                ]
+            }
+        ]
+    },
+    "wall_of_fire": {
+        "name": "Wall of Fire",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "4th_Level/Wall_Of_Fire/WallOfFire_01_Yellow_Thumb.webp",
+        "replicate": "no",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "yellow",
+                "content": [
+                    { "value": "blue", "label": "Blue" },
+                    { "value": "yellow", "label": "Yellow" }
+                ]
+            },
+            {
+                "name": "Mode",
+                "id": "mode",
+                "type": "options",
+                "defaultValue": "line",
+                "content": [
+                    { "value": "line", "label": "Line" },
+                    { "value": "ring", "label": "Ring" }
+                ]
+            },
+            {
+                "name": "Ring radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 6,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "wall_of_fire.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent", "opaque"]
+                        },
+                        ".line.",
+                        "$color"
+                    ]
+                },
+                "disabled": {
+                    "name": "equals",
+                    "arguments": ["$mode", "ring"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            },
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "wall_of_fire.",
+                        {
+                            "name": "if",
+                            "arguments": ["$transparent", "transparent", "opaque"]
+                        },
+                        ".ring.",
+                        "$color"
+                    ]
+                },
+                "disabled": {
+                    "name": "equals",
+                    "arguments": ["$mode", "line"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "antilife_shell": {
+        "name": "Antilife Shell",
+        "minTargets": 1,
+        "thumbnail": "5th_Level/Antilife_Shell/Antilifeshell_01_Blue_Circle_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Circle",
+                "id": "circle",
+                "type": "boolean",
+                "defaultValue": true
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 4,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "if",
+                    "arguments": ["$circle", "antilife_shell.circle", "antilife_shell.no_circle"]
+                },
+                "disableHit": true,
+                "attachedTo": "$targets[0].id",
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "sum",
+                        "arguments": ["$radius", "$targets[0].size"]
+                    }
+                }
+            }
+        ]
+    },
+    "arcane_hand": {
+        "name": "Arcane Hand",
+        "minTargets": 1,
+        "thumbnail": "5th_Level/Arcane_Hand/ArcaneHand_Human_01_Idle_Purple_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Color",
+                "id": "color",
+                "type": "options",
+                "defaultValue": "purple",
+                "content": [
+                    { "value": "blue", "label": "Blue" },
+                    { "value": "green", "label": "Green" },
+                    { "value": "purple", "label": "Purple" },
+                    { "value": "red", "label": "Red" }
+                ]
+            },
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 2,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["arcane_hand.", "$color"]
+                },
+                "duration": -1,
+                "effectProperties": {
+                    "size": "$radius",
+                    "source": "$targets[0].position"
+                }
+            }
+        ]
+    },
+    "cone_of_cold": {
+        "name": "Cone of Cold",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "5th_Level/Cone_Of_Cold/ConeOfCold_01_Regular_Blue_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Length (in cells)",
+                "id": "length",
+                "type": "number",
+                "defaultValue": 12,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "cone_of_cold",
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "rotation": {
+                        "name": "rotation",
+                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                    },
+                    "size": "$length"
+                }
+            }
+        ]
+    },
+    "wall_of_force": {
+        "name": "Wall of Force",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "5th_Level/Wall_Of_Force/WallOfForce_01_Grey_V_Thumb.webp",
+        "replicate": "no",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Mode",
+                "id": "mode",
+                "type": "options",
+                "defaultValue": "line",
+                "content": [
+                    { "value": "line", "label": "Line" },
+                    { "value": "square", "label": "Square" },
+                    { "value": "ring", "label": "Ring" }
+                ]
+            },
+            {
+                "name": "Ring radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 6,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "wall_of_force.line",
+                "disabled": {
+                    "name": "not_equals",
+                    "arguments": ["$mode", "line"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": 1
+                }
+            },
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "wall_of_force.",
+                        "$mode"
+                    ]
+                },
+                "disabled": {
+                    "name": "equals",
+                    "arguments": ["$mode", "line"]
+                },
+                "duration": -1,
+                "disableHit": true,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "chain_lightning": {
+        "name": "Chain Lightning",
+        "minTargets": 2,
+        "maxTargets": 5,
+        "thumbnail": "6th_Level/Chain_Lightning/ChainLightning_01_Regular_Blue_Primary_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "chain_lightning.primary",
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [1]
+                },
+                "effectProperties": {
+                    "source": "$globalTargets[0].position",
+                    "destination": "$targets[0].position",
+                    "copies": 1
+                }
+            },
+            {
+                "type": "effect",
+                "id": "chain_lightning.secondary",
+                "delay": 1000,
+                "disabled": {
+                    "name": "target_not_in_range",
+                    "arguments": [2, -1]
+                },
+                "effectProperties": {
+                    "source": "$globalTargets[1].position",
+                    "destination": "$targets[0].position",
+                    "copies": 1
+                }
+            }
+        ]
+    },
+    "disintegrate": {
+        "name": "Disintegrate",
+        "minTargets": 2,
+        "thumbnail": "6th_Level/Disintegrate/Disintegrate_01_Regular_Green01_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 200,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "disintegrate",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "whirlwind": {
+        "name": "Whirlwind",
+        "minTargets": 1,
+        "thumbnail": "7th_Level/Whirlwind/Whirlwind_01_BlueGrey_01_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 3,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "whirlwind",
+                "duration": -1,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "cloudkill": {
+        "name": "Cloudkill",
+        "minTargets": 1,
+        "thumbnail": "2nd_Level/Darkness/Darkness_01_Green_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Radius (in cells)",
+                "id": "radius",
+                "type": "number",
+                "defaultValue": 8,
+                "content": {
+                    "min": 1
+                }
+            },
+            {
+                "name": "Transparency",
+                "id": "transparent",
+                "type": "boolean",
+                "defaultValue": false
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "if",
+                    "arguments": ["$transparent", "darkness.green.transparent", "darkness.green.opaque"]
+                },
+                "layer": "CHARACTER",
+                "zIndex": -1,
+                "duration": -1,
+                "disableHit": false,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$radius"
+                }
+            }
+        ]
+    },
+    "melee_weapon_attack": {
+        "name": "Melee Weapon Attack",
+        "minTargets": 1,
+        "maxTargets": 2,
+        "thumbnail": "Generic/Weapon_Attacks/Melee/Sword01_01_Regular_White_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Weapon variant",
+                "id": "weapon_variant",
+                "type": "options",
+                "defaultValue": "sword",
+                "content": [
+                    { "value": "club", "label": "Club" },
+                    { "value": "dagger", "label": "Dagger" },
+                    { "value": "falchion", "label": "Falchion" },
+                    { "value": "generic_slash", "label": "Generic Slash" },
+                    { "value": "generic_whirlwind", "label": "Generic Whirlwind" },
+                    { "value": "glaive", "label": "Glaive" },
+                    { "value": "great_axe", "label": "Greataxe" },
+                    { "value": "great_club", "label": "Greatclub" },
+                    { "value": "great_sword", "label": "Greatsword" },
+                    { "value": "halberd", "label": "Halberd" },
+                    { "value": "hammer", "label": "Hammer" },
+                    { "value": "hand_axe", "label": "Handaxe" },
+                    { "value": "laser_sword", "label": "Laser Sword" },
+                    { "value": "mace", "label": "Mace" },
+                    { "value": "maul", "label": "Maul" },
+                    { "value": "quarterstaff", "label": "Quarterstaff" },
+                    { "value": "rapier", "label": "Rapier" },
+                    { "value": "scimitar", "label": "Scimitar" },
+                    { "value": "shortsword", "label": "Shortsword" },
+                    { "value": "spear", "label": "Spear" },
+                    { "value": "sword", "label": "Sword" },
+                    { "value": "warhammer", "label": "Warhammer" },
+                    { "value": "wrench", "label": "Wrench" }
+                ]
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["generic.weapon_attacks.melee.single.", "$weapon_variant"]
+                },
+                "forceVariant": {
+                    "name": "random_int",
+                    "arguments": [0, 6]
+                },
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 2]
+                    },
+                    "rotation": {
+                        "name": "if",
+                        "arguments": [
+                            {
+                                "name": "greater_than",
+                                "arguments": ["$targets.length", 1]
+                            },
+                            {
+                                "name": "rotation",
+                                "arguments": ["$targets[0].position", "$targets[1].position"]
+                            },
+                            0
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "ranged_weapon_attack": {
+        "name": "Ranged Weapon Attack",
+        "minTargets": 2,
+        "thumbnail": "Generic/Weapon_Attacks/Ranged/Arrow01_01_Regular_White_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": 200,
+        "parameters": [
+            {
+                "name": "Weapon variant",
+                "id": "weapon_variant",
+                "type": "options",
+                "defaultValue": "arrow.white",
+                "content": [
+                    { "value": "arrow.green", "label": "Green Arrow" },
+                    { "value": "arrow.white", "label": "White Arrow" },
+                    { "value": "arrow.blue", "label": "Blue Arrow" },
+                    { "value": "bolt", "label": "Bolt" },
+                    { "value": "boulder_toss", "label": "Boulder" },
+                    { "value": "bullet.orange", "label": "Orange Bullet" },
+                    { "value": "bullet.large_orange", "label": "Large Orange Bullet" },
+                    { "value": "bullet.blue", "label": "Blue Bullet" },
+                    { "value": "dagger.throw", "label": "Dagger" },
+                    { "value": "laser_shot.blue", "label": "Blue Laser" },
+                    { "value": "laser_shot.green", "label": "Green Laser" },
+                    { "value": "laser_shot.orange", "label": "Orange Laser" },
+                    { "value": "laser_shot.red", "label": "Red Laser" },
+                    { "value": "laser_sword.blue", "label": "Blue Laser Sword" },
+                    { "value": "laser_sword.red", "label": "Red Laser Sword" },
+                    { "value": "cannon_ball", "label": "Cannon Ball" },
+                    { "value": "barrel_toss.metal", "label": "Metal Barrel" },
+                    { "value": "barrel_toss.wooden", "label": "Wooden Barrel" },
+                    { "value": "missile.blue", "label": "Blue Missile" },
+                    { "value": "missile.white", "label": "White Missile" },
+                    { "value": "missile.wide_white", "label": "Wide White Missile" },
+                    { "value": "missile.purple_pink", "label": "Purple/Pink Missile" },
+                    { "value": "shield.throw", "label": "Shield" },
+                    { "value": "shield.complete", "label": "Shield (Returning)" },
+                    { "value": "snipe", "label": "Snipe" },
+                    { "value": "snowball", "label": "Snowball" },
+                    { "value": "throw.bomb", "label": "Thrown Bomb" },
+                    { "value": "throw.flask", "label": "Thrown Flask" }
+                ]
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": ["generic.weapon_attacks.ranged.", "$weapon_variant"]
+                },
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies":   "$targets[1].count"
+                }
+            }
+        ]
+    },
+    "bardic_inspiration": {
+        "name": "Bardic Inspiration",
+        "minTargets": 1,
+        "replicate": "first_to_all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "id": "bardic_inspiration",
+                "blueprints": [],
+                "type": "effect",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            },
+            {
+                "id": "generic.marker.music_note.3",
+                "delay": 1000,
+                "duration": -1,
+                "disableHit": true,
+                "attachedTo": "$targets[1].id",
+                "blueprints": [],
+                "type": "effect",
+                "effectProperties": {
+                    "source": "$targets[1].position",
+                    "size": "$targets[1].size"
+                }
+            }
+        ],
+        "thumbnail": "1st_Level/Bardic_Inspiration/BardicInspiration_01_Regular_GreenOrange_Thumb.webp"
+    },
+    "sneak_attack": {
+        "name": "Sneak Attack",
+        "minTargets": 1,
+        "thumbnail": "1st_Level/Sneak_Attack/Sneak_Attack_Dark_Green_Thumb.webp",
+        "replicate": "all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "sneak_attack",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": "$targets[0].size"
+                }
+            }
+        ]
+    },
+    "divine_smite": {
+        "name": "Divine Smite",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "2nd_Level/Divine_Smite/DivineSmite_01_Regular_BlueYellow_Caster_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "divine_smite.caster",
+                "effectProperties": {
+                    "size": "$targets[0].size",
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "divine_smite.target",
+                "delay": 1500,
+                "effectProperties": {
+                    "size": "$targets[1].size",
+                    "source": "$targets[1].position"
+                }
+            }
+        ]
+    },
+    "summon": {
+        "name": "Summon",
+        "minTargets": 1,
+        "thumbnail": "Generic/Magic_Signs/Conjuration_01_Yellow_Circle_Thumb.webp",
+        "replicate": "all",
+        "firstTargetIsCaster": "$caster",
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "Token",
+                "id": "tokens",
+                "type": "asset",
+                "defaultValue": null,
+                "content": {
+                    "multiple": false
+                }
+            },
+            {
+                "name": "Caster animation",
+                "id": "caster",
+                "type": "boolean",
+                "defaultValue": true
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "generic.magic_signs.conjuration_circle.regular_yellow.complete",
+                "layer": "PROP",
+                "disabled": {
+                    "name": "or",
+                    "arguments": [
+                        {
+                            "name": "not",
+                            "arguments": ["$caster"]
+                        },
+                        {
+                            "name": "target_not_in_range",
+                            "arguments": [0]
+                        }
+                    ]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "product",
+                        "arguments": ["$targets[0].size", 2]
+                    },
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.magic_signs.conjuration_rune.complete",
+                "zIndex": 5,
+                "delay": {
+                    "name": "if",
+                    "arguments": ["$caster", null, 1000]
+                },
+                "disabled": {
+                    "name": "and",
+                    "arguments": [
+                        "$caster",
+                        {
+                            "name": "target_in_range",
+                            "arguments": [0]
+                        }
+                    ]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "token_size",
+                        "arguments": ["$tokens[0]"]
+                    },
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.smoke.puff",
+                "zIndex": 4,
+                "delay": {
+                    "name": "if",
+                    "arguments": ["$caster", 1500, 2500]
+                },
+                "disabled": {
+                    "name": "and",
+                    "arguments": [
+                        "$caster",
+                        {
+                            "name": "target_in_range",
+                            "arguments": [0]
+                        }
+                    ]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "token_size",
+                        "arguments": ["$tokens[0]"]
+                    },
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "effect",
+                "id": "generic.smoke.puff_ring",
+                "zIndex": 3,
+                "delay": {
+                    "name": "if",
+                    "arguments": ["$caster", 2000, 3000]
+                },
+                "disabled": {
+                    "name": "and",
+                    "arguments": [
+                        "$caster",
+                        {
+                            "name": "target_in_range",
+                            "arguments": [0]
+                        }
+                    ]
+                },
+                "effectProperties": {
+                    "size": {
+                        "name": "token_size",
+                        "arguments": ["$tokens[0]"]
+                    },
+                    "source": "$targets[0].position"
+                }
+            },
+            {
+                "type": "action",
+                "id": "create_token",
+                "for": "CASTER",
+                "delay": {
+                    "name": "if",
+                    "arguments": [
+                        "$caster",
+                        2500,
+                        3500
+                    ]
+                },
+                "disabled": {
+                    "name": "and",
+                    "arguments": [
+                        "$caster",
+                        {
+                            "name": "target_in_range",
+                            "arguments": [0]
+                        }
+                    ]
+                },
+                "arguments": [
+                    "$tokens[0]",
+                    "$targets[0].position"
+                ]
+            }
+        ]
+    }
+}

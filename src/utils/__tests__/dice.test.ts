@@ -1,0 +1,218 @@
+import { describe, it, expect, vi } from "vitest";
+import { rollFormula, rollAttack, rollDamageBreakdown, rollCustomDicePool, doubleDiceFormula, rollDamageDDB, rollDamageExplodingAnyDie, rollDamageExploding, combineDamageBonus } from "../dice";
+
+describe("dice utility", () => {
+    it("rolls exploding dice for Sorcerous Burst (e.g. 2d8 with an 8 adds +1d8)", () => {
+        // Mock random: first die = 4 (0.376 -> 4), second die = 8 (0.999 -> 8), exploded die = 5 (0.501 -> 5)
+        const mockRolls = [3 / 8, 7 / 8, 4 / 8];
+        let rollIndex = 0;
+        vi.spyOn(Math, "random").mockImplementation(() => mockRolls[rollIndex++]);
+
+        const result = rollDamageExploding("2d8", "Thunder", 8, 3, "Sorcerous Burst");
+        expect(result.total).toBe(4 + 8 + 5); // 17
+        expect(result.explosionCount).toBe(1);
+        expect(result.damageType).toBe("Thunder");
+        expect(result.breakdown).toBe("4, 8 + 5 (Exploded)");
+        expect(result.formatted).toBe("Damage: 17 Thunder (4, 8 + 5 (Exploded))");
+        expect(result.message).toBe("Sorcerous Burst - Damage: 17 Thunder (4, 8 + 5 (Exploded))");
+
+        vi.restoreAllMocks();
+    });
+
+    it("handles sequential explosions in rollDamageExploding capped by maxExplosions", () => {
+        // Mock random: rolls 8, then exploded rolls 8, then exploded rolls 3
+        const mockRolls = [7 / 8, 7 / 8, 2 / 8];
+        let rollIndex = 0;
+        vi.spyOn(Math, "random").mockImplementation(() => mockRolls[rollIndex++]);
+
+        const result = rollDamageExploding("1d8", "Fire", 8, 2, "Sorcerous Burst");
+        expect(result.total).toBe(8 + 8 + 3); // 19
+        expect(result.explosionCount).toBe(2);
+        expect(result.breakdown).toBe("8 + 8, 3 (Exploded)");
+
+        vi.restoreAllMocks();
+    });
+
+    it("does not explode when no die reaches triggerValue", () => {
+        const mockRolls = [2 / 8, 4 / 8];
+        let rollIndex = 0;
+        vi.spyOn(Math, "random").mockImplementation(() => mockRolls[rollIndex++]);
+
+        const result = rollDamageExploding("2d8", "Thunder", 8, 3, "Sorcerous Burst");
+        expect(result.total).toBe(3 + 5); // 8
+        expect(result.explosionCount).toBe(0);
+        expect(result.breakdown).toBe("3, 5");
+
+        vi.restoreAllMocks();
+    });
+
+    it("explodes each damage die while enforcing one shared extra-die limit", () => {
+        vi.spyOn(Math, "random").mockReturnValue(0.999);
+        const result = rollDamageExplodingAnyDie("1d6+3", "Fire", 2);
+        expect(result.total).toBe(21);
+        expect(result.explosionCount).toBe(2);
+        vi.restoreAllMocks();
+    });
+    it("should roll standard single dice formulas", () => {
+        const res = rollFormula("1d4+4");
+        expect(res.total).toBeGreaterThanOrEqual(5);
+        expect(res.total).toBeLessThanOrEqual(8);
+        expect(res.breakdown).toContain("+4");
+        expect(res.rolls).toHaveLength(1);
+    });
+
+    it("should roll multi-dice formulas", () => {
+        const res = rollFormula("2d6");
+        expect(res.total).toBeGreaterThanOrEqual(2);
+        expect(res.total).toBeLessThanOrEqual(12);
+        expect(res.rolls).toHaveLength(2);
+    });
+
+    it("should handle compound formulas like 1d4+4 + 1d8", () => {
+        const res = rollFormula("1d4+4+1d8");
+        expect(res.total).toBeGreaterThanOrEqual(6); // min: 1 + 4 + 1 = 6
+        expect(res.total).toBeLessThanOrEqual(16); // max: 4 + 4 + 8 = 16
+        expect(res.rolls).toHaveLength(2);
+    });
+
+    it("should format attack rolls", () => {
+        const attack = rollAttack(6, "Dagger, +1");
+        expect(attack.total).toBeGreaterThanOrEqual(7);
+        expect(attack.total).toBeLessThanOrEqual(26);
+        expect(attack.message).toContain("Dagger, +1");
+        expect(attack.message).toContain("+6");
+    });
+
+    it("should handle advantage and disadvantage in rollAttack", () => {
+        const adv = rollAttack(5, "Fire Bolt", "advantage");
+        expect(adv.total).toBeGreaterThanOrEqual(6);
+        expect(adv.total).toBeLessThanOrEqual(25);
+        expect(adv.message).toContain("ADV");
+
+        const dis = rollAttack(5, "Fire Bolt", "disadvantage");
+        expect(dis.total).toBeGreaterThanOrEqual(6);
+        expect(dis.total).toBeLessThanOrEqual(25);
+        expect(dis.message).toContain("DIS");
+    });
+
+    it("should format damage rolls with cantrip rider", () => {
+        const res = rollDamageBreakdown("1d4+4", "Piercing", "Dagger, +1", {
+            name: "Booming Blade",
+            damage: "1d8",
+            damageType: "Thunder",
+            moveTrigger: "2d8 Thunder"
+        });
+        expect(res.total).toBeGreaterThanOrEqual(6);
+        expect(res.message).toContain("Piercing");
+        expect(res.message).toContain("Booming Blade");
+        expect(res.message).toContain("2d8 Thunder if it moves");
+    });
+
+    it("should roll custom dice pool with modifier", () => {
+        const res = rollCustomDicePool({ 6: 2, 8: 1 }, 3);
+        expect(res.total).toBeGreaterThanOrEqual(2 + 1 + 3); // min: 2*1 + 1 + 3 = 6
+        expect(res.total).toBeLessThanOrEqual(2 * 6 + 8 + 3); // max: 12 + 8 + 3 = 23
+        expect(res.formula).toBe("2d6 + 1d8 + 3");
+        expect(res.diceGroups).toHaveLength(2);
+        expect(res.diceGroups[0].die).toBe(6);
+        expect(res.diceGroups[0].rolls).toHaveLength(2);
+        expect(res.diceGroups[1].die).toBe(8);
+        expect(res.diceGroups[1].rolls).toHaveLength(1);
+    });
+
+    it("should handle advantage and disadvantage in custom dice pool for d20", () => {
+        const advRes = rollCustomDicePool({ 20: 1 }, 4, "advantage");
+        expect(advRes.diceGroups[0].rolls).toHaveLength(2);
+        expect(advRes.diceGroups[0].keptRoll).toBeDefined();
+        expect(advRes.diceGroups[0].droppedRoll).toBeDefined();
+        expect(advRes.diceGroups[0].keptRoll!).toBeGreaterThanOrEqual(advRes.diceGroups[0].droppedRoll!);
+        expect(advRes.breakdown).toMatch(/\[\d+,\s*\(\d+\)\]\s*\+\s*4\s*=\s*\d+/);
+
+        const disRes = rollCustomDicePool({ 20: 1 }, 2, "disadvantage");
+        expect(disRes.diceGroups[0].rolls).toHaveLength(2);
+        expect(disRes.diceGroups[0].keptRoll!).toBeLessThanOrEqual(disRes.diceGroups[0].droppedRoll!);
+        expect(disRes.breakdown).toMatch(/\[\d+,\s*\(\d+\)\]\s*\+\s*2\s*=\s*\d+/);
+    });
+
+    it("should handle per-die advantage and disadvantage for non-d20 and multi-dice pools", () => {
+        // d12 with Advantage
+        const d12Adv = rollCustomDicePool({ 12: 1 }, 2, "advantage");
+        expect(d12Adv.diceGroups[0].die).toBe(12);
+        expect(d12Adv.diceGroups[0].rolls).toHaveLength(2);
+        expect(d12Adv.diceGroups[0].keptRoll!).toBeGreaterThanOrEqual(d12Adv.diceGroups[0].droppedRoll!);
+        expect(d12Adv.breakdown).toMatch(/\[\d+,\s*\(\d+\)\]\s*\+\s*2/);
+
+        // d100 with Disadvantage
+        const d100Dis = rollCustomDicePool({ 100: 1 }, 0, "disadvantage");
+        expect(d100Dis.diceGroups[0].die).toBe(100);
+        expect(d100Dis.diceGroups[0].rolls).toHaveLength(2);
+        expect(d100Dis.diceGroups[0].keptRoll!).toBeLessThanOrEqual(d100Dis.diceGroups[0].droppedRoll!);
+        expect(d100Dis.breakdown).toMatch(/\[\d+,\s*\(\d+\)\]/);
+
+        // 3d10 with Advantage (Per-die ADV: each of the 3 dice rolls twice, keeping the higher)
+        const d10PoolAdv = rollCustomDicePool({ 10: 3 }, 0, "advantage");
+        expect(d10PoolAdv.diceGroups[0].die).toBe(10);
+        expect(d10PoolAdv.diceGroups[0].count).toBe(3);
+        expect(d10PoolAdv.diceGroups[0].rolls).toHaveLength(3);
+        expect(d10PoolAdv.breakdown).toMatch(/\[\d+,\s*\(\d+\)\] \+ \[\d+,\s*\(\d+\)\] \+ \[\d+,\s*\(\d+\)\] = \d+/);
+
+        // Mixed pool: 1d20 + 1d4 with Advantage applies per-die advantage to both
+        const mixedAdv = rollCustomDicePool({ 20: 1, 4: 1 }, 2, "advantage");
+        const d20Group = mixedAdv.diceGroups.find(g => g.die === 20);
+        const d4Group = mixedAdv.diceGroups.find(g => g.die === 4);
+        expect(d20Group?.rolls).toHaveLength(2);
+        expect(d20Group?.keptRoll!).toBeGreaterThanOrEqual(d20Group?.droppedRoll!);
+        expect(d4Group?.rolls).toHaveLength(2);
+        expect(d4Group?.keptRoll!).toBeGreaterThanOrEqual(d4Group?.droppedRoll!);
+        expect(mixedAdv.breakdown).toContain("1d20 [");
+        expect(mixedAdv.breakdown).toContain("1d4 [");
+    });
+
+    it("should default to 1d20 when pool is empty", () => {
+        const res = rollCustomDicePool({}, 2);
+        expect(res.formula).toBe("1d20 + 2");
+        expect(res.diceGroups).toHaveLength(1);
+        expect(res.diceGroups[0].die).toBe(20);
+        expect(res.total).toBeGreaterThanOrEqual(3);
+        expect(res.total).toBeLessThanOrEqual(22);
+    });
+
+    it("should double dice formula correctly on critical hits", () => {
+        expect(doubleDiceFormula("1d6+4")).toBe("2d6+4");
+        expect(doubleDiceFormula("1d10+3")).toBe("2d10+3");
+        expect(doubleDiceFormula("2d6")).toBe("4d6");
+        expect(doubleDiceFormula("1d4+4+1d8")).toBe("2d4+4+2d8");
+    });
+
+    it("should format rollDamageDDB matching D&D Beyond style", () => {
+        const dmg = rollDamageDDB("1d10+3", "Force", "Eldritch Blast");
+        expect(dmg.total).toBeGreaterThanOrEqual(4);
+        expect(dmg.total).toBeLessThanOrEqual(13);
+        expect(dmg.formatted).toMatch(/^Damage:\s\d+\sForce\s\(\d+\+3\)$/);
+        expect(dmg.message).toContain("Eldritch Blast - Damage:");
+    });
+
+    it("should accurately roll Hex curse necrotic damage and double dice on critical hits", () => {
+        const hexNormal = rollDamageDDB("1d6", "Necrotic", "Hex");
+        expect(hexNormal.total).toBeGreaterThanOrEqual(1);
+        expect(hexNormal.total).toBeLessThanOrEqual(6);
+        expect(hexNormal.damageType).toBe("Necrotic");
+        expect(hexNormal.formatted).toContain("Necrotic");
+
+        const hexCrit = rollDamageDDB("1d6", "Necrotic", "Hex (Crit)", true);
+        expect(hexCrit.total).toBeGreaterThanOrEqual(2);
+        expect(hexCrit.total).toBeLessThanOrEqual(12);
+        expect(hexCrit.damageType).toBe("Necrotic");
+        expect(hexCrit.formatted).toContain("Necrotic");
+    });
+
+    it("combines damage bonus into formulas correctly", () => {
+        expect(combineDamageBonus("1d12+4", 2)).toBe("1d12+6");
+        expect(combineDamageBonus("2d6 + 3", 2)).toBe("2d6+5");
+        expect(combineDamageBonus("1d8-1", 2)).toBe("1d8+1");
+        expect(combineDamageBonus("1d12", 2)).toBe("1d12+2");
+        expect(combineDamageBonus("1d12+4", 0)).toBe("1d12+4");
+        expect(combineDamageBonus("1d8+2", -2)).toBe("1d8");
+    });
+});
+
