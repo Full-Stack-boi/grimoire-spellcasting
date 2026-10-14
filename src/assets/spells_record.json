@@ -118,16 +118,18 @@
     },
     "mind_sliver": {
         "name": "Mind Sliver",
-        "thumbnail": "Generic/Healing/HealingAbility_01_Purple_Thumb.webp",
-        "replicate": "all",
+        "minTargets": 2,
+        "thumbnail": "Generic/Energy/EnergyStrand_01_Regular_Purple_Thumb.webp",
+        "replicate": "first_to_all",
         "copy": -1,
         "blueprints": [
             {
                 "type": "effect",
-                "id": "generic.healing.purple",
+                "id": "generic.energy.energy_strand.normal",
                 "effectProperties": {
                     "source": "$targets[0].position",
-                    "size": "$targets[0].size"
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
                 }
             }
         ]

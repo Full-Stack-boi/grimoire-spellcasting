@@ -20,12 +20,53 @@ const store: Record<string, string> = {};
     removeEventListener: () => {}
 };
 
-const { getSpellRange, getSpellAoE, isTeleportSpell } = await import("../spells");
+const {
+    getSpellRange,
+    getSpellAoE,
+    getSpell,
+    isTeleportSpell,
+    resolveFallbackSpellKey,
+} = await import("../spells");
+const { getEffectURL } = await import("../effects");
 const { APP_KEY } = await import("../../config");
 
 describe("Spell Range & AoE Accuracy Audit (D&D 5e Rules)", () => {
     beforeEach(() => {
         localStorage.clear();
+    });
+
+    describe("Animation mapping", () => {
+        it("maps Healing Word to a healing effect rather than the Abjuration shield effect", () => {
+            const spell = getSpell("healing_word");
+            expect(spell?.name).toBe("Healing Word");
+            expect(spell?.blueprints?.[0]?.id).toBe("cure_wounds");
+        });
+
+        it("uses a psychic projectile for Mind Sliver instead of a healing visual", () => {
+            const spell = getSpell("mind_sliver");
+            expect(spell?.blueprints?.[0]?.id).toBe("generic.energy.energy_strand.normal");
+        });
+
+        it("leaves a future spell without a safe category fallback animation-free", () => {
+            expect(resolveFallbackSpellKey({
+                id: "future_ward",
+                name: "Future Ward",
+                school: "Abjuration",
+                level: 1,
+            })).toBeUndefined();
+            expect(getSpell("future_ward")?.blueprints).toEqual([]);
+        });
+
+        it("builds asset URLs from the room's configured base URL", () => {
+            expect(getEffectURL(
+                "eldritch_blast",
+                "600",
+                undefined,
+                "https://assets.example.test/jb2a/",
+            )).toBe(
+                "https://assets.example.test/jb2a/Cantrip/Eldritch_Blast/EldritchBlast_01_Regular_Purple_15ft_1000x400.webm",
+            );
+        });
     });
 
     afterEach(() => {

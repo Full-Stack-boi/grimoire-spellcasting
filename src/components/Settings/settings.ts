@@ -1,4 +1,4 @@
-import { APP_KEY } from "../../config";
+import { APP_KEY, ASSET_LOCATION } from "../../config";
 import OBR, { GridScale } from "@owlbear-rodeo/sdk";
 
 export const LOCAL_STORAGE_KEYS = {
@@ -7,6 +7,9 @@ export const LOCAL_STORAGE_KEYS = {
     KEEP_SELECTED_TARGETS: "keep-selected-targets",
     DEFAULT_CASTER: "default-caster",
     ANIMATION_UPDATE_RATE: "animation-update-rate",
+    ANIMATION_OVERRIDE: "animation-override",
+    ANIMATION_MAPPINGS: "animation-mappings",
+    ANIMATION_ONE_SHOT_OVERRIDES: "animation-one-shot-overrides",
     SMART_ACTION_ON_TARGET: "smart-action-on-target",
 };
 
@@ -14,6 +17,9 @@ export const GLOBAL_STORAGE_KEYS = {
     PLAYERS_CAN_CAST_SPELLS: "players-cast-spells",
     SUMMONED_ENTITIES_RULE: "summoned-entities",
     DARKNESS_OPACITY_MODE: "darkness-opacity-mode", // "dynamic" | "always-transparent" | "always-opaque"
+    ANIMATIONS_ENABLED: "animations-enabled",
+    ANIMATION_MAPPINGS: "animation-mappings",
+    EFFECT_ASSET_BASE_URL: "effect-asset-base-url",
 };
 
 export const SETTINGS_CHANNEL = `${APP_KEY}/settings`;
@@ -24,10 +30,164 @@ export const DEFAULT_VALUES = {
     [LOCAL_STORAGE_KEYS.KEEP_SELECTED_TARGETS]: false,
     [LOCAL_STORAGE_KEYS.DEFAULT_CASTER]: [],
     [LOCAL_STORAGE_KEYS.ANIMATION_UPDATE_RATE]: 50,
+    [LOCAL_STORAGE_KEYS.ANIMATION_OVERRIDE]: "follow",
+    [LOCAL_STORAGE_KEYS.ANIMATION_MAPPINGS]: {},
+    [LOCAL_STORAGE_KEYS.ANIMATION_ONE_SHOT_OVERRIDES]: {},
     [LOCAL_STORAGE_KEYS.SMART_ACTION_ON_TARGET]: true,
     [GLOBAL_STORAGE_KEYS.PLAYERS_CAN_CAST_SPELLS]: true,
     [GLOBAL_STORAGE_KEYS.SUMMONED_ENTITIES_RULE]: "caster",
     [GLOBAL_STORAGE_KEYS.DARKNESS_OPACITY_MODE]: "dynamic",
+    [GLOBAL_STORAGE_KEYS.ANIMATIONS_ENABLED]: true,
+    [GLOBAL_STORAGE_KEYS.ANIMATION_MAPPINGS]: {},
+    [GLOBAL_STORAGE_KEYS.EFFECT_ASSET_BASE_URL]: ASSET_LOCATION,
+}
+
+export type AnimationOverride = "follow" | "on" | "off";
+
+export type AnimationChoice =
+    | { kind: "effect"; id: string }
+    | { kind: "effect-map"; effects: Record<string, string> }
+    | { kind: "weapon-variant"; id: string };
+
+export type AnimationAssignments = Record<string, AnimationChoice>;
+
+export interface ResolvedAnimationChoice {
+    choice: AnimationChoice;
+    source: "one-shot" | "personal" | "room";
+}
+
+function parseAnimationAssignments(value: unknown): AnimationAssignments {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+
+    const assignments: AnimationAssignments = {};
+    for (const [key, rawChoice] of Object.entries(value)) {
+        if (
+            typeof rawChoice !== "object" ||
+            rawChoice == null ||
+            !("kind" in rawChoice)
+        ) {
+            continue;
+        }
+        if (rawChoice.kind === "effect-map" && "effects" in rawChoice) {
+            const effects: Record<string, string> = {};
+            if (typeof rawChoice.effects !== "object" || rawChoice.effects == null || Array.isArray(rawChoice.effects)) {
+                continue;
+            }
+            for (const [sourceId, selectedId] of Object.entries(rawChoice.effects)) {
+                if (typeof selectedId === "string" && selectedId.length > 0) {
+                    effects[sourceId] = selectedId;
+                }
+            }
+            if (Object.keys(effects).length > 0) {
+                assignments[key] = { kind: "effect-map", effects };
+            }
+        } else if (
+            (rawChoice.kind === "effect" || rawChoice.kind === "weapon-variant") &&
+            "id" in rawChoice &&
+            typeof rawChoice.id === "string" &&
+            rawChoice.id.length > 0
+        ) {
+            assignments[key] = { kind: rawChoice.kind, id: rawChoice.id };
+        }
+    }
+    return assignments;
+}
+
+export function spellAnimationActionKey(spellId: string): string {
+    return `spell:${spellId.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "")}`;
+}
+
+export function weaponAnimationActionKey(mode: "melee" | "ranged", profile: string): string {
+    return `weapon:${mode}:${profile}`;
+}
+
+export function getPersonalAnimationAssignments(): AnimationAssignments {
+    return parseAnimationAssignments(
+        getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_MAPPINGS),
+    );
+}
+
+export function getOneShotAnimationAssignments(): AnimationAssignments {
+    return parseAnimationAssignments(
+        getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_ONE_SHOT_OVERRIDES),
+    );
+}
+
+export async function getRoomAnimationAssignments(): Promise<AnimationAssignments> {
+    return parseAnimationAssignments(
+        await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.ANIMATION_MAPPINGS),
+    );
+}
+
+export function savePersonalAnimationAssignments(assignments: AnimationAssignments): void {
+    setSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_MAPPINGS, assignments);
+}
+
+export async function saveRoomAnimationAssignments(assignments: AnimationAssignments): Promise<void> {
+    await setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.ANIMATION_MAPPINGS, assignments);
+}
+
+export function saveOneShotAnimationChoice(actionKey: string, choice: AnimationChoice): void {
+    const assignments = getOneShotAnimationAssignments();
+    setSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_ONE_SHOT_OVERRIDES, {
+        ...assignments,
+        [actionKey]: choice,
+    });
+}
+
+export function consumeOneShotAnimationChoice(actionKey: string): void {
+    const assignments = getOneShotAnimationAssignments();
+    if (!(actionKey in assignments)) {
+        return;
+    }
+    delete assignments[actionKey];
+    setSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_ONE_SHOT_OVERRIDES, assignments);
+}
+
+export async function getResolvedAnimationChoice(
+    actionKey: string,
+    knownRoomAssignments?: AnimationAssignments,
+): Promise<ResolvedAnimationChoice | undefined> {
+    const roomAssignments = knownRoomAssignments ?? await getRoomAnimationAssignments();
+    const oneShotAssignments = getOneShotAnimationAssignments();
+    const personalAssignments = getPersonalAnimationAssignments();
+    const oneShot = oneShotAssignments[actionKey];
+    if (oneShot) return { choice: oneShot, source: "one-shot" };
+
+    const personal = personalAssignments[actionKey];
+    if (personal) return { choice: personal, source: "personal" };
+
+    const room = roomAssignments[actionKey];
+    if (room) return { choice: room, source: "room" };
+    return undefined;
+}
+
+export function normalizeEffectAssetBaseUrl(value: string): string {
+    const trimmed = value.trim();
+    const candidate = trimmed || ASSET_LOCATION;
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("The JB2A asset URL must use HTTP or HTTPS.");
+    }
+    return url.toString().replace(/\/+$/, "");
+}
+
+export async function getEffectAssetBaseUrl(): Promise<string> {
+    const value = await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.EFFECT_ASSET_BASE_URL);
+    if (typeof value !== "string") {
+        return normalizeEffectAssetBaseUrl(ASSET_LOCATION);
+    }
+    return normalizeEffectAssetBaseUrl(value);
+}
+
+export async function getEffectiveAnimationsEnabled(): Promise<boolean> {
+    const override = getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_OVERRIDE) as AnimationOverride;
+    if (override === "on") return true;
+    if (override === "off") return false;
+    const defaultEnabled = await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.ANIMATIONS_ENABLED);
+    return defaultEnabled !== false;
 }
 
 // Migrate legacy default: keep-selected-targets used to default to true.

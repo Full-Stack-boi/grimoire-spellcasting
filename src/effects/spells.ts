@@ -1,11 +1,22 @@
 import { BlueprintValue, Variables } from "../types/blueprint";
-import { LOCAL_STORAGE_KEYS, getDefaultGridScaleFactor, getSettingsValue } from "../components/Settings/settings";
+import {
+    getEffectiveAnimationsEnabled,
+    getEffectAssetBaseUrl,
+    LOCAL_STORAGE_KEYS,
+    getDefaultGridScaleFactor,
+    getSettingsValue,
+    getResolvedAnimationChoice,
+    getRoomAnimationAssignments,
+    consumeOneShotAnimationChoice,
+    spellAnimationActionKey,
+    weaponAnimationActionKey,
+} from "../components/Settings/settings";
 import OBR, { Image, Item, Vector2, isImage } from "@owlbear-rodeo/sdk";
 import { ReplicationType, Spell, Spells } from "../types/spells";
 import { getSortedTargets, getTargetCount, playerSelectedTargetsMetadataKey } from "../effectsTool";
 import { resolveBlueprint, resolveSimpleValue } from "./blueprint";
 
-import { APP_KEY } from "../config";
+import { APP_KEY, SELECTED_WEAPON_VARIANT_KEY } from "../config";
 import { ALL_MANUAL_OVERRIDES } from "../assets/manual-formulas";
 import { normalizeSpellId } from "../services/spellFormulaBuilder";
 import { EffectInstruction, MessageType } from "../types/messageListener";
@@ -19,6 +30,8 @@ import { resolveActiveCaster } from "../features/targeting/infrastructure/obr/ac
 import { getLinkedDDBCharacterId } from "../services/ddbService";
 import { getSpellMetadata } from "../assets/spellInfo";
 import type { CastContext } from "../features/targeting/application/castContext";
+import { SPELL_ANIMATION_MAPPINGS, normalizeSpellAnimationId } from "./spellAnimationMappings";
+import { getEffect } from "./effects";
 
 export const spells = spellsJSON as Spells;
 export const spellIDs = Object.keys(spells);
@@ -125,10 +138,17 @@ function copySpellInstructions(instructions: EffectInstruction[], copyDelay: num
 /**
  * Resolves a fallback visual archetype from spells_record.json for spells without dedicated animation blueprints.
  */
-function resolveFallbackSpellKey(meta: { name: string; school?: string; level?: number; damage?: string }): string {
+export function resolveFallbackSpellKey(meta: { id?: string; name: string; school?: string; level?: number; damage?: string }): string | undefined {
     const nameLower = meta.name.toLowerCase();
-    const school = (meta.school || "").toLowerCase();
     const damage = (meta.damage || "").toLowerCase();
+    const id = normalizeSpellAnimationId(meta.id ?? meta.name);
+    const nameId = normalizeSpellAnimationId(meta.name);
+    const explicitMapping = SPELL_ANIMATION_MAPPINGS[id] ?? SPELL_ANIMATION_MAPPINGS[nameId];
+    if (explicitMapping) return explicitMapping;
+
+    if (damage.includes("healing") || nameLower.includes("heal")) {
+        return "cure_wounds";
+    }
 
     // 1. Weapon / Melee cantrips and attacks
     if (nameLower.includes("blade") || nameLower.includes("strike") || nameLower.includes("smite") || (nameLower.includes("touch") && damage)) {
@@ -141,49 +161,94 @@ function resolveFallbackSpellKey(meta: { name: string; school?: string; level?: 
     }
 
     // 2. Specific damage elements
-    if (damage.includes("fire") || nameLower.includes("fire") || nameLower.includes("burst")) {
+    if (damage.includes("fire")) {
         return meta.level === 0 ? "fire_bolt" : "burning_hands";
     }
-    if (damage.includes("cold") || nameLower.includes("frost") || nameLower.includes("chill") || nameLower.includes("ice")) {
+    if (damage.includes("cold")) {
         return "ray_of_frost";
     }
-    if (damage.includes("lightning") || damage.includes("shock") || nameLower.includes("lightning")) {
+    if (damage.includes("lightning")) {
         return "witch_bolt";
     }
-    if (damage.includes("radiant") || nameLower.includes("sacred") || nameLower.includes("divine")) {
+    if (damage.includes("radiant")) {
         return "sacred_flame";
     }
-    if (damage.includes("necrotic") || nameLower.includes("death") || school.includes("necro")) {
+    if (damage.includes("necrotic")) {
         return "toll_the_dead";
     }
     if (damage.includes("force") || nameLower.includes("blast")) {
         return "eldritch_blast";
     }
 
-    // 3. School fallbacks
-    if (school.includes("abjur")) {
-        return "shield";
-    }
-    if (school.includes("conjur")) {
-        return "misty_step";
-    }
-    if (school.includes("divin")) {
-        return "detect_magic";
-    }
-    if (school.includes("enchant") || school.includes("illus")) {
-        return "mind_sliver";
-    }
-    if (school.includes("necro")) {
-        return "toll_the_dead";
-    }
-    if (school.includes("trans")) {
-        return "bless";
-    }
-    if (school.includes("evoc")) {
-        return "magic_missiles";
+    return undefined;
+}
+
+export function applyAnimationEffectChoice(
+    instructions: EffectInstruction[],
+    effectId: string,
+): boolean {
+    const selectedEffect = getEffect(effectId);
+    if (!selectedEffect) return false;
+
+    let replaced = false;
+    const applyToInstructions = (currentInstructions: EffectInstruction[]) => {
+        for (const instruction of currentInstructions) {
+            if (instruction.type === "effect" && typeof instruction.id === "string") {
+                const currentEffect = getEffect(instruction.id);
+                if (currentEffect?.type === selectedEffect.type) {
+                    instruction.id = effectId;
+                    replaced = true;
+                }
+            }
+            if (instruction.instructions) {
+                applyToInstructions(instruction.instructions);
+            }
+        }
+    };
+    applyToInstructions(instructions);
+    return replaced;
+}
+
+export function applyAnimationEffectMap(
+    instructions: EffectInstruction[],
+    effects: Record<string, string>,
+): boolean {
+    const replacements = new Map<string, string>();
+    for (const [sourceId, selectedId] of Object.entries(effects)) {
+        const sourceEffect = getEffect(sourceId);
+        const selectedEffect = getEffect(selectedId);
+        if (!sourceEffect || !selectedEffect || sourceEffect.type !== selectedEffect.type) {
+            return false;
+        }
+        replacements.set(sourceId, selectedId);
     }
 
-    return "magic_missiles";
+    const foundSources = new Set<string>();
+    const validateSources = (currentInstructions: EffectInstruction[]) => {
+        for (const instruction of currentInstructions) {
+            if (instruction.type === "effect" && typeof instruction.id === "string" && replacements.has(instruction.id)) {
+                foundSources.add(instruction.id);
+            }
+            if (instruction.instructions) {
+                validateSources(instruction.instructions);
+            }
+        }
+    };
+    validateSources(instructions);
+    if (foundSources.size !== replacements.size) return false;
+
+    const applyToInstructions = (currentInstructions: EffectInstruction[]) => {
+        for (const instruction of currentInstructions) {
+            if (instruction.type === "effect" && typeof instruction.id === "string") {
+                instruction.id = replacements.get(instruction.id) ?? instruction.id;
+            }
+            if (instruction.instructions) {
+                applyToInstructions(instruction.instructions);
+            }
+        }
+    };
+    applyToInstructions(instructions);
+    return true;
 }
 
 export function getSpell(spellID: string, isGM: boolean = false): Spell|undefined {
@@ -210,13 +275,17 @@ export function getSpell(spellID: string, isGM: boolean = false): Spell|undefine
     const meta = getSpellMetadata(spellID);
     if (meta && meta.name) {
         const archetypeKey = resolveFallbackSpellKey(meta);
-        if (spells[archetypeKey]) {
+        if (archetypeKey && spells[archetypeKey]) {
             return {
                 ...spells[archetypeKey],
                 name: meta.name,
                 thumbnail: undefined // Never inherit another spell's thumbnail to prevent duplicate icons
             };
         }
+        return {
+            name: meta.name,
+            blueprints: [],
+        };
     }
 
     return undefined;
@@ -568,6 +637,13 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean, 
         log_error(`Unknown spell "${spellID}"`);
         return;
     }
+    const spellMetadata = getSpellMetadata(spellID, castContext?.ddbCharacterId ?? undefined);
+    const [animationEnabled, assetBaseUrl, playerMetadata, roomAnimationAssignments] = await Promise.all([
+        getEffectiveAnimationsEnabled(),
+        getEffectAssetBaseUrl(),
+        OBR.player.getMetadata(),
+        getRoomAnimationAssignments(),
+    ]);
     const settingsGridScaleFactor = getSettingsValue(LOCAL_STORAGE_KEYS.GRID_SCALING_FACTOR);
     const gridScaleFactorPromise = settingsGridScaleFactor != null ? new Promise(resolve => resolve(settingsGridScaleFactor)) : getDefaultGridScaleFactor();
     const [targets, gridScaleFactor] = await Promise.all([getSortedTargets(), gridScaleFactorPromise]);
@@ -578,6 +654,43 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean, 
     const parameterValuesString = (charScopedParamKey && localStorage.getItem(charScopedParamKey)) || localStorage.getItem(`${APP_KEY}/spell-parameters/${spellID}`);
 
     const parameterValues = parameterValuesString ? JSON.parse(parameterValuesString) : {};
+    const isWeaponAttack = spellID === "melee_weapon_attack" || spellID === "ranged_weapon_attack";
+    const weaponMode = spellID === "melee_weapon_attack" ? "melee" : "ranged";
+    const weaponVariantParameter = isWeaponAttack
+        ? spell.parameters?.find((parameter) => parameter.id === "weapon_variant")
+        : undefined;
+    const availableWeaponVariants = Array.isArray(weaponVariantParameter?.content)
+        ? weaponVariantParameter.content.map((option) => option.value)
+        : [];
+    const rawSelectedVariant = playerMetadata[SELECTED_WEAPON_VARIANT_KEY];
+    const weaponProfile = isWeaponAttack
+        ? typeof rawSelectedVariant === "string" && availableWeaponVariants.includes(rawSelectedVariant)
+            ? rawSelectedVariant
+            : typeof weaponVariantParameter?.defaultValue === "string"
+                ? weaponVariantParameter.defaultValue
+                : weaponMode === "melee" ? "sword" : "arrow.white"
+        : undefined;
+    const animationActionKey = isWeaponAttack && weaponProfile
+        ? weaponAnimationActionKey(weaponMode, weaponProfile)
+        : spellAnimationActionKey(spellID);
+    const resolvedAnimationChoice = await getResolvedAnimationChoice(
+        animationActionKey,
+        roomAnimationAssignments,
+    );
+    if (isWeaponAttack && weaponProfile) {
+        parameterValues.weapon_variant = weaponProfile;
+        if (resolvedAnimationChoice) {
+            if (
+                resolvedAnimationChoice.choice.kind === "weapon-variant" &&
+                availableWeaponVariants.includes(resolvedAnimationChoice.choice.id)
+            ) {
+                parameterValues.weapon_variant = resolvedAnimationChoice.choice.id;
+            } else {
+                log_error(`Invalid weapon animation selection for "${animationActionKey}".`);
+                OBR.notification.show("The saved weapon animation is not available for this attack.", "WARNING");
+            }
+        }
+    }
     const normId = spellID.toLowerCase().replace(/[^a-z0-9_]/g, "");
     const spriteHealingMap: Record<string, { wrongRadius: number[]; correctDiameter: number }> = {
         darkness: { wrongRadius: [3], correctDiameter: 6 },
@@ -676,6 +789,27 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean, 
         interactionCount += value?.interactions?.count ?? 0;
     }
 
+    let animationChoiceApplied = false;
+    if (!isWeaponAttack && resolvedAnimationChoice) {
+        if (resolvedAnimationChoice.choice.kind === "effect") {
+            animationChoiceApplied = applyAnimationEffectChoice(
+                instructions,
+                resolvedAnimationChoice.choice.id,
+            );
+        } else if (resolvedAnimationChoice.choice.kind === "effect-map") {
+            animationChoiceApplied = applyAnimationEffectMap(
+                instructions,
+                resolvedAnimationChoice.choice.effects,
+            );
+        }
+        if (!animationChoiceApplied) {
+            log_error(`Could not apply the saved spell animation for "${animationActionKey}".`);
+            OBR.notification.show("The saved spell animation is incompatible with this spell; using its normal animation.", "WARNING");
+        }
+    } else if (isWeaponAttack && resolvedAnimationChoice?.choice.kind === "weapon-variant") {
+        animationChoiceApplied = availableWeaponVariants.includes(resolvedAnimationChoice.choice.id);
+    }
+
     copySpellInstructions(instructions, copyDelay);
 
     let casterTokenId: string | undefined = castContext?.casterTokenId;
@@ -694,12 +828,22 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean, 
             ids: Array.from(interactionIds.values()),
             count: interactionCount,
         },
+        visualSettings: {
+            animationEnabled,
+            assetBaseUrl,
+        },
         spellData: {
             name: spellID,
             caster: playerID,
+            id: spellMetadata.id,
+            displayName: spell.name || spellMetadata.name,
             casterTokenId,
-            characterId
+            characterId,
+            announce: !spell.blueprints?.length,
         }
     };
     OBR.broadcast.sendMessage(MESSAGE_CHANNEL, message, { destination: "ALL" });
+    if (resolvedAnimationChoice?.source === "one-shot" && animationChoiceApplied) {
+        consumeOneShotAnimationChoice(animationActionKey);
+    }
 }

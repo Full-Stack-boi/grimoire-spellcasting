@@ -5,6 +5,7 @@ import {
   FaDisplay,
   FaGear,
   FaDiceD20,
+  FaWandMagicSparkles,
 } from "react-icons/fa6";
 import { useEffect, useState } from "react";
 import { openActionDock } from "../components/ActionDock/ActionDock";
@@ -12,6 +13,7 @@ import { openActionDock } from "../components/ActionDock/ActionDock";
 import MovementHandler from "../components/MovementHandler";
 import SceneControls from "../components/SceneControls";
 import Settings from "../components/Settings";
+import AnimationsTab from "../components/Animations/AnimationsTab";
 import CharacterChecks from "../components/CharacterChecks/CharacterChecks";
 import { useOBR } from "../platform/obr/react/providers";
 
@@ -32,6 +34,12 @@ const MENU_OPTIONS = [
     label: "Settings",
     icon: <FaGear className="tab-icon" />,
     component: <Settings />,
+    role: "PLAYER",
+  },
+  {
+    label: "Animations",
+    icon: <FaWandMagicSparkles className="tab-icon" />,
+    component: <AnimationsTab />,
     role: "PLAYER",
   },
 ];
@@ -147,6 +155,8 @@ export default function Main() {
                   value={index}
                   icon={option.icon}
                   iconPosition="start"
+                  aria-label={option.label}
+                  title={option.label}
                 />
               );
             })}
