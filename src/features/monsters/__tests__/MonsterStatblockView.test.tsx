@@ -358,4 +358,66 @@ describe("MonsterStatblockView", () => {
       expect(html).toContain("Force");
     });
   });
+
+  describe("Saving Throws section", () => {
+    it("renders saving throws section with all 6 abilities", () => {
+      const html = renderToStaticMarkup(
+        <MonsterStatblockView monster={mockMonster} showBindControls={false} />
+      );
+
+      expect(html).toContain("Saving Throws");
+      expect(html).toContain("gm-saving-throws-grid");
+      expect(html).toContain("Click to roll Save");
+    });
+
+    it("displays proficient saves with highlight and proficiency marker", () => {
+      const monsterWithSaves: MonsterStatblock = {
+        ...mockMonster,
+        stats: { str: 28, dex: 10, con: 25, int: 16, wis: 15, cha: 19 },
+        savingThrows: {
+          dex: 6,
+          con: 13,
+          wis: 8,
+          cha: 10,
+        },
+      };
+      const html = renderToStaticMarkup(
+        <MonsterStatblockView monster={monsterWithSaves} showBindControls={false} />
+      );
+
+      // Proficient saves have override bonuses
+      expect(html).toContain('title="Click to roll DEX saving throw (Proficient)"');
+      expect(html).toContain('title="Click to roll CON saving throw (Proficient)"');
+      expect(html).toContain('title="Click to roll WIS saving throw (Proficient)"');
+      expect(html).toContain('title="Click to roll CHA saving throw (Proficient)"');
+      expect(html).toContain("gm-save-proficient");
+      expect(html).toContain("◆");
+
+      // Non-proficient saves fall back to ability modifiers
+      // STR 28 => +9, INT 16 => +3
+      expect(html).toContain('title="Click to roll STR saving throw"');
+      expect(html).toContain('title="Click to roll INT saving throw"');
+      expect(html).toContain("+9");
+      expect(html).toContain("+3");
+    });
+
+    it("falls back to standard ability modifiers when monster has no savingThrows defined", () => {
+      const goblinMonster: MonsterStatblock = {
+        ...mockMonster,
+        name: "Goblin",
+        stats: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
+        savingThrows: undefined,
+      };
+      const html = renderToStaticMarkup(
+        <MonsterStatblockView monster={goblinMonster} showBindControls={false} />
+      );
+
+      expect(html).not.toContain("gm-save-proficient");
+      expect(html).not.toContain("◆");
+      // STR 8 => -1, DEX 14 => +2, CON 10 => +0
+      expect(html).toContain("-1");
+      expect(html).toContain("+2");
+      expect(html).toContain("+0");
+    });
+  });
 });

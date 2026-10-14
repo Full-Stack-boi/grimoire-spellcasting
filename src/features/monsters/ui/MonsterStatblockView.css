@@ -288,6 +288,35 @@
   color: #fff;
 }
 
+/* Abilities & Saves Micro Header */
+.gm-abilities-section,
+.gm-saving-throws-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gm-section-micro-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.gm-section-micro-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ddb-text-muted, #9ca3af);
+  letter-spacing: 0.05em;
+}
+
+.gm-section-micro-hint {
+  font-size: 9px;
+  color: #64748b;
+  font-style: italic;
+}
+
 /* Abilities Grid */
 .gm-abilities-grid {
   display: grid;
@@ -315,6 +344,11 @@
   transform: translateY(-1px);
 }
 
+.gm-ability-box:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
 .gm-ability-name {
   font-size: 10px;
   font-weight: 800;
@@ -331,6 +365,76 @@
   font-size: 12px;
   font-weight: 700;
   color: #fff;
+}
+
+/* Saving Throws Grid */
+.gm-saving-throws-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  padding: 8px;
+  background: var(--ddb-bg-surface, #181b20);
+  border: 1px solid var(--ddb-border-subtle, #262a32);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.gm-save-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  user-select: none;
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.gm-save-box:hover {
+  background: rgba(200, 45, 56, 0.15);
+  transform: translateY(-1px);
+}
+
+.gm-save-box:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+/* Proficient Saves highlight */
+.gm-save-proficient {
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.gm-save-proficient:hover {
+  background: rgba(37, 99, 235, 0.25);
+}
+
+.gm-save-name {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ddb-text-muted, #9ca3af);
+  text-transform: uppercase;
+}
+
+.gm-save-bonus {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 1px;
+}
+
+.gm-save-prof-dot {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 7px;
+  color: #60a5fa;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* Defenses & Senses */

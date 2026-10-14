@@ -17,8 +17,12 @@ import {
   recordMonsterAbilityUse,
   resetMonsterAbilityUse,
 } from "../monsterUsageService";
-import { setTokenVitals, extractTokenVitals } from "../../combat/tokenVitalsService";
-import { rollFormula } from "../../../utils/dice";
+import {
+  setTokenVitals,
+  extractTokenVitals,
+  resolveTokenConcentrationSave,
+} from "../../combat/tokenVitalsService";
+import { rollAttack, rollFormula } from "../../../utils/dice";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
 import { MonsterExportModal } from "./MonsterExportModal";
@@ -249,22 +253,96 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
   ) => {
     const score = monster.stats[statKey];
     const mod = Math.floor((score - 10) / 2);
-    const d20 = Math.floor(Math.random() * 20) + 1;
-    const total = d20 + mod;
+    const attackerVitals = token ? extractTokenVitals(token.metadata) : null;
+    const checkRules = resolveConditionRules({
+      conditions: attackerVitals?.conditions,
+      exhaustionLevel: attackerVitals?.exhaustionLevel,
+      rollKind: "ability_check",
+    });
+
+    const effectiveRollMode = combineD20RollModes(rollMode, checkRules.mode);
+    const effectiveBonus = mod - checkRules.d20Penalty;
+    const attackRes = rollAttack(effectiveBonus, "", effectiveRollMode);
+    const conditionNote = [...checkRules.reasons, ...checkRules.requiresAdjudication].join(" • ");
     const cardId = `roll-check-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const card: DDBRollCardData = {
       id: cardId,
       casterName: token?.name || monster.name,
+      targetName: "SELF",
       actionName: `${statLabel.toUpperCase()} CHECK`,
       actionType: "CHECK",
       dieType: 20,
-      diceBreakdown: `${d20} ${mod >= 0 ? `+ ${mod}` : `- ${Math.abs(mod)}`}`,
-      formula: `1d20${mod >= 0 ? `+${mod}` : mod}`,
-      total,
-      subtitle: `${statLabel.toUpperCase()} Ability Check (Score ${score})`,
+      diceBreakdown: `${attackRes.formatted.replace(/^To Hit: \d+ /, "")}`,
+      formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : effectiveBonus}${effectiveRollMode === "advantage" ? " (ADV)" : effectiveRollMode === "disadvantage" ? " (DIS)" : ""}`,
+      total: attackRes.total,
+      subtitle: `${statLabel.toUpperCase()} Ability Check (Score ${score})${conditionNote ? ` • ${conditionNote}` : ""}`,
+      isCrit: attackRes.isCrit,
+      isMiss: attackRes.isMiss,
+      rollMode: effectiveRollMode,
+      isAdvantage: effectiveRollMode === "advantage",
+      isDisadvantage: effectiveRollMode === "disadvantage",
       timestamp: Date.now(),
     };
     await broadcastDDBRoll([card]);
+  };
+
+  // Saving throw roll handler
+  const handleRollSavingThrow = async (
+    statKey: "str" | "dex" | "con" | "int" | "wis" | "cha",
+    statLabel: string
+  ) => {
+    const score = monster.stats[statKey];
+    const abilityMod = Math.floor((score - 10) / 2);
+    const saveBonus =
+      monster.savingThrows?.[statKey] !== undefined
+        ? monster.savingThrows[statKey]
+        : abilityMod;
+    const isProficient = monster.savingThrows?.[statKey] !== undefined;
+
+    const attackerVitals = token ? extractTokenVitals(token.metadata) : null;
+    const saveRules = resolveConditionRules({
+      conditions: attackerVitals?.conditions,
+      exhaustionLevel: attackerVitals?.exhaustionLevel,
+      rollKind: "saving_throw",
+      ability: statKey,
+    });
+
+    const effectiveRollMode = combineD20RollModes(rollMode, saveRules.mode);
+    const effectiveBonus = saveBonus - saveRules.d20Penalty;
+    const attackRes = saveRules.automaticFailure
+      ? null
+      : rollAttack(effectiveBonus, "", effectiveRollMode);
+    const conditionNote = [...saveRules.reasons, ...saveRules.requiresAdjudication].join(" • ");
+    const cardId = `roll-save-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const card: DDBRollCardData = {
+      id: cardId,
+      casterName: token?.name || monster.name,
+      targetName: "SELF",
+      actionName: `${statLabel.toUpperCase()} SAVE`,
+      actionType: "SAVE",
+      dieType: 20,
+      diceBreakdown: saveRules.automaticFailure
+        ? "Automatic failure from condition"
+        : `${attackRes?.formatted.replace(/^To Hit: \d+ /, "") ?? ""}`,
+      formula: saveRules.automaticFailure
+        ? "Automatic failure from condition"
+        : `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : effectiveBonus}${effectiveRollMode === "advantage" ? " (ADV)" : effectiveRollMode === "disadvantage" ? " (DIS)" : ""}`,
+      total: saveRules.automaticFailure ? "AUTO FAIL" : (attackRes?.total ?? 0),
+      subtitle: `${statLabel.toUpperCase()} Saving Throw (Score ${score})${isProficient ? " • Proficient" : ""}${saveRules.automaticFailure ? " • Automatic Failure" : ""}${conditionNote ? ` • ${conditionNote}` : ""}`,
+      isCrit: attackRes?.isCrit,
+      isMiss: attackRes?.isMiss,
+      rollMode: effectiveRollMode,
+      isAdvantage: effectiveRollMode === "advantage",
+      isDisadvantage: effectiveRollMode === "disadvantage",
+      timestamp: Date.now(),
+    };
+
+    await broadcastDDBRoll([card]);
+
+    if (statKey === "con" && token?.id && attackerVitals?.pendingConcentrationSaves?.length) {
+      await resolveTokenConcentrationSave(token.id, typeof card.total === "number" ? card.total : 0);
+    }
   };
 
   // Action execution handler
@@ -742,28 +820,91 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
       </div>
 
       {/* 4. ABILITIES GRID */}
-      <div className="gm-abilities-grid">
-        {(
-          [
-            { key: "str", label: "STR" },
-            { key: "dex", label: "DEX" },
-            { key: "con", label: "CON" },
-            { key: "int", label: "INT" },
-            { key: "wis", label: "WIS" },
-            { key: "cha", label: "CHA" },
-          ] as const
-        ).map(({ key, label }) => (
-          <div
-            key={key}
-            className="gm-ability-box"
-            onClick={() => handleRollAbilityCheck(key, label)}
-            title={`Click to roll ${label} check`}
-          >
-            <span className="gm-ability-name">{label}</span>
-            <span className="gm-ability-score">{monster.stats[key]}</span>
-            <span className="gm-ability-mod">{formatMod(monster.stats[key])}</span>
-          </div>
-        ))}
+      <div className="gm-abilities-section">
+        <div className="gm-section-micro-header">
+          <span className="gm-section-micro-label">Ability Scores & Checks</span>
+          <span className="gm-section-micro-hint">Click to roll Check</span>
+        </div>
+        <div className="gm-abilities-grid">
+          {(
+            [
+              { key: "str", label: "STR" },
+              { key: "dex", label: "DEX" },
+              { key: "con", label: "CON" },
+              { key: "int", label: "INT" },
+              { key: "wis", label: "WIS" },
+              { key: "cha", label: "CHA" },
+            ] as const
+          ).map(({ key, label }) => (
+            <div
+              key={key}
+              className="gm-ability-box"
+              onClick={() => handleRollAbilityCheck(key, label)}
+              title={`Click to roll ${label} check`}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  void handleRollAbilityCheck(key, label);
+                }
+              }}
+            >
+              <span className="gm-ability-name">{label}</span>
+              <span className="gm-ability-score">{monster.stats[key]}</span>
+              <span className="gm-ability-mod">{formatMod(monster.stats[key])}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4.5 SAVING THROWS GRID */}
+      <div className="gm-saving-throws-section">
+        <div className="gm-section-micro-header">
+          <span className="gm-section-micro-label">Saving Throws</span>
+          <span className="gm-section-micro-hint">Click to roll Save</span>
+        </div>
+        <div className="gm-saving-throws-grid">
+          {(
+            [
+              { key: "str", label: "STR" },
+              { key: "dex", label: "DEX" },
+              { key: "con", label: "CON" },
+              { key: "int", label: "INT" },
+              { key: "wis", label: "WIS" },
+              { key: "cha", label: "CHA" },
+            ] as const
+          ).map(({ key, label }) => {
+            const abilityMod = Math.floor((monster.stats[key] - 10) / 2);
+            const saveBonus =
+              monster.savingThrows?.[key] !== undefined
+                ? monster.savingThrows[key]
+                : abilityMod;
+            const isProficient = monster.savingThrows?.[key] !== undefined;
+            const bonusStr = saveBonus >= 0 ? `+${saveBonus}` : `${saveBonus}`;
+
+            return (
+              <div
+                key={key}
+                className={`gm-save-box${isProficient ? " gm-save-proficient" : ""}`}
+                onClick={() => handleRollSavingThrow(key, label)}
+                title={`Click to roll ${label} saving throw${isProficient ? " (Proficient)" : ""}`}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    void handleRollSavingThrow(key, label);
+                  }
+                }}
+              >
+                <span className="gm-save-name">{label}</span>
+                <span className="gm-save-bonus">{bonusStr}</span>
+                {isProficient && (
+                  <span className="gm-save-prof-dot" title="Proficient">◆</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 5. DEFENSES & SENSES */}
