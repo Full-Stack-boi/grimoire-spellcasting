@@ -1,5 +1,4 @@
 {
-  "cleanUrls": true,
   "headers": [
     {
       "source": "/combat-badges/(.*)",
@@ -11,6 +10,6 @@
   ],
   "rewrites": [
     { "source": "/background.html", "destination": "/background.html" },
-    { "source": "/((?!assets|background.html|.*\\..*).*)", "destination": "/index.html" }
+    { "source": "/((?!assets|combat-badges|background\\.html|[^/]+\\.[^/]+).*)", "destination": "/index.html" }
   ]
 }
