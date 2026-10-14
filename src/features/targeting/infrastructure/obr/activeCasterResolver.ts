@@ -2,6 +2,7 @@ import OBR, { Item, Vector2 } from "@owlbear-rodeo/sdk";
 import { LOCAL_STORAGE_KEYS, getSettingsValue } from "../../../../components/Settings/settings";
 import { getPlayerOwnedTokens, getMyPrimaryCharacterToken, isCharacterToken } from "../../../player/playerCharacterService";
 import { getLinkedDDBCharacterId, getAllCachedDDBCharacters } from "../../../../services/ddbService";
+import { getBoundMonsterFromToken } from "../../../monsters/monsterService";
 import { toolMetadataSelectedCaster } from "../../../../effectsTool";
 
 export interface ActiveCasterInfo {
@@ -61,7 +62,8 @@ export async function resolveActiveCaster(
     const selection = await OBR.player.getSelection();
 
     const sceneItems = await OBR.scene.items.getItems();
-    const characterItems = sceneItems.filter(isCharacterToken);
+    const isCharacterOrMonster = (item: Item) => isCharacterToken(item) || getBoundMonsterFromToken(item) !== null;
+    const characterItems = sceneItems.filter(isCharacterOrMonster);
 
     // =========================================================================
     // 0. EXPLICIT CASTER BINDING (ActionDock/Tool selected caster)

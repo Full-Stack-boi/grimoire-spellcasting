@@ -210,3 +210,49 @@
     color: #64748b;
     font-size: 0.9rem;
 }
+
+.popover-container {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.spell-popover {
+    min-width: 0;
+    min-height: 0;
+}
+
+@media (max-width: 600px) {
+    .spell-popover {
+        flex-direction: column;
+    }
+
+    .spell-list-pane {
+        width: 100%;
+        min-height: 0;
+        flex: 0 1 44%;
+        border-right: 0;
+        border-bottom: 1px solid rgba(200, 45, 56, 0.3);
+    }
+
+    .spell-preview-pane {
+        width: 100%;
+        min-height: 0;
+        flex: 1 1 0;
+        padding: 8px 10px;
+    }
+
+    .results-list li {
+        min-height: 44px;
+        box-sizing: border-box;
+    }
+
+    .spell-filter-tabs {
+        padding: 6px;
+    }
+
+    .spell-filter-tab {
+        min-height: 32px;
+    }
+}

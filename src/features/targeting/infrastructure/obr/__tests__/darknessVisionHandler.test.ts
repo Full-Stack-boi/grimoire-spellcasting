@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { Item } from "@owlbear-rodeo/sdk";
 
 const mocks = vi.hoisted(() => ({
     sceneItems: [] as any[],
@@ -79,8 +80,17 @@ vi.mock("../../../../../effects/effects", () => ({
     buildEffectImage: vi.fn(),
 }));
 
-import { DARKNESS_ZONE_METADATA_KEY } from "../../../application/lineOfSightService";
-import { updateDarknessVision } from "../darknessVisionHandler";
+import {
+    DARKNESS_ZONE_METADATA_KEY,
+    TOKEN_VISION_METADATA_KEY,
+} from "../../../application/lineOfSightService";
+import type { DarknessZone } from "../../../domain/vision";
+import type { ActiveCasterInfo } from "../activeCasterResolver";
+import {
+    getTokenIdsInsideDarkness,
+    isTokenHiddenByDarkness,
+    updateDarknessVision,
+} from "../darknessVisionHandler";
 
 describe("darknessVisionHandler", () => {
     beforeEach(() => {
@@ -110,6 +120,117 @@ describe("darknessVisionHandler", () => {
             },
         }];
     }
+
+    describe("isTokenHiddenByDarkness", () => {
+        const zone: DarknessZone = {
+            id: "darkness-1",
+            position: { x: 100, y: 100 },
+            radiusFeet: 15,
+        };
+        const obscuredToken = { position: { x: 100, y: 100 } };
+        const distantCaster: ActiveCasterInfo = {
+            item: {
+                id: "caster-1",
+                metadata: { [TOKEN_VISION_METADATA_KEY]: {} },
+            } as unknown as Item,
+            id: "caster-1",
+            position: { x: 1000, y: 100 },
+            isDM: false,
+        };
+
+        it("hides an obscured token from a player with no magical-darkness vision", async () => {
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "PLAYER",
+                "player-1",
+                distantCaster,
+                [zone],
+                "dynamic"
+            )).resolves.toBe(true);
+        });
+
+        it("keeps an obscured token visible to a player with Devil's Sight", async () => {
+            const caster = {
+                ...distantCaster,
+                item: {
+                    ...distantCaster.item,
+                    metadata: { [TOKEN_VISION_METADATA_KEY]: { devilsSight: true } },
+                } as unknown as Item,
+            };
+
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "PLAYER",
+                "player-1",
+                caster,
+                [zone],
+                "dynamic"
+            )).resolves.toBe(false);
+        });
+
+        it("respects room opacity overrides and the viewer-inside-zone transparency rule", async () => {
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "PLAYER",
+                "player-1",
+                distantCaster,
+                [zone],
+                "always-transparent"
+            )).resolves.toBe(false);
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "PLAYER",
+                "player-1",
+                {
+                    ...distantCaster,
+                    item: {
+                        ...distantCaster.item,
+                        metadata: { [TOKEN_VISION_METADATA_KEY]: { devilsSight: true } },
+                    } as unknown as Item,
+                },
+                [zone],
+                "always-opaque"
+            )).resolves.toBe(true);
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "PLAYER",
+                "player-1",
+                { ...distantCaster, position: zone.position },
+                [zone],
+                "dynamic"
+            )).resolves.toBe(false);
+        });
+
+        it("never hides tokens from the GM", async () => {
+            await expect(isTokenHiddenByDarkness(
+                obscuredToken,
+                "GM",
+                "gm-1",
+                null,
+                [zone],
+                "always-opaque"
+            )).resolves.toBe(false);
+        });
+    });
+
+    describe("getTokenIdsInsideDarkness", () => {
+        it("finds player and monster tokens inside a Darkness zone without vision rules", async () => {
+            const zone: DarknessZone = {
+                id: "darkness-1",
+                position: { x: 100, y: 100 },
+                radiusFeet: 15,
+            };
+            const tokens = [
+                { id: "monster-token", position: { x: 100, y: 100 } },
+                { id: "player-token", position: { x: 200, y: 100 } },
+                { id: "outside-token", position: { x: 1000, y: 100 } },
+            ];
+
+            await expect(getTokenIdsInsideDarkness(tokens, [zone])).resolves.toEqual(
+                new Set(["monster-token", "player-token"])
+            );
+        });
+    });
 
     it("deletes stale deterministic local fog when the viewer can see the darkness", async () => {
         mocks.opacityMode = "always-transparent";

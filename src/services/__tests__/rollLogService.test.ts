@@ -8,6 +8,8 @@ import {
     openDDBRollLogPopover,
     closeDDBRollLogPopover,
     toggleDDBRollLogPopover,
+    updateRollCardResolution,
+    subscribeToCardUpdates,
 } from "../rollLogService";
 import OBR from "@owlbear-rodeo/sdk";
 import { DDBRollCardData } from "../../types/ddbRollLog";
@@ -57,6 +59,7 @@ describe("rollLogService", () => {
             innerHeight: 1080,
             addEventListener: vi.fn(),
             removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
         };
         vi.clearAllMocks();
     });
@@ -240,5 +243,142 @@ describe("rollLogService", () => {
         saveStoredRollHistory([cardA, cardB]);
         expect(getStoredRollHistory().length).toBe(2);
     });
-});
 
+    it("updates card resolution in stored history and notifies listeners", async () => {
+        clearStoredRollHistory();
+        const damageCard: DDBRollCardData = {
+            id: "card-pending-dmg",
+            casterName: "Gale",
+            targetName: "Goblin",
+            targetId: "target-goblin-1",
+            actionName: "FIRE BOLT",
+            actionType: "DAMAGE",
+            dieType: 10,
+            diceBreakdown: "8",
+            formula: "1d10 Fire",
+            total: 8,
+            pendingDamage: 8,
+            damageResolutionStatus: "pending",
+            requiresHitApproval: true,
+            hitApprovalStatus: "pending",
+            relatedCardIds: ["card-pending-atk"],
+            timestamp: 2000,
+        };
+
+        const attackCard: DDBRollCardData = {
+            id: "card-pending-atk",
+            casterName: "Monster",
+            actionName: "BITE",
+            actionType: "TO HIT",
+            dieType: 20,
+            diceBreakdown: "11 + 4",
+            formula: "1d20+4",
+            total: 15,
+            hitLabel: "AWAITING DM HIT APPROVAL",
+            requiresHitApproval: true,
+            hitApprovalStatus: "pending",
+            timestamp: 1999,
+        };
+
+        saveStoredRollHistory([damageCard, attackCard]);
+        expect(getStoredRollHistory()[0].damageResolutionStatus).toBe("pending");
+
+        const updateListener = vi.fn();
+        const unsubscribe = subscribeToCardUpdates(updateListener);
+
+        await updateRollCardResolution("card-pending-dmg", {
+            status: "applied",
+            appliedAmount: 8,
+            note: "Applied Full",
+            hitApprovalStatus: "confirmed",
+        });
+
+        const history = getStoredRollHistory();
+        expect(history[0].damageResolutionStatus).toBe("applied");
+        expect(history[0].appliedDamageAmount).toBe(8);
+        expect(history[0].resolutionNote).toBe("Applied Full");
+        expect(history[0].hitApprovalStatus).toBe("confirmed");
+        expect(history.find((card) => card.id === "card-pending-atk")?.hitApprovalStatus).toBe("confirmed");
+
+        expect(updateListener).toHaveBeenCalledWith(
+            "card-pending-dmg",
+            expect.objectContaining({
+                damageResolutionStatus: "applied",
+                appliedDamageAmount: 8,
+                resolutionNote: "Applied Full",
+                hitApprovalStatus: "confirmed",
+            }),
+            undefined
+        );
+        expect(updateListener).toHaveBeenCalledWith(
+            "card-pending-atk",
+            expect.objectContaining({ hitApprovalStatus: "confirmed" }),
+            undefined,
+        );
+
+        expect(OBR.broadcast.sendMessage).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                update: expect.objectContaining({
+                    cardId: "card-pending-dmg",
+                    damageResolutionStatus: "applied",
+                    appliedDamageAmount: 8,
+                    hitApprovalStatus: "confirmed",
+                }),
+            }),
+            { destination: "ALL" }
+        );
+        expect(OBR.broadcast.sendMessage).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                update: expect.objectContaining({
+                    cardId: "card-pending-atk",
+                    hitApprovalStatus: "confirmed",
+                }),
+            }),
+            { destination: "ALL" },
+        );
+
+        unsubscribe();
+    });
+
+    it("updates specific subroll resolution when subIndex is provided", async () => {
+        clearStoredRollHistory();
+        const multiCard: DDBRollCardData = {
+            id: "card-eb-sub",
+            casterName: "Warlock",
+            actionName: "ELDRITCH BLAST",
+            actionType: "SPELL",
+            dieType: 10,
+            diceBreakdown: "10, 8",
+            formula: "2 Beams",
+            total: 18,
+            timestamp: 3000,
+            subRolls: [
+                {
+                    unitLabel: "BEAM 1",
+                    damage: { total: 10, damageType: "Force", diceBreakdown: "6 + 4" },
+                    damageResolutionStatus: "pending",
+                },
+                {
+                    unitLabel: "BEAM 2",
+                    damage: { total: 8, damageType: "Force", diceBreakdown: "4 + 4" },
+                    damageResolutionStatus: "pending",
+                },
+            ],
+        };
+
+        saveStoredRollHistory([multiCard]);
+
+        await updateRollCardResolution("card-eb-sub", {
+            status: "applied",
+            appliedAmount: 10,
+            subIndex: 0,
+        });
+
+        const history = getStoredRollHistory();
+        expect(history[0].subRolls?.[0].damageResolutionStatus).toBe("applied");
+        expect(history[0].subRolls?.[0].appliedDamageAmount).toBe(10);
+        expect(history[0].subRolls?.[1].damageResolutionStatus).toBe("pending");
+    });
+});

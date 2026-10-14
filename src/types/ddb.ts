@@ -71,6 +71,8 @@ export interface DDBWeaponAttack {
   hasThrown?: boolean;
   thrownRange?: number;
   thrownLongRange?: number;
+  thrownToHit?: number;
+  thrownDamage?: string;
   isLight?: boolean;
   toHit: number;
   damage: string;
@@ -92,6 +94,7 @@ export interface DDBCharacterDefenses {
   resistances: string[];
   immunities: string[];
   vulnerabilities: string[];
+  conditionImmunities?: string[];
 }
 
 export interface DDBFeatureAction {
@@ -195,6 +198,8 @@ export interface DDBParsedCharacter {
     string,
     import("../services/ddbService").ClassLevelFeatures
   >;
+  /** Raw character modifiers from D&D Beyond */
+  characterModifiers?: any[];
   lastSynced: string;
 }
 

@@ -18,6 +18,7 @@ interface ActionDockDetailDrawerProps {
     attunedCount: number;
     onClose: () => void;
     character: DDBParsedCharacter | null;
+    tokenId?: string;
     featureUses: Record<string, number>;
     activeBuffs: ActiveBuff[];
     spellSlots: Record<number, SpellSlotConfig>;
@@ -27,6 +28,12 @@ interface ActionDockDetailDrawerProps {
     characterLevel: number;
     selectedDamageType?: DamageType;
     onSelectDamageType: (damageType: string) => void;
+    currentHp?: number;
+    maxHp?: number;
+    tempHp?: number;
+    onSetCurrentHp?: (hp: number) => void;
+    onSetMaxHp?: (max: number) => void;
+    onSetTempHp?: (temp: number) => void;
     usedHitDice: Record<string, number>;
     onHeal: (amount: number) => void;
     onDamage: (amount: number) => void;
@@ -42,9 +49,10 @@ interface ActionDockDetailDrawerProps {
 }
 
 export function ActionDockDetailDrawer({
-    item, characterName, attunedCount, onClose, character, featureUses, activeBuffs, spellSlots, pactSlots,
-    activeRiderMap, spellFormula, characterLevel, selectedDamageType, onSelectDamageType, usedHitDice,
-    onHeal, onDamage, onRollHitDie, history, onClearHistory, actions, onToggleFeatureUse, onActivateFeature,
+    item, characterName, attunedCount, onClose, character, tokenId, featureUses, activeBuffs, spellSlots, pactSlots,
+    activeRiderMap, spellFormula, characterLevel, selectedDamageType, onSelectDamageType,
+    currentHp, maxHp, tempHp, onSetCurrentHp, onSetMaxHp, onSetTempHp,
+    usedHitDice, onHeal, onDamage, onRollHitDie, history, onClearHistory, actions, onToggleFeatureUse, onActivateFeature,
     onConvertSlot, onCreateSlot, onRiderClick,
 }: ActionDockDetailDrawerProps) {
     return (
@@ -59,7 +67,7 @@ export function ActionDockDetailDrawer({
                         onCreateSorcererSpellSlot={onCreateSlot}
                     />
                 )}
-                <StaticDetailContent item={item} character={character} activeRiderMap={activeRiderMap} onRiderClick={onRiderClick} />
+                <StaticDetailContent item={item} character={character} tokenId={tokenId} activeRiderMap={activeRiderMap} onRiderClick={onRiderClick} />
                 {item.type === "spell" && (
                     <SpellDetailContent
                         item={item} formula={spellFormula ?? undefined} characterLevel={characterLevel}
@@ -67,7 +75,20 @@ export function ActionDockDetailDrawer({
                     />
                 )}
                 {item.type === "hp" && (
-                    <HitPointDrawerContent item={item} character={character ?? undefined} usedHitDice={usedHitDice} onHeal={onHeal} onDamage={onDamage} onRollHitDie={onRollHitDie} />
+                    <HitPointDrawerContent
+                        item={item}
+                        character={character ?? undefined}
+                        currentHp={currentHp}
+                        maxHp={maxHp}
+                        tempHp={tempHp}
+                        onSetCurrentHp={onSetCurrentHp}
+                        onSetMaxHp={onSetMaxHp}
+                        onSetTempHp={onSetTempHp}
+                        usedHitDice={usedHitDice}
+                        onHeal={onHeal}
+                        onDamage={onDamage}
+                        onRollHitDie={onRollHitDie}
+                    />
                 )}
                 {item.type === "log" && <RollHistoryPanel history={history} onClear={onClearHistory} />}
             </div>

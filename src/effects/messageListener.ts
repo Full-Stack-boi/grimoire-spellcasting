@@ -175,6 +175,10 @@ async function processInstruction(
   interaction?: Interaction,
   spellCasterTokenId?: string,
   spellCharacterId?: string | number,
+  spellId?: string,
+  spellDisplayName?: string,
+  assetBaseUrl?: string,
+  animationsEnabled = true,
 ) {
   const doMoreWork = async (instructions?: EffectInstruction[]) => {
     if (instructions == undefined) {
@@ -194,10 +198,19 @@ async function processInstruction(
           interaction,
           spellCasterTokenId,
           spellCharacterId,
+          spellId,
+          spellDisplayName,
+          assetBaseUrl,
+          animationsEnabled,
         ),
       ),
     );
   };
+
+  if (instruction.type === "effect" && !animationsEnabled) {
+    await doMoreWork(instruction.instructions);
+    return;
+  }
 
   const [playerId, playerRole] = await Promise.all([
     OBR.player.getId(),
@@ -311,6 +324,11 @@ async function processInstruction(
           variant,
           spellName,
           spellCaster,
+          spellCasterTokenId,
+          spellCharacterId,
+          spellId,
+          spellDisplayName,
+          assetBaseUrl,
         );
         effectRegister.set(
           instruction.id!,
@@ -363,6 +381,11 @@ async function processInstruction(
           variant,
           spellName,
           spellCaster,
+          spellCasterTokenId,
+          spellCharacterId,
+          spellId,
+          spellDisplayName,
+          assetBaseUrl,
         );
         effectRegister.set(
           instruction.id!,
@@ -420,6 +443,9 @@ async function processInstruction(
           spellCaster,
           spellCasterTokenId,
           spellCharacterId,
+          spellId,
+          spellDisplayName,
+          assetBaseUrl,
         );
         effectRegister.set(
           instruction.id!,
@@ -459,6 +485,13 @@ export function setupMessageListener() {
       : undefined;
     const spellCasterTokenId = messageData.spellData?.casterTokenId;
     const spellCharacterId = messageData.spellData?.characterId;
+    const spellId = messageData.spellData?.id;
+    const spellDisplayName = messageData.spellData?.displayName;
+    const assetBaseUrl = messageData.visualSettings?.assetBaseUrl;
+    const animationsEnabled = messageData.visualSettings?.animationEnabled !== false;
+    if (messageData.spellData?.announce && spellDisplayName) {
+      OBR.notification.show(`${spellDisplayName} cast`, "INFO");
+    }
     const [playerId, dpi] = await Promise.all([
       OBR.player.getId(),
       OBR.scene.grid.getDpi(),
@@ -483,6 +516,10 @@ export function setupMessageListener() {
             interaction,
             spellCasterTokenId,
             spellCharacterId,
+            spellId,
+            spellDisplayName,
+            assetBaseUrl,
+            animationsEnabled,
           );
         }),
       );

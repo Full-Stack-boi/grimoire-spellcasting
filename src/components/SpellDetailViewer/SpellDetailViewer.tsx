@@ -35,8 +35,8 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
     const isUpcastable = isSpellUpcastable(spellID, meta);
     const scaled = getScaledSpellStats(spellID, castLevel, meta);
 
-    const handleCast = (levelToCast: number = castLevel) => {
-        setSelectedSpell(spellID);
+    const handleCast = async (levelToCast: number = castLevel) => {
+        await setSelectedSpell(spellID);
         OBR.tool.activateTool(toolID);
         const upcastMsg = levelToCast > meta.level
             ? ` at ${getOrdinal(levelToCast)} Level (${scaled.damage || "Upcast"})`

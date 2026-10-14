@@ -12,6 +12,7 @@ import {
     saveStoredRollHistory,
     clearStoredRollHistory,
     subscribeToDDBRolls,
+    subscribeToCardUpdates,
 } from "../services/rollLogService";
 
 export const DDBRollLogPopover: React.FC = () => {
@@ -67,6 +68,47 @@ export const DDBRollLogPopover: React.FC = () => {
                             return [...unique, ...prev].slice(0, 20);
                         });
                     }
+                    if (payload && payload.update) {
+                        const {
+                            cardId,
+                            damageResolutionStatus,
+                            appliedDamageAmount,
+                            resolutionNote,
+                            hitApprovalStatus,
+                            subIndex,
+                            targetSaveResolutions,
+                        } = payload.update;
+                        setCards(prev => prev.map(c => {
+                            if (c.id === cardId) {
+                                if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
+                                    const updatedSubRolls = [...c.subRolls];
+                                    updatedSubRolls[subIndex] = {
+                                        ...updatedSubRolls[subIndex],
+                                        damageResolutionStatus,
+                                        appliedDamageAmount,
+                                    };
+                                    return {
+                                        ...c,
+                                        damageResolutionStatus,
+                                        appliedDamageAmount,
+                                        resolutionNote,
+                                        subRolls: updatedSubRolls,
+                                    };
+                                }
+                                return {
+                                    ...c,
+                                    damageResolutionStatus,
+                                    appliedDamageAmount,
+                                    resolutionNote,
+                                    hitApprovalStatus,
+                                    ...(Array.isArray(targetSaveResolutions)
+                                        ? { targetSaveResolutions }
+                                        : {}),
+                                };
+                            }
+                            return c;
+                        }));
+                    }
                 });
             } catch (err) {
                 console.warn("Failed to subscribe in DDBRollLogPopover:", err);
@@ -81,6 +123,28 @@ export const DDBRollLogPopover: React.FC = () => {
                 if (unique.length === 0) return prev;
                 return [...unique, ...prev].slice(0, 20);
             });
+        });
+
+        const unsubscribeUpdates = subscribeToCardUpdates((cardId, patch, subIndex) => {
+            setCards(prev => prev.map(c => {
+                if (c.id === cardId) {
+                    if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
+                        const updatedSubRolls = [...c.subRolls];
+                        updatedSubRolls[subIndex] = {
+                            ...updatedSubRolls[subIndex],
+                            damageResolutionStatus: patch.damageResolutionStatus,
+                            appliedDamageAmount: patch.appliedDamageAmount,
+                        };
+                        return {
+                            ...c,
+                            ...patch,
+                            subRolls: updatedSubRolls,
+                        };
+                    }
+                    return { ...c, ...patch };
+                }
+                return c;
+            }));
         });
 
         // 3. Custom window event listener
@@ -118,6 +182,7 @@ export const DDBRollLogPopover: React.FC = () => {
             window.removeEventListener("beforeunload", handleUnload);
             unsubscribeBroadcast?.();
             unsubscribeLocal();
+            unsubscribeUpdates();
             window.removeEventListener("embers:ddb-roll", handleWindowEvent);
             window.removeEventListener("storage", handleStorageEvent);
         };

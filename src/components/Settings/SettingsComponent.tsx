@@ -1,32 +1,26 @@
 import "./SettingsComponent.css";
 
-import { Box, Dialog, DialogContent, DialogTitle, Fade, Typography } from "@mui/material";
 import {
-    FaArrowsToDot,
+    FaChevronDown,
     FaCrown,
     FaGear,
-    FaImage,
     FaSliders,
-    FaTrashCan,
-    FaUser,
-    FaXmark,
 } from "react-icons/fa6";
-import OBR, { GridScale, isImage } from "@owlbear-rodeo/sdk";
-import { useCallback, useEffect, useRef, useState } from "react";
+import OBR, { GridScale } from "@owlbear-rodeo/sdk";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
     getGlobalSettingsValue,
     getSettingsValue,
     GLOBAL_STORAGE_KEYS,
     GRID_UNIT_FACTORS,
     LOCAL_STORAGE_KEYS,
+    normalizeEffectAssetBaseUrl,
     setGlobalSettingsValue,
     setSettingsValue,
     SETTINGS_CHANNEL,
+    type AnimationOverride,
 } from "./settings";
 import { useOBR } from "../../platform/obr/react/providers";
-import { SimplifiedItem } from "../../types/misc";
-
-type ModalType = "choose-caster-type";
 
 function parseGridScale(raw: string): GridScale {
     const regexMatch = raw.match(/(\d*)(\.\d*)?([a-zA-Z]*)/);
@@ -60,6 +54,30 @@ function tryComputeGridScaling(gridScale: GridScale | null) {
     return 5 / (gridScaleFactor * unitFactor);
 }
 
+interface SettingsRowInfoProps {
+    label: string;
+    help: string;
+    description: string;
+}
+
+function SettingsRowInfo({ label, help, description }: SettingsRowInfoProps) {
+    const helpId = useId();
+
+    return (
+        <div className="settings-row-info">
+            <div className="settings-row-heading">
+                <span className="settings-row-label" tabIndex={0} aria-describedby={helpId}>
+                    {label}
+                </span>
+                <span id={helpId} role="tooltip" className="settings-help-content">
+                    {help}
+                </span>
+            </div>
+            <span className="settings-row-desc">{description}</span>
+        </div>
+    );
+}
+
 export default function Settings() {
     const obr = useOBR();
 
@@ -69,10 +87,20 @@ export default function Settings() {
     const [playersCastSpells, setPlayersCastSpells] = useState<boolean | null>(null);
     const [summonedEntities, setSummonedEntities] = useState<string | null>(null);
     const [darknessOpacityMode, setDarknessOpacityMode] = useState<string | null>(null);
+    const [damageApplicationMode, setDamageApplicationMode] = useState<string | null>(null);
+    const [monsterHitResolutionMode, setMonsterHitResolutionMode] = useState<string | null>(null);
+    const [hideTargetAc, setHideTargetAc] = useState<boolean | null>(null);
+    const [showTurnTrackerHpToPlayers, setShowTurnTrackerHpToPlayers] = useState<boolean | null>(null);
+    const [showTurnTrackerHpBarToPlayers, setShowTurnTrackerHpBarToPlayers] = useState<boolean | null>(null);
+    const [showTurnTrackerAcToPlayers, setShowTurnTrackerAcToPlayers] = useState<boolean | null>(null);
+    const [hideTokenVitalsInDarkness, setHideTokenVitalsInDarkness] = useState<boolean | null>(null);
+    const [hideTrackerMonsterHpBarInDarkness, setHideTrackerMonsterHpBarInDarkness] = useState<boolean | null>(null);
     const [gridScale, setGridScale] = useState<GridScale | null>(null);
-    const [defaultCaster, setDefaultCaster] = useState<SimplifiedItem[] | null>(null);
     const [animationRate, _setAnimationRate] = useState<number | null>(null);
-    const [modalOpened, setModalOpened] = useState<ModalType | null>(null);
+    const [animationOverride, setAnimationOverride] = useState<AnimationOverride>("follow");
+    const [roomAnimationsEnabled, setRoomAnimationsEnabled] = useState<boolean | null>(null);
+    const [effectAssetBaseUrl, setEffectAssetBaseUrl] = useState<string | null>(null);
+    const [effectAssetBaseUrlError, setEffectAssetBaseUrlError] = useState<string | null>(null);
     const [smartActionOnTarget, setSmartActionOnTarget] = useState<boolean | null>(null);
     const mainDiv = useRef<HTMLDivElement>(null);
 
@@ -103,37 +131,16 @@ export default function Settings() {
         _setAnimationRate(intRate);
     }, []);
 
-    const handleAssetPicker = useCallback(() => {
-        OBR.assets.downloadImages(true).then((selection) => {
-            if (selection.length > 0) {
-                setDefaultCaster(selection);
-            }
-        });
-    }, []);
-
-    const handleSetCasterFromSelection = useCallback(() => {
-        OBR.player.getSelection().then((itemIDs) => {
-            OBR.scene.items.getItems(itemIDs).then((items) => {
-                const selection = items.filter((item) => isImage(item));
-                if (selection.length > 0) {
-                    setDefaultCaster(selection.map((selected) => ({ ...selected, type: "CHARACTER" })));
-                }
-            });
-        });
-    }, []);
-
     const reloadSettings = useCallback(() => {
         _setMostRecentSize(getSettingsValue(LOCAL_STORAGE_KEYS.MOST_RECENT_SPELLS_LIST_SIZE));
         _setGridScalingFactor(getSettingsValue(LOCAL_STORAGE_KEYS.GRID_SCALING_FACTOR));
         _setAnimationRate(getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_UPDATE_RATE));
+        setAnimationOverride(
+            getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_OVERRIDE) ?? "follow"
+        );
         setKeepTargets(getSettingsValue(LOCAL_STORAGE_KEYS.KEEP_SELECTED_TARGETS));
-        setDefaultCaster(getSettingsValue(LOCAL_STORAGE_KEYS.DEFAULT_CASTER));
         setSmartActionOnTarget(getSettingsValue(LOCAL_STORAGE_KEYS.SMART_ACTION_ON_TARGET) ?? true);
     }, []);
-
-    const closeModal = () => {
-        setModalOpened(null);
-    };
 
     useEffect(() => {
         reloadSettings();
@@ -146,11 +153,41 @@ export default function Settings() {
         getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.PLAYERS_CAN_CAST_SPELLS).then((value) =>
             setPlayersCastSpells(value as boolean)
         );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.ANIMATIONS_ENABLED).then((value) =>
+            setRoomAnimationsEnabled(value !== false)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.EFFECT_ASSET_BASE_URL).then((value) =>
+            setEffectAssetBaseUrl(typeof value === "string" ? value : "")
+        );
         getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SUMMONED_ENTITIES_RULE).then((value) =>
             setSummonedEntities(value as string)
         );
         getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DARKNESS_OPACITY_MODE).then((value) =>
             setDarknessOpacityMode((value as string) ?? "dynamic")
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).then((value) =>
+            setDamageApplicationMode((value as string) ?? "gm_approval")
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.MONSTER_HIT_RESOLUTION_MODE).then((value) =>
+            setMonsterHitResolutionMode(value === "auto_ac" ? "auto_ac" : "gm_approval")
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.HIDE_TARGET_AC_FROM_PLAYERS).then((value) =>
+            setHideTargetAc((value as boolean) ?? true)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_TO_PLAYERS).then((value) =>
+            setShowTurnTrackerHpToPlayers((value as boolean) ?? false)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_BAR_TO_PLAYERS).then((value) =>
+            setShowTurnTrackerHpBarToPlayers((value as boolean) ?? false)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_AC_TO_PLAYERS).then((value) =>
+            setShowTurnTrackerAcToPlayers((value as boolean) ?? false)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.HIDE_TOKEN_VITALS_IN_DARKNESS).then((value) =>
+            setHideTokenVitalsInDarkness((value as boolean) ?? true)
+        );
+        getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.HIDE_TRACKER_MONSTER_HP_BAR_IN_DARKNESS).then((value) =>
+            setHideTrackerMonsterHpBarInDarkness((value as boolean) ?? true)
         );
     }, [obr.ready, obr.sceneReady]);
 
@@ -205,13 +242,6 @@ export default function Settings() {
     }, [keepTargets]);
 
     useEffect(() => {
-        if (defaultCaster == null) {
-            return;
-        }
-        setSettingsValue(LOCAL_STORAGE_KEYS.DEFAULT_CASTER, defaultCaster);
-    }, [defaultCaster]);
-
-    useEffect(() => {
         if (animationRate == null) {
             return;
         }
@@ -230,6 +260,19 @@ export default function Settings() {
     }, [playersCastSpells]);
 
     useEffect(() => {
+        if (roomAnimationsEnabled == null) {
+            return;
+        }
+        setGlobalSettingsValue(
+            GLOBAL_STORAGE_KEYS.ANIMATIONS_ENABLED,
+            roomAnimationsEnabled
+        ).catch((error) => {
+            console.error("Failed to save the room animation setting:", error);
+            OBR.notification.show("Could not save the room animation setting.", "ERROR");
+        });
+    }, [roomAnimationsEnabled]);
+
+    useEffect(() => {
         if (summonedEntities == null) {
             return;
         }
@@ -243,9 +286,64 @@ export default function Settings() {
         setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DARKNESS_OPACITY_MODE, darknessOpacityMode);
     }, [darknessOpacityMode]);
 
-    const casterNameDisplay = defaultCaster && defaultCaster.length > 0
-        ? defaultCaster.map((img) => img.name).join(", ")
-        : null;
+    useEffect(() => {
+        if (damageApplicationMode == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE, damageApplicationMode);
+    }, [damageApplicationMode]);
+
+    useEffect(() => {
+        if (monsterHitResolutionMode == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.MONSTER_HIT_RESOLUTION_MODE, monsterHitResolutionMode);
+    }, [monsterHitResolutionMode]);
+
+    useEffect(() => {
+        if (hideTargetAc == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.HIDE_TARGET_AC_FROM_PLAYERS, hideTargetAc);
+    }, [hideTargetAc]);
+
+    useEffect(() => {
+        if (showTurnTrackerHpToPlayers == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_TO_PLAYERS, showTurnTrackerHpToPlayers);
+    }, [showTurnTrackerHpToPlayers]);
+
+    useEffect(() => {
+        if (showTurnTrackerHpBarToPlayers == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_BAR_TO_PLAYERS, showTurnTrackerHpBarToPlayers);
+    }, [showTurnTrackerHpBarToPlayers]);
+
+    useEffect(() => {
+        if (showTurnTrackerAcToPlayers == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_AC_TO_PLAYERS, showTurnTrackerAcToPlayers);
+    }, [showTurnTrackerAcToPlayers]);
+
+    useEffect(() => {
+        if (hideTokenVitalsInDarkness == null) {
+            return;
+        }
+        setGlobalSettingsValue(GLOBAL_STORAGE_KEYS.HIDE_TOKEN_VITALS_IN_DARKNESS, hideTokenVitalsInDarkness);
+    }, [hideTokenVitalsInDarkness]);
+
+    useEffect(() => {
+        if (hideTrackerMonsterHpBarInDarkness == null) {
+            return;
+        }
+        setGlobalSettingsValue(
+            GLOBAL_STORAGE_KEYS.HIDE_TRACKER_MONSTER_HP_BAR_IN_DARKNESS,
+            hideTrackerMonsterHpBarInDarkness
+        );
+    }, [hideTrackerMonsterHpBarInDarkness]);
 
     return (
         <div ref={mainDiv} className="settings-container">
@@ -256,42 +354,24 @@ export default function Settings() {
                 </div>
             </div>
 
-            <div className="settings-card">
-                <div className="settings-card-header">
+            <details className="settings-card settings-accordion" open>
+                <summary className="settings-card-header settings-accordion-header">
                     <div className="settings-card-title-group">
                         <FaSliders style={{ color: "#38bdf8" }} />
                         <span>Local Settings</span>
                     </div>
-                    <span className="settings-card-badge local">Client Only</span>
-                </div>
+                    <div className="settings-accordion-meta">
+                        <span className="settings-card-badge local">Client Only</span>
+                        <FaChevronDown className="settings-accordion-chevron" aria-hidden="true" />
+                    </div>
+                </summary>
 
-                <div className="settings-row" title="If set, the first target for some spells will be one of these tokens, when applicable.">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Default caster</span>
-                        <span className="settings-row-desc">Initial target token for spells</span>
-                    </div>
-                    <div className="settings-row-control">
-                        {casterNameDisplay && (
-                            <span className="settings-caster-chip" title={casterNameDisplay}>
-                                {casterNameDisplay}
-                            </span>
-                        )}
-                        <button
-                            type="button"
-                            className="settings-btn-tactical"
-                            onClick={() => setModalOpened("choose-caster-type")}
-                        >
-                            <FaUser style={{ fontSize: "0.7rem" }} />
-                            <span>{casterNameDisplay ? "Change" : "Select"}</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div className="settings-row" title="A scaling factor for effects; a spell's width and height will be multiplied by this number. Useful if your grid size is not 5ft.">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Grid scaling factor</span>
-                        <span className="settings-row-desc">Multiplier for non-5ft grids</span>
-                    </div>
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="Grid scaling factor"
+                        description="Multiplier for non-5ft grids"
+                        help="A scaling factor for effects; a spell's width and height will be multiplied by this number. Useful if your grid size is not 5ft."
+                    />
                     <div className="settings-row-control">
                         <input
                             name="grid-scaling-factor"
@@ -306,11 +386,12 @@ export default function Settings() {
                     </div>
                 </div>
 
-                <div className="settings-row" title="Clicking a character token while aiming will immediately cast and roll the attack/spell (Shift+click for Advantage, Ctrl+click for Disadvantage).">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Smart Action-on-Target</span>
-                        <span className="settings-row-desc">Aim-click token to cast (Shift: Adv, Ctrl: Disadv)</span>
-                    </div>
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="Smart Action-on-Target"
+                        description="Aim-click token to cast (Shift: Adv, Ctrl: Disadv)"
+                        help="Clicking a character token while aiming will immediately cast and roll the attack/spell (Shift+click for Advantage, Ctrl+click for Disadvantage)."
+                    />
                     <div className="settings-row-control">
                         <label className="settings-toggle-switch">
                             <input
@@ -326,11 +407,12 @@ export default function Settings() {
                     </div>
                 </div>
 
-                <div className="settings-row" title="Whether to keep the selected targets the same after a spell is cast / the tool is de-selected.">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Keep selected targets</span>
-                        <span className="settings-row-desc">Preserve targets after cast</span>
-                    </div>
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="Keep selected targets"
+                        description="Preserve targets after cast"
+                        help="Whether to keep the selected targets the same after a spell is cast or the tool is deselected."
+                    />
                     <div className="settings-row-control">
                         <label className="settings-toggle-switch">
                             <input
@@ -343,11 +425,12 @@ export default function Settings() {
                     </div>
                 </div>
 
-                <div className="settings-row" title="The maximum size of the recent spells list in the spellbook.">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Recent spells list size</span>
-                        <span className="settings-row-desc">Max items in quick spells</span>
-                    </div>
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="Recent spells list size"
+                        description="Max items in quick spells"
+                        help="The maximum size of the recent spells list in the spellbook."
+                    />
                     <div className="settings-row-control">
                         <input
                             name="recent-spells-list-size"
@@ -360,11 +443,12 @@ export default function Settings() {
                     </div>
                 </div>
 
-                <div className="settings-row" title="How many updates per second are performed when animating items.">
-                    <div className="settings-row-info">
-                        <span className="settings-row-label">Animation update rate</span>
-                        <span className="settings-row-desc">Animation FPS (updates/sec)</span>
-                    </div>
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="Animation update rate"
+                        description="Animation FPS (updates/sec)"
+                        help="How many updates per second are performed when animating items."
+                    />
                     <div className="settings-row-control">
                         <input
                             name="animation-update-rate"
@@ -376,7 +460,30 @@ export default function Settings() {
                         />
                     </div>
                 </div>
-            </div>
+
+                <div className="settings-row">
+                    <SettingsRowInfo
+                        label="JB2A animation preference"
+                        description="Animation setting for your casts"
+                        help="Choose whether your casts use JB2A animations or follow the DM's room default."
+                    />
+                    <div className="settings-row-control">
+                        <select
+                            className="settings-dark-select"
+                            value={animationOverride}
+                            onChange={(event) => {
+                                const next = event.currentTarget.value as AnimationOverride;
+                                setAnimationOverride(next);
+                                setSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_OVERRIDE, next);
+                            }}
+                        >
+                            <option value="follow">Follow DM default</option>
+                            <option value="on">Always use animations</option>
+                            <option value="off">Never use animations</option>
+                        </select>
+                    </div>
+                </div>
+                </details>
 
             {obr.player?.role === "GM" && (
                 <div className="settings-card">
@@ -388,51 +495,125 @@ export default function Settings() {
                         <span className="settings-card-badge gm">GM Only</span>
                     </div>
 
-                    <div className="settings-row" title="If set to false, only the GM can cast spells.">
-                        <div className="settings-row-info">
-                            <span className="settings-row-label">Players can cast spells</span>
-                            <span className="settings-row-desc">Allow players to cast spells</span>
+                    <details className="settings-category">
+                        <summary className="settings-category-header">
+                            <span>Room &amp; Player Settings</span>
+                            <FaChevronDown className="settings-accordion-chevron" aria-hidden="true" />
+                        </summary>
+                        <div className="settings-row">
+                            <SettingsRowInfo
+                                label="Players can cast spells"
+                                description="Allow players to cast spells"
+                                help="If disabled, only the GM can cast spells."
+                            />
+                            <div className="settings-row-control">
+                                <label className="settings-toggle-switch">
+                                    <input
+                                        type="checkbox"
+                                        checked={playersCastSpells ?? false}
+                                        onChange={(event) => setPlayersCastSpells(event.currentTarget.checked)}
+                                    />
+                                    <span className="settings-toggle-slider" />
+                                </label>
+                            </div>
                         </div>
-                        <div className="settings-row-control">
-                            <label className="settings-toggle-switch">
+
+                        <div className="settings-row">
+                            <SettingsRowInfo
+                                label="JB2A animations by default"
+                                description="Players can choose their own cast preference"
+                                help="Default animation preference for this room. Players can override it for their own casts."
+                            />
+                            <div className="settings-row-control">
+                                <label className="settings-toggle-switch">
+                                    <input
+                                        type="checkbox"
+                                        checked={roomAnimationsEnabled ?? true}
+                                        onChange={(event) => setRoomAnimationsEnabled(event.currentTarget.checked)}
+                                    />
+                                    <span className="settings-toggle-slider" />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="settings-row settings-row-stacked">
+                            <SettingsRowInfo
+                                label="JB2A asset base URL"
+                                description="For a hosted Patreon-compatible pack; leave blank to use the free library"
+                                help="JB2A assets must be hosted at a URL that all room participants can access."
+                            />
+                            <div className="settings-row-control settings-row-control-wide">
                                 <input
-                                    type="checkbox"
-                                    checked={playersCastSpells ?? false}
-                                    onChange={(event) => setPlayersCastSpells(event.currentTarget.checked)}
+                                    name="effect-asset-base-url"
+                                    type="url"
+                                    className="settings-dark-input"
+                                    placeholder="https://jb2a-free.s3.eu-west-3.amazonaws.com"
+                                    value={effectAssetBaseUrl ?? ""}
+                                    onChange={(event) => {
+                                        setEffectAssetBaseUrl(event.currentTarget.value);
+                                        setEffectAssetBaseUrlError(null);
+                                    }}
                                 />
-                                <span className="settings-toggle-slider" />
-                            </label>
+                                <button
+                                    type="button"
+                                    className="settings-dark-button"
+                                    onClick={async () => {
+                                        try {
+                                            const normalized = normalizeEffectAssetBaseUrl(effectAssetBaseUrl ?? "");
+                                            await setGlobalSettingsValue(
+                                                GLOBAL_STORAGE_KEYS.EFFECT_ASSET_BASE_URL,
+                                                normalized
+                                            );
+                                            setEffectAssetBaseUrl(normalized);
+                                            setEffectAssetBaseUrlError(null);
+                                            OBR.notification.show("JB2A asset URL saved for this room.", "SUCCESS");
+                                        } catch (error) {
+                                            const message = error instanceof Error ? error.message : "Invalid JB2A asset URL.";
+                                            setEffectAssetBaseUrlError(message);
+                                            OBR.notification.show(message, "ERROR");
+                                        }
+                                    }}
+                                >
+                                    Save
+                                </button>
+                                {effectAssetBaseUrlError && (
+                                    <span className="settings-inline-error" role="alert">
+                                        {effectAssetBaseUrlError}
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    </div>
 
-                    <div
-                        className="settings-row"
-                        title='Who should own items summoned by Embers. "Caster" means the player who cast the spell will own them, while "GM" means that the GM will own them.'
-                    >
-                        <div className="settings-row-info">
-                            <span className="settings-row-label">Summoned entities rule</span>
-                            <span className="settings-row-desc">Ownership of summoned items</span>
+                        <div className="settings-row">
+                            <SettingsRowInfo
+                                label="Summoned entities rule"
+                                description="Ownership of summoned items"
+                                help={'Who should own items summoned by Embers. "Caster" means the player who cast the spell will own them, while "GM" means that the GM will own them.'}
+                            />
+                            <div className="settings-row-control">
+                                <select
+                                    className="settings-dark-select"
+                                    onChange={(event) => setSummonedEntities(event.target.value)}
+                                    value={summonedEntities ?? ""}
+                                >
+                                    <option value="gm-only">GM Only</option>
+                                    <option value="caster">Caster</option>
+                                </select>
+                            </div>
                         </div>
-                        <div className="settings-row-control">
-                            <select
-                                className="settings-dark-select"
-                                onChange={(event) => setSummonedEntities(event.target.value)}
-                                value={summonedEntities ?? ""}
-                            >
-                                <option value="gm-only">GM Only</option>
-                                <option value="caster">Caster</option>
-                            </select>
-                        </div>
-                    </div>
+                    </details>
 
-                    <div
-                        className="settings-row"
-                        title="Darkness spell opacity mode. 'Dynamic' applies D&D rules (Devil's Sight/Truesight see through, others see opaque black fog). 'Always Transparent' makes all darkness transparent for the whole room. 'Always Opaque' forces solid fog for everyone."
-                    >
-                        <div className="settings-row-info">
-                            <span className="settings-row-label">Darkness opacity mode</span>
-                            <span className="settings-row-desc">Dynamic vision vs fixed fog</span>
-                        </div>
+                    <details className="settings-category">
+                        <summary className="settings-category-header">
+                            <span>Darkness &amp; Visibility</span>
+                            <FaChevronDown className="settings-accordion-chevron" aria-hidden="true" />
+                        </summary>
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Darkness opacity mode"
+                            description="Dynamic vision vs fixed fog"
+                            help="Darkness spell opacity mode. 'Dynamic' applies D&D rules (Devil's Sight/Truesight see through, others see opaque black fog). 'Always Transparent' makes all darkness transparent for the whole room. 'Always Opaque' forces solid fog for everyone."
+                        />
                         <div className="settings-row-control">
                             <select
                                 className="settings-dark-select"
@@ -445,110 +626,168 @@ export default function Settings() {
                             </select>
                         </div>
                     </div>
+
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Hide token vitals in Darkness"
+                            description="Follow each player’s Darkness vision"
+                            help="Hide token HP bars, numbers, temporary HP, and condition badges from players when Darkness obscures a token."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={hideTokenVitalsInDarkness ?? true}
+                                    onChange={(event) => setHideTokenVitalsInDarkness(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="settings-row settings-row-nested">
+                        <SettingsRowInfo
+                            label="BG3 Top Turn Tracker HP bars"
+                            description="Hide from players in obscuring Darkness"
+                            help="Also hide monster HP bars in the BG3 Top Turn Tracker while Darkness obscures the monster."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={hideTrackerMonsterHpBarInDarkness ?? true}
+                                    onChange={(event) => setHideTrackerMonsterHpBarInDarkness(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
+                    </details>
+
+                    <details className="settings-category">
+                        <summary className="settings-category-header">
+                            <span>Combat &amp; Damage</span>
+                            <FaChevronDown className="settings-accordion-chevron" aria-hidden="true" />
+                        </summary>
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Damage application mode"
+                            description="GM review & reaction vs instant auto-apply"
+                            help="Controls how combat damage from attacks is applied to target token HP. 'GM Approval' lets the DM review and apply damage with 1-click reactions (e.g. Shield +5 AC, half damage). 'Auto-Apply' deducts HP immediately on hit. 'Manual Only' displays numbers in log without modifying HP."
+                        />
+                        <div className="settings-row-control">
+                            <select
+                                className="settings-dark-select"
+                                onChange={(event) => setDamageApplicationMode(event.target.value)}
+                                value={damageApplicationMode ?? "gm_approval"}
+                            >
+                                <option value="gm_approval">GM Approval (Recommended)</option>
+                                <option value="auto">Instant Auto-Apply</option>
+                                <option value="manual">Manual Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="settings-row settings-row-nested">
+                        <SettingsRowInfo
+                            label="Monster hit resolution"
+                            description="DM confirms hits or compare against target AC"
+                            help="Choose how monster attacks are adjudicated. GM approval is the default; automatic mode compares the attack roll against the target's AC."
+                        />
+                        <div className="settings-row-control">
+                            <select
+                                className="settings-dark-select"
+                                onChange={(event) => setMonsterHitResolutionMode(event.target.value)}
+                                value={monsterHitResolutionMode ?? "gm_approval"}
+                            >
+                                <option value="gm_approval">DM Approval (Default)</option>
+                                <option value="auto_ac">Compare against AC</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Hide target AC from players"
+                            description="Show HIT/MISS without revealing monster AC"
+                            help="When enabled, players only see whether an attack HIT or MISS without revealing the target's Armor Class. GM always sees the full AC comparison."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={hideTargetAc ?? true}
+                                    onChange={(event) => setHideTargetAc(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
+                    </details>
+
+                    <details className="settings-category">
+                        <summary className="settings-category-header">
+                            <span>BG3 Top Turn Tracker</span>
+                            <FaChevronDown className="settings-accordion-chevron" aria-hidden="true" />
+                        </summary>
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Show monster HP bar to players"
+                            description="Top turn tracker"
+                            help="Choose whether players can see monster HP bars in the top turn tracker."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={showTurnTrackerHpBarToPlayers ?? false}
+                                    onChange={(event) => setShowTurnTrackerHpBarToPlayers(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Show monster HP numbers to players"
+                            description="Top turn tracker"
+                            help="Choose whether players can see monster HP numbers in the top turn tracker."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={showTurnTrackerHpToPlayers ?? false}
+                                    onChange={(event) => setShowTurnTrackerHpToPlayers(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="settings-row">
+                        <SettingsRowInfo
+                            label="Show monster AC to players"
+                            description="Top turn tracker"
+                            help="Choose whether players can see monster AC in the top turn tracker."
+                        />
+                        <div className="settings-row-control">
+                            <label className="settings-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={showTurnTrackerAcToPlayers ?? false}
+                                    onChange={(event) => setShowTurnTrackerAcToPlayers(event.currentTarget.checked)}
+                                />
+                                <span className="settings-toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+                    </details>
                 </div>
             )}
-
-            <Dialog
-                open={modalOpened === "choose-caster-type"}
-                onClose={closeModal}
-                slots={{ transition: Fade }}
-                slotProps={{
-                    transition: { timeout: 250 },
-                    paper: { className: "settings-modal-paper" },
-                }}
-                fullWidth
-                maxWidth="xs"
-            >
-                <DialogTitle className="settings-modal-title">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <FaUser style={{ color: "#e11d48" }} />
-                            <span>Choose Default Caster</span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={closeModal}
-                            style={{
-                                background: "none",
-                                border: "none",
-                                color: "#9ca3af",
-                                cursor: "pointer",
-                                fontSize: "1rem",
-                                padding: 4,
-                            }}
-                        >
-                            <FaXmark />
-                        </button>
-                    </div>
-                </DialogTitle>
-
-                <DialogContent sx={{ p: 2, pt: "12px !important" }}>
-                    <Typography variant="body2" sx={{ color: "#cbd5e1", mb: 1.5, fontSize: "0.82rem" }}>
-                        Choose an asset image or use your currently selected token on the scene map:
-                    </Typography>
-
-                    <div
-                        style={{
-                            background: "#182030",
-                            border: "1px solid #26334d",
-                            borderRadius: 6,
-                            padding: "8px 12px",
-                            marginBottom: "16px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                        }}
-                    >
-                        <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 700 }}>
-                            Current Caster:
-                        </span>
-                        <span
-                            style={{
-                                fontSize: "0.8rem",
-                                fontWeight: 800,
-                                color: casterNameDisplay ? "#60a5fa" : "#64748b",
-                            }}
-                        >
-                            {casterNameDisplay ?? "None"}
-                        </span>
-                    </div>
-
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <button
-                            type="button"
-                            className="settings-modal-btn primary"
-                            onClick={() => {
-                                handleSetCasterFromSelection();
-                                closeModal();
-                            }}
-                        >
-                            <FaArrowsToDot style={{ marginRight: 6 }} /> Use Selected Token
-                        </button>
-                        <button
-                            type="button"
-                            className="settings-modal-btn secondary"
-                            onClick={() => {
-                                handleAssetPicker();
-                                closeModal();
-                            }}
-                        >
-                            <FaImage style={{ marginRight: 6 }} /> Pick From Assets
-                        </button>
-                        {defaultCaster && defaultCaster.length > 0 && (
-                            <button
-                                type="button"
-                                className="settings-modal-btn danger"
-                                onClick={() => {
-                                    setDefaultCaster([]);
-                                    closeModal();
-                                }}
-                            >
-                                <FaTrashCan style={{ marginRight: 6 }} /> Clear Selection
-                            </button>
-                        )}
-                    </Box>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

@@ -5,7 +5,7 @@ export interface SpellSlotConfig {
     used: number;
 }
 
-export type MainTab = "ACTIONS" | "SPELLS" | "INVENTORY" | "FEATURES" | "BACKGROUND" | "NOTES" | "EXTRAS";
+export type MainTab = "ACTIONS" | "SPELLS" | "INVENTORY" | "FEATURES" | "BACKGROUND" | "NOTES" | "EXTRAS" | "BESTIARY";
 export type ActionsFilter = "ALL" | "ATTACK" | "ACTION" | "BONUS ACTION" | "REACTION" | "OTHER" | "LIMITED USE";
 export type SpellsFilter = "ALL" | "0" | "1" | "2" | "PACT" | "3+";
 export type FeaturesFilter = "ALL" | "CLASS" | "SPECIES" | "FEATS";
@@ -95,6 +95,7 @@ export type DetailDrawerItem =
           resistances: string[];
           immunities: string[];
           vulnerabilities: string[];
+          conditionImmunities?: string[];
       }
     | {
           type: "log";

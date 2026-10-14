@@ -30,11 +30,20 @@ export interface AimingOverlayRenderResult {
     reason?: string;
 }
 
+let isAimingOverlayMounted = false;
+let renderToken = 0;
+
+export function resetAimingOverlayState(): void {
+    isAimingOverlayMounted = false;
+    renderToken = 0;
+}
+
 /**
  * Renders or updates the BG3-style range circle, tether line, and distance pill HUD.
  * All items are rendered on OBR.scene.local (private to this player's screen).
  */
 export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Promise<AimingOverlayRenderResult> {
+    const currentToken = ++renderToken;
     const {
         casterPos,
         cursorPos,
@@ -181,30 +190,61 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         .layer("ATTACHMENT")
         .build();
 
-    const localItems = await OBR.scene.local.getItems();
-    const existingIds = new Set(localItems.map(item => item.id));
-
-    const itemsToUpdate: Item[] = [];
-    const itemsToAdd: Item[] = [];
+    const result: AimingOverlayRenderResult = {
+        withinRange: rangeCheck.withinRange,
+        currentDistanceFeet: rangeCheck.currentDistanceFeet,
+        maxRangeFeet: rangeCheck.effectiveMaxRangeFeet,
+        canSee,
+        aimState,
+        reason: visionCheck?.reason
+    };
 
     const candidates = [rangeCircle, tetherLine, distanceLabel, targetCellShape];
-    for (const item of candidates) {
-        if (existingIds.has(item.id)) {
-            itemsToUpdate.push(item);
-        } else {
-            itemsToAdd.push(item);
-        }
-    }
 
-    if (itemsToAdd.length > 0) {
-        await OBR.scene.local.addItems(itemsToAdd);
-    }
-    if (itemsToUpdate.length > 0) {
+    if (!isAimingOverlayMounted) {
+        const localItems = await OBR.scene.local.getItems();
+        if (currentToken !== renderToken) return result;
+
+        const existingIds = new Set(localItems.map(item => item.id));
+        const itemsToUpdate: Item[] = [];
+        const itemsToAdd: Item[] = [];
+
+        for (const item of candidates) {
+            if (existingIds.has(item.id)) {
+                itemsToUpdate.push(item);
+            } else {
+                itemsToAdd.push(item);
+            }
+        }
+
+        if (itemsToAdd.length > 0) {
+            await OBR.scene.local.addItems(itemsToAdd);
+            if (currentToken !== renderToken) return result;
+        }
+        if (itemsToUpdate.length > 0) {
+            await OBR.scene.local.updateItems(
+                itemsToUpdate.map(i => i.id),
+                items => {
+                    for (let i = 0; i < items.length; i++) {
+                        const newItem = itemsToUpdate.find(u => u.id === items[i].id);
+                        if (newItem) {
+                            Object.assign(items[i], newItem);
+                        }
+                    }
+                }
+            );
+            if (currentToken !== renderToken) return result;
+        }
+        isAimingOverlayMounted = true;
+    } else {
         await OBR.scene.local.updateItems(
-            itemsToUpdate.map(i => i.id),
+            candidates.map(i => i.id),
             items => {
+                if (items.length < candidates.length) {
+                    isAimingOverlayMounted = false;
+                }
                 for (let i = 0; i < items.length; i++) {
-                    const newItem = itemsToUpdate.find(u => u.id === items[i].id);
+                    const newItem = candidates.find(u => u.id === items[i].id);
                     if (newItem) {
                         Object.assign(items[i], newItem);
                     }
@@ -213,21 +253,20 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         );
     }
 
-    return {
-        withinRange: rangeCheck.withinRange,
-        currentDistanceFeet: rangeCheck.currentDistanceFeet,
-        maxRangeFeet: rangeCheck.effectiveMaxRangeFeet,
-        canSee,
-        aimState,
-        reason: visionCheck?.reason
-    };
+    return result;
 }
 
 /**
  * Clears the aiming tether, range circle, and distance label from the local scene.
  */
 export async function clearAimingOverlay(): Promise<void> {
+    renderToken++;
+    isAimingOverlayMounted = false;
     const ids = [AIMING_RANGE_CIRCLE_ID, AIMING_TETHER_LINE_ID, AIMING_DISTANCE_LABEL_ID, AIMING_TARGET_CELL_ID];
-    await OBR.scene.local.deleteItems(ids);
+    try {
+        await OBR.scene.local.deleteItems(ids);
+    } catch {
+        // Safe to ignore if already deleted
+    }
 }
 

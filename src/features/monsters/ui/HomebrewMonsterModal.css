@@ -1,0 +1,358 @@
+.gm-homebrew-modal {
+  width: 95%;
+  max-width: 860px;
+  max-height: 90vh;
+  background: #11141b;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(239, 68, 68, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e5e7eb;
+}
+
+.gm-hb-header {
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #1f2937;
+  background: #161a23;
+}
+
+.gm-hb-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gm-hb-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: 0.5px;
+}
+
+.gm-hb-badge {
+  font-size: 11px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.gm-hb-close-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.gm-hb-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.gm-hb-presets-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #131720;
+  border-bottom: 1px solid #1f2937;
+}
+
+.gm-hb-preset-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.gm-hb-preset-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #d1d5db;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.gm-hb-preset-btn:hover {
+  background: #374151;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.gm-hb-form-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gm-hb-error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.gm-hb-section {
+  background: #141822;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gm-hb-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gm-hb-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.gm-hb-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.gm-hb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gm-hb-field.flex-1 {
+  flex: 1;
+  min-width: 140px;
+}
+
+.gm-hb-field.flex-2 {
+  flex: 2;
+  min-width: 200px;
+}
+
+.gm-hb-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.gm-hb-field input,
+.gm-hb-field select {
+  background: #0f1219;
+  border: 1px solid #374151;
+  color: #f3f4f6;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.gm-hb-field input:focus,
+.gm-hb-field select:focus {
+  border-color: #ef4444;
+}
+
+.gm-hb-field input.readonly-input {
+  background: #1a1e29;
+  color: #9ca3af;
+  border-color: #2b3240;
+  cursor: not-allowed;
+  font-weight: 600;
+}
+
+.gm-hb-stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+
+.gm-hb-stat-box {
+  background: #0f1219;
+  border: 1px solid #283040;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.gm-hb-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+}
+
+.gm-hb-stat-input {
+  width: 50px;
+  text-align: center;
+  background: #161b24;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  color: #f3f4f6;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px;
+}
+
+.gm-hb-stat-mod {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fca5a5;
+}
+
+.gm-hb-add-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #93c5fd;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.gm-hb-add-btn:hover {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.gm-hb-action-add-group {
+  display: flex;
+  gap: 6px;
+}
+
+.gm-hb-item-card {
+  background: #0d1017;
+  border: 1px solid #232936;
+  border-radius: 7px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gm-hb-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gm-hb-item-name-input {
+  flex: 1;
+  background: #141822;
+  border: 1px solid #374151;
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.gm-hb-select-compact {
+  background: #141822;
+  border: 1px solid #374151;
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #fca5a5;
+}
+
+.gm-hb-remove-btn {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.gm-hb-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+}
+
+.gm-hb-item-desc-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #141822;
+  border: 1px solid #374151;
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #d1d5db;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.gm-hb-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #1f2937;
+  background: #161a23;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.gm-hb-cancel-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #d1d5db;
+  cursor: pointer;
+}
+
+.gm-hb-cancel-btn:hover {
+  background: #374151;
+  color: #fff;
+}
+
+.gm-hb-save-btn {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #ef4444;
+  background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.4);
+}
+
+.gm-hb-save-btn:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+}

@@ -4,9 +4,13 @@ import { useOBR } from "../../../platform/obr/react/providers/BaseOBRProvider";
 import { TOKEN_VISION_METADATA_KEY } from "../../../features/targeting/application/lineOfSightService";
 import { resolveActiveCaster, type ActiveCasterInfo } from "../../../features/targeting/infrastructure/obr/activeCasterResolver";
 import { getLinkedDDBCharacterId, getCachedDDBCharacter, fetchDDBCharacter, cacheDDBCharacter } from "../../../services/ddbService";
+import { getBoundMonsterFromToken } from "../../../features/monsters/monsterService";
+import { monsterToDdbCharacter } from "../../../features/monsters/monsterToDdbAdapter";
+import { extractTokenVitals } from "../../../features/combat/tokenVitalsService";
 import { getTokenBuffs } from "../../../services/buffService";
 import type { ActiveBuff } from "../../../services/buffService";
 import type { DDBParsedCharacter } from "../../../types/ddb";
+import type { MonsterStatblock } from "../../../features/monsters/domain/types";
 import { toolMetadataSelectedSpell } from "../../../effectsTool";
 import type { SyncMode } from "../domain/resourceMerge";
 
@@ -19,6 +23,7 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
     const [caster, setCaster] = useState<ActiveCasterInfo | null>(null);
     const [selectedSpell, setSelectedSpell] = useState<string | null>(null);
     const [syncedDdbChar, setSyncedDdbChar] = useState<DDBParsedCharacter | null>(null);
+    const [boundMonster, setBoundMonster] = useState<MonsterStatblock | null>(null);
     const [activeBuffs, setActiveBuffs] = useState<ActiveBuff[]>([]);
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
@@ -71,6 +76,7 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
                     setActiveBuffs(getTokenBuffs(active.item));
                     const characterId = getLinkedDDBCharacterId(active.item);
                     if (characterId) {
+                        setBoundMonster(null);
                         const applyCharacter = (character: DDBParsedCharacter) => {
                             setSyncedDdbChar(character);
                             applyDdbSlots(character, "merge");
@@ -95,16 +101,35 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
                             }).catch(console.error);
                         }
                     } else {
-                        setSyncedDdbChar(null);
+                        const monster = getBoundMonsterFromToken(active.item);
+                        if (monster) {
+                            setBoundMonster(monster);
+                            const vitals = extractTokenVitals(active.item.metadata);
+                            const monsterChar = monsterToDdbCharacter(monster, active.item, vitals);
+                            setSyncedDdbChar(monsterChar);
+                            applyDdbSlots(monsterChar, "replace");
+                            if (monsterChar.senses) {
+                                const currentVision = active.item.metadata[TOKEN_VISION_METADATA_KEY] as unknown;
+                                if (!currentVision || JSON.stringify(currentVision) !== JSON.stringify(monsterChar.senses)) {
+                                    OBR.scene.items.updateItems([active.item.id], items => {
+                                        for (const item of items) item.metadata[TOKEN_VISION_METADATA_KEY] = monsterChar.senses;
+                                    }).catch(console.error);
+                                }
+                            }
+                        } else {
+                            setBoundMonster(null);
+                            setSyncedDdbChar(null);
+                        }
                     }
                 } else {
+                    setBoundMonster(null);
                     setActiveBuffs([]);
                     setSyncedDdbChar(null);
                 }
 
                 const metadata = obr.player!.metadata;
                 const currentSelected = metadata?.[toolMetadataSelectedSpell] as string | undefined;
-                setSelectedSpell(currentSelected || null);
+                await setSelectedSpell(currentSelected || null);
             } catch (error) {
                 console.error("ActionDock update error:", error);
             }
@@ -158,19 +183,32 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
             setActiveBuffs(getTokenBuffs(updatedItem));
             const characterId = getLinkedDDBCharacterId(updatedItem);
             if (characterId) {
+                setBoundMonster(null);
                 const cached = getCachedDDBCharacter(characterId);
                 if (cached && cached.id !== syncedDdbChar?.id) {
                     setSyncedDdbChar(cached);
                     applyDdbSlots(cached, "merge");
                 }
-            } else if (syncedDdbChar) {
-                setSyncedDdbChar(null);
+            } else {
+                const monster = getBoundMonsterFromToken(updatedItem);
+                if (monster) {
+                    setBoundMonster(monster);
+                    const vitals = extractTokenVitals(updatedItem.metadata);
+                    const monsterChar = monsterToDdbCharacter(monster, updatedItem, vitals);
+                    setSyncedDdbChar(monsterChar);
+                } else {
+                    setBoundMonster(null);
+                    if (syncedDdbChar) {
+                        setSyncedDdbChar(null);
+                    }
+                }
             }
         });
     }, [obr.ready, obr.sceneReady, caster?.id, syncedDdbChar, applyDdbSlots]);
 
     return {
         caster,
+        boundMonster,
         selectedSpell,
         syncedDdbChar,
         activeBuffs,

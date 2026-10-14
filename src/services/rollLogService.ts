@@ -36,6 +36,39 @@ export function saveStoredRollHistory(cards: DDBRollCardData[]): void {
     }
 }
 
+export function updateStoredRollCard(
+    cardId: string,
+    patch: Partial<DDBRollCardData>,
+    subIndex?: number
+): DDBRollCardData[] {
+    try {
+        const existing = getStoredRollHistory();
+        const updated = existing.map((card) => {
+            if (card.id === cardId) {
+                if (typeof subIndex === "number" && card.subRolls && card.subRolls[subIndex]) {
+                    const updatedSubRolls = [...card.subRolls];
+                    updatedSubRolls[subIndex] = {
+                        ...updatedSubRolls[subIndex],
+                        damageResolutionStatus: patch.damageResolutionStatus,
+                        appliedDamageAmount: patch.appliedDamageAmount,
+                    };
+                    return {
+                        ...card,
+                        ...patch,
+                        subRolls: updatedSubRolls,
+                    };
+                }
+                return { ...card, ...patch };
+            }
+            return card;
+        });
+        localStorage.setItem(ROLL_HISTORY_KEY, JSON.stringify(updated));
+        return updated;
+    } catch {
+        return [];
+    }
+}
+
 const POPOVER_STATE_KEY = `${APP_KEY}/popover-open`;
 let isRollLogOpen = false;
 
@@ -94,6 +127,115 @@ export function subscribeToDDBRolls(listener: RollListener): () => void {
     return () => localRollListeners.delete(listener);
 }
 
+type CardUpdateListener = (cardId: string, patch: Partial<DDBRollCardData>, subIndex?: number) => void;
+const localCardUpdateListeners = new Set<CardUpdateListener>();
+
+export function subscribeToCardUpdates(listener: CardUpdateListener): () => void {
+    localCardUpdateListeners.add(listener);
+    return () => localCardUpdateListeners.delete(listener);
+}
+
+export async function updateRollCardResolution(
+    cardId: string,
+    resolution: {
+        status: "pending" | "applied" | "shielded" | "dismissed";
+        appliedAmount?: number;
+        note?: string;
+        hitApprovalStatus?: "pending" | "confirmed" | "missed";
+        subIndex?: number;
+        targetSaveResolutions?: DDBRollCardData["targetSaveResolutions"];
+    }
+): Promise<void> {
+    const patch: Partial<DDBRollCardData> = {
+        damageResolutionStatus: resolution.status,
+        appliedDamageAmount: resolution.appliedAmount,
+        resolutionNote: resolution.note,
+        hitApprovalStatus: resolution.hitApprovalStatus,
+        targetSaveResolutions: resolution.targetSaveResolutions,
+    };
+    const history = getStoredRollHistory();
+    const primaryCard = history.find((card) => card.id === cardId);
+    const linkedUpdates: Array<{
+        cardId: string;
+        patch: Partial<DDBRollCardData>;
+        subIndex: number | undefined;
+    }> = resolution.hitApprovalStatus
+        ? (primaryCard?.relatedCardIds ?? []).map((linkedCardId) => ({
+              cardId: linkedCardId,
+              patch: { hitApprovalStatus: resolution.hitApprovalStatus },
+              subIndex: undefined,
+          }))
+        : [];
+    const updates: Array<{
+        cardId: string;
+        patch: Partial<DDBRollCardData>;
+        subIndex: number | undefined;
+    }> = [
+        { cardId, patch, subIndex: resolution.subIndex },
+        ...linkedUpdates,
+    ];
+    const senderId = await OBR.player.getId().catch(() => undefined);
+
+    for (const update of updates) {
+        const existingCard = history.find((card) => card.id === update.cardId);
+        updateStoredRollCard(update.cardId, update.patch, update.subIndex);
+
+        localCardUpdateListeners.forEach((fn) => {
+            try {
+                fn(update.cardId, update.patch, update.subIndex);
+            } catch (err) {
+                console.error("Error in local card update listener:", err);
+            }
+        });
+
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+            window.dispatchEvent(
+                new CustomEvent("embers:ddb-card-update", {
+                    detail: {
+                        cardId: update.cardId,
+                        patch: update.patch,
+                        subIndex: update.subIndex,
+                    },
+                }),
+            );
+        }
+
+        const payload: DDBRollLogPayload = {
+            cards: [],
+            senderId,
+            update: {
+                cardId: update.cardId,
+                damageResolutionStatus:
+                    update.patch.damageResolutionStatus ??
+                    existingCard?.damageResolutionStatus ??
+                    "pending",
+                appliedDamageAmount: Object.prototype.hasOwnProperty.call(
+                    update.patch,
+                    "appliedDamageAmount",
+                )
+                    ? update.patch.appliedDamageAmount
+                    : existingCard?.appliedDamageAmount,
+                targetSaveResolutions: update.patch.targetSaveResolutions ??
+                    existingCard?.targetSaveResolutions,
+                resolutionNote:
+                    Object.prototype.hasOwnProperty.call(update.patch, "resolutionNote")
+                        ? update.patch.resolutionNote
+                        : existingCard?.resolutionNote,
+                hitApprovalStatus:
+                    update.patch.hitApprovalStatus ??
+                    existingCard?.hitApprovalStatus,
+                subIndex: update.subIndex,
+            },
+        };
+
+        try {
+            await OBR.broadcast.sendMessage(DDB_ROLL_CHANNEL, payload, { destination: "ALL" });
+        } catch {
+            // Fallback if broadcast fails
+        }
+    }
+}
+
 export function clearStoredRollHistory(): void {
     try {
         localStorage.removeItem(ROLL_HISTORY_KEY);
@@ -135,6 +277,10 @@ export async function openDDBRollLogPopover(mode: "manual" | "auto" = "manual"):
         const modeParam = `mode=${mode}`;
         const sep = search.includes("?") ? "&" : "?";
         const popoverUrl = `${origin}/ddb-roll-log${search}${sep}${modeParam}`;
+
+        try {
+            await OBR.popover.close(ddbRollLogPopoverId);
+        } catch {}
 
         await OBR.popover.open({
             id: ddbRollLogPopoverId,
@@ -194,7 +340,7 @@ export async function broadcastDDBRoll(cards: DDBRollCardData[]): Promise<void> 
         }
     });
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
         window.dispatchEvent(new CustomEvent("embers:ddb-roll", { detail: cards }));
     }
 

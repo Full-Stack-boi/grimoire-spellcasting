@@ -87,6 +87,9 @@ export const IconRangedBow: React.FC<IconProps> = ({
   size = 16,
   className,
 }) => <FaBullseye size={size} className={className} aria-hidden="true" />;
+export const IconShortRest: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaSun size={size} className={className} aria-hidden="true" />
+);
 export const IconLongRest: React.FC<IconProps> = ({ size = 14, className }) => (
   <FaMoon size={size} className={className} aria-hidden="true" />
 );

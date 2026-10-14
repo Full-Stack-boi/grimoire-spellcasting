@@ -11,6 +11,9 @@ import {
 import { DDBParsedCharacter, DDBSkill, DDBSavingThrow } from "../../types/ddb";
 import { rollAttack } from "../../utils/dice";
 import { broadcastDDBRoll } from "../../services/rollLogService";
+import { getTokenVitals, resolveTokenConcentrationSave } from "../../features/combat/tokenVitalsService";
+import { resolveConditionRules } from "../../features/combat/domain/conditionRules";
+import { loadCombatState, saveCombatState } from "../../services/combatStateService";
 import { IconDragon, IconSearch, IconDiceD20 } from "../ActionDock/shared/Bg3Icons";
 import { openDDBSyncModal } from "../../views/DDBSyncModal";
 
@@ -25,7 +28,7 @@ const ABILITY_CONFIG: Array<{ key: "str" | "dex" | "con" | "int" | "wis" | "cha"
     { key: "cha", label: "CHA", full: "CHARISMA" },
 ];
 
-export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null }> = ({ passedChar }) => {
+export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null; passedTokenId?: string }> = ({ passedChar, passedTokenId }) => {
     const obr = useOBR();
     const [caster, setCaster] = useState<ActiveCasterInfo | null>(null);
     const [syncedChar, setSyncedChar] = useState<DDBParsedCharacter | null>(passedChar || null);
@@ -141,11 +144,42 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null 
     };
 
     // Roll Handlers
-    const handleRollAbilityCheck = (ability: "str" | "dex" | "con" | "int" | "wis" | "cha", label: string) => {
-        const bonus = modifiers[ability];
-        const res = rollAttack(bonus, "");
+    const resolveRollContext = async (rollKind: "ability_check" | "saving_throw", ability: string) => {
+        let tokenId = passedTokenId || caster?.item?.id;
+        if (!tokenId) {
+            const selection = await OBR.player.getSelection().catch(() => [] as string[]);
+            tokenId = selection?.[0];
+        }
+        const [vitals, combatState] = await Promise.all([
+            tokenId ? getTokenVitals(tokenId) : Promise.resolve(null),
+            syncedChar?.id ? loadCombatState(syncedChar.id) : Promise.resolve(null),
+        ]);
+        const rules = resolveConditionRules({
+            conditions: [...(vitals?.conditions ?? []), ...(combatState?.conditions ?? [])],
+            exhaustionLevel: vitals?.exhaustionLevel ?? combatState?.exhaustionLevel,
+            rollKind,
+            ability,
+        });
+        if (rules.requiresAdjudication.length > 0) {
+            OBR.notification.show(
+                `DM adjudication needed: ${rules.requiresAdjudication.join("; ")}`,
+                "WARNING",
+            );
+        }
+        return { rules, tokenId, vitals };
+    };
+
+    const handleRollAbilityCheck = async (ability: "str" | "dex" | "con" | "int" | "wis" | "cha", label: string) => {
+        const { rules } = await resolveRollContext("ability_check", ability);
+        if (rules.blocked) {
+            OBR.notification.show(rules.reasons.join(" • "), "WARNING");
+            return;
+        }
+        const effectiveBonus = modifiers[ability] - rules.d20Penalty;
+        const res = rollAttack(effectiveBonus, "", rules.mode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = bonus >= 0 ? `+ ${bonus}` : `- ${Math.abs(bonus)}`;
+        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
 
         broadcastDDBRoll([
             {
@@ -156,21 +190,31 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null 
                 actionType: "CHECK",
                 dieType: 20,
                 diceBreakdown: `${res.d20} ${bonusStr}`,
-                formula: `1d20${bonus >= 0 ? `+${bonus}` : `${bonus}`}`,
+                formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`,
                 total: res.total,
-                subtitle: `${label} Ability Check`,
+                subtitle: `${label} Ability Check${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: res.isCrit,
                 isMiss: res.isMiss,
+                rollMode: rules.mode,
+                isAdvantage: rules.mode === "advantage",
+                isDisadvantage: rules.mode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
-        OBR.notification.show(`${casterName} - ${label} Check: ${res.formatted}`, res.isCrit ? "SUCCESS" : res.isMiss ? "WARNING" : "INFO");
+        OBR.notification.show(`${casterName} - ${label} Check: ${res.formatted}${conditionNote ? ` • ${conditionNote}` : ""}`, res.isCrit ? "SUCCESS" : res.isMiss ? "WARNING" : "INFO");
     };
 
-    const handleRollSavingThrow = (save: DDBSavingThrow) => {
-        const res = rollAttack(save.bonus, "");
+    const handleRollSavingThrow = async (save: DDBSavingThrow) => {
+        const { rules, tokenId, vitals } = await resolveRollContext("saving_throw", save.ability);
+        if (rules.blocked) {
+            OBR.notification.show(rules.reasons.join(" • "), "WARNING");
+            return;
+        }
+        const effectiveBonus = save.bonus - rules.d20Penalty;
+        const res = rules.automaticFailure ? null : rollAttack(effectiveBonus, "", rules.mode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = save.bonus >= 0 ? `+ ${save.bonus}` : `- ${Math.abs(save.bonus)}`;
+        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
 
         broadcastDDBRoll([
             {
@@ -180,22 +224,62 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null 
                 actionName: save.label.toUpperCase(),
                 actionType: "SAVE",
                 dieType: 20,
-                diceBreakdown: `${res.d20} ${bonusStr}`,
-                formula: `1d20${save.bonus >= 0 ? `+${save.bonus}` : `${save.bonus}`}`,
-                total: res.total,
-                subtitle: `${save.label} Saving Throw`,
-                isCrit: res.isCrit,
-                isMiss: res.isMiss,
+                diceBreakdown: res ? `${res.d20} ${bonusStr}` : "Automatic failure",
+                formula: res
+                    ? `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`
+                    : "Automatic failure from condition",
+                total: res ? res.total : "AUTO FAIL",
+                subtitle: `${save.label} Saving Throw${rules.automaticFailure ? " • Automatic Failure" : ""}${conditionNote ? ` • ${conditionNote}` : ""}`,
+                isCrit: res?.isCrit,
+                isMiss: res?.isMiss,
+                rollMode: rules.mode,
+                isAdvantage: rules.mode === "advantage",
+                isDisadvantage: rules.mode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
-        OBR.notification.show(`${casterName} - ${save.label} Save: ${res.formatted}`, res.isCrit ? "SUCCESS" : res.isMiss ? "WARNING" : "INFO");
+        OBR.notification.show(
+            rules.automaticFailure
+                ? `${casterName} - ${save.label} Save automatically fails. ${conditionNote}`
+                : `${casterName} - ${save.label} Save: ${res?.formatted}${conditionNote ? ` • ${conditionNote}` : ""}`,
+            rules.automaticFailure ? "WARNING" : res?.isCrit ? "SUCCESS" : res?.isMiss ? "WARNING" : "INFO",
+        );
+        if (save.ability === "con" && tokenId && vitals?.pendingConcentrationSaves?.length) {
+            const resolution = await resolveTokenConcentrationSave(tokenId, res?.total ?? 0);
+            if (resolution.resolved && resolution.succeeded === false) {
+                if (syncedChar?.id) {
+                    await saveCombatState(syncedChar.id, {
+                        concentrationSpellId: null,
+                        concentrationSpellName: null,
+                        hexTargetId: null,
+                        hexTargetName: null,
+                        hexAbility: null,
+                    });
+                }
+                OBR.notification.show(
+                    `Concentration on "${resolution.resolved.spellName}" ends: CON save failed DC ${resolution.resolved.dc}.`,
+                    "WARNING",
+                );
+            } else if (resolution.resolved && resolution.succeeded) {
+                OBR.notification.show(
+                    `Concentration maintained: CON save succeeded DC ${resolution.resolved.dc}.`,
+                    "SUCCESS",
+                );
+            }
+        }
     };
 
-    const handleRollSkill = (skill: DDBSkill) => {
-        const res = rollAttack(skill.bonus, "");
+    const handleRollSkill = async (skill: DDBSkill) => {
+        const { rules } = await resolveRollContext("ability_check", skill.ability);
+        if (rules.blocked) {
+            OBR.notification.show(rules.reasons.join(" • "), "WARNING");
+            return;
+        }
+        const effectiveBonus = skill.bonus - rules.d20Penalty;
+        const res = rollAttack(effectiveBonus, "", rules.mode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = skill.bonus >= 0 ? `+ ${skill.bonus}` : `- ${Math.abs(skill.bonus)}`;
+        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
 
         broadcastDDBRoll([
             {
@@ -206,15 +290,18 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null 
                 actionType: "CHECK",
                 dieType: 20,
                 diceBreakdown: `${res.d20} ${bonusStr}`,
-                formula: `1d20${skill.bonus >= 0 ? `+${skill.bonus}` : `${skill.bonus}`}`,
+                formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`,
                 total: res.total,
-                subtitle: "Rolled with Elder Flame",
+                subtitle: `${skill.name} Ability Check${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: res.isCrit,
                 isMiss: res.isMiss,
+                rollMode: rules.mode,
+                isAdvantage: rules.mode === "advantage",
+                isDisadvantage: rules.mode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
-        OBR.notification.show(`${casterName} - ${skill.name} Check: ${res.formatted}`, res.isCrit ? "SUCCESS" : res.isMiss ? "WARNING" : "INFO");
+        OBR.notification.show(`${casterName} - ${skill.name} Check: ${res.formatted}${conditionNote ? ` • ${conditionNote}` : ""}`, res.isCrit ? "SUCCESS" : res.isMiss ? "WARNING" : "INFO");
     };
 
     return (

@@ -20,7 +20,11 @@ function moveEffect(effectItemId: string, items: Item[], dpi: number) {
         return;
     }
     const effectId = effectItem.metadata[effectMetadataKey] as string|undefined;
-    const spellInfo = effectItem.metadata[spellMetadataKey] as { sourceId?: string, destinationId?: string };
+    const spellInfo = effectItem.metadata[spellMetadataKey] as {
+        sourceId?: string;
+        destinationId?: string;
+        assetBaseUrl?: string;
+    };
     if (spellInfo == undefined || effectId == undefined) {
         // Spell doesn't contain required information
         return;
@@ -49,7 +53,7 @@ function moveEffect(effectItemId: string, items: Item[], dpi: number) {
         log_error(`Invalid variant size '${variantName}'`);
         return;
     }
-    const effectURL = getEffectURL(effectId, variantName);
+    const effectURL = getEffectURL(effectId, variantName, undefined, spellInfo.assetBaseUrl);
     if (effectURL == undefined) {
         log_error("Error moving projectile effect");
         return;
@@ -102,7 +106,11 @@ export default function MovementHandler() {
             itemsToTrack.current.clear();
             for (const item of items) {
                 if (item.metadata[spellMetadataKey] != undefined) {
-                    const spellInfo = item.metadata[spellMetadataKey] as { sourceId?: string, destinationId?: string };
+                    const spellInfo = item.metadata[spellMetadataKey] as {
+                        sourceId?: string;
+                        destinationId?: string;
+                        assetBaseUrl?: string;
+                    };
                     if (spellInfo.sourceId) {
                         const itemToTrack = items.find(tracked => tracked.id === spellInfo.sourceId);
                         if (itemToTrack != undefined) {

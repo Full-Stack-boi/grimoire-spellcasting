@@ -6,7 +6,8 @@ import {
     ROLL_HISTORY_KEY,
     getStoredRollHistory,
     saveStoredRollHistory,
-    subscribeToDDBRolls
+    subscribeToDDBRolls,
+    subscribeToCardUpdates,
 } from "../../../services/rollLogService";
 import type { DDBRollCardData, DDBRollLogPayload } from "../../../types/ddbRollLog";
 
@@ -29,6 +30,28 @@ export function useRollHistory(isObrReady: boolean) {
         };
 
         const unsubscribeLocal = subscribeToDDBRolls(handleNewCards);
+        const unsubscribeCardUpdates = subscribeToCardUpdates((cardId, patch, subIndex) => {
+            setRollHistory(prev => prev.map(c => {
+                if (c.id === cardId) {
+                    if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
+                        const updatedSubRolls = [...c.subRolls];
+                        updatedSubRolls[subIndex] = {
+                            ...updatedSubRolls[subIndex],
+                            damageResolutionStatus: patch.damageResolutionStatus,
+                            appliedDamageAmount: patch.appliedDamageAmount,
+                        };
+                        return {
+                            ...c,
+                            ...patch,
+                            subRolls: updatedSubRolls,
+                        };
+                    }
+                    return { ...c, ...patch };
+                }
+                return c;
+            }));
+        });
+
         let unsubscribeBroadcast: (() => void) | null = null;
         try {
             unsubscribeBroadcast = OBR.broadcast.onMessage(DDB_ROLL_CHANNEL, (event) => {
@@ -36,6 +59,35 @@ export function useRollHistory(isObrReady: boolean) {
                 if (payload && Array.isArray(payload.cards) && payload.cards.length > 0) {
                     saveStoredRollHistory(payload.cards);
                     handleNewCards(payload.cards);
+                }
+                if (payload && payload.update) {
+                    const { cardId, damageResolutionStatus, appliedDamageAmount, resolutionNote, subIndex } = payload.update;
+                    setRollHistory(prev => prev.map(c => {
+                        if (c.id === cardId) {
+                            if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
+                                const updatedSubRolls = [...c.subRolls];
+                                updatedSubRolls[subIndex] = {
+                                    ...updatedSubRolls[subIndex],
+                                    damageResolutionStatus,
+                                    appliedDamageAmount,
+                                };
+                                return {
+                                    ...c,
+                                    damageResolutionStatus,
+                                    appliedDamageAmount,
+                                    resolutionNote,
+                                    subRolls: updatedSubRolls,
+                                };
+                            }
+                            return {
+                                ...c,
+                                damageResolutionStatus,
+                                appliedDamageAmount,
+                                resolutionNote,
+                            };
+                        }
+                        return c;
+                    }));
                 }
             });
         } catch (err) {
@@ -66,6 +118,7 @@ export function useRollHistory(isObrReady: boolean) {
 
         return () => {
             unsubscribeLocal();
+            unsubscribeCardUpdates();
             unsubscribeBroadcast?.();
             window.removeEventListener("embers:ddb-roll", handleWindowEvent);
             window.removeEventListener("storage", handleStorageEvent);

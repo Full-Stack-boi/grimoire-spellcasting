@@ -7,7 +7,7 @@ import { extractDdbBaseline } from "../domain/resourceMerge";
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 type CustomHp = { current: number; max: number; temp: number } | null;
-type ConcentrationSpell = { id: string; name: string } | null;
+type ConcentrationSpell = { id: string; name: string; hexTargetId?: string | null } | null;
 type DeathSaves = { successes: number; failures: number };
 
 interface UseCombatStatePersistenceOptions {
@@ -128,13 +128,23 @@ export function useCombatStatePersistence({
             }
             if (persisted.featureUses) setFeatureUses(persisted.featureUses);
             if (typeof persisted.hpCurrent === "number" && character.hp) {
-                setCustomHp({ current: persisted.hpCurrent, max: character.hp.max, temp: persisted.hpTemp || 0 });
+                const max = (typeof persisted.hpMax === "number" && persisted.hpMax > 0) ? persisted.hpMax : character.hp.max;
+                setCustomHp(prev => {
+                    if (prev && typeof prev.current === "number") {
+                        return prev;
+                    }
+                    return { current: persisted.hpCurrent!, max, temp: persisted.hpTemp || 0 };
+                });
             }
             if (typeof persisted.actionUsed === "boolean") setActionUsed(persisted.actionUsed);
             if (typeof persisted.bonusActionUsed === "boolean") setBonusActionUsed(persisted.bonusActionUsed);
             if (typeof persisted.heroicInspiration === "boolean") setHeroicInspiration(persisted.heroicInspiration);
             if (persisted.concentrationSpellId && persisted.concentrationSpellName) {
-                setConcentrationSpell({ id: persisted.concentrationSpellId, name: persisted.concentrationSpellName });
+                setConcentrationSpell({
+                    id: persisted.concentrationSpellId,
+                    name: persisted.concentrationSpellName,
+                    hexTargetId: persisted.hexTargetId
+                });
             } else {
                 setConcentrationSpell(null);
             }
@@ -158,6 +168,7 @@ export function useCombatStatePersistence({
                 pactSlotsUsed: pactSlots.used,
                 featureUses,
                 hpCurrent: customHp?.current ?? null,
+                hpMax: customHp?.max ?? null,
                 hpTemp: customHp?.temp ?? 0,
                 actionUsed,
                 bonusActionUsed,

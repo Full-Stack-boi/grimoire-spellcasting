@@ -18,6 +18,11 @@ import effectsJSON from "../assets/effect_record.json";
 import { getItemSize, waitMs } from "../utils";
 import { log_error } from "../logging";
 import { DARKNESS_ZONE_METADATA_KEY } from "../features/targeting/application/lineOfSightService";
+import { EffectInstruction } from "../types/messageListener";
+import {
+  getEffectiveAnimationsEnabled,
+  getEffectAssetBaseUrl,
+} from "../components/Settings/settings";
 
 export const effects = effectsJSON as unknown as Effects;
 export const effectNames = gatherEffectNames();
@@ -75,6 +80,7 @@ export function getEffectURL(
   name: string,
   variantName: string,
   variantIndex?: number,
+  assetBaseUrl: string = ASSET_LOCATION,
 ) {
   // This function finds the appropriate effect and variant, and returns a URL to its video file
   const effect = getEffect(name);
@@ -90,7 +96,7 @@ export function getEffectURL(
     return undefined;
   }
 
-  return `${ASSET_LOCATION}/${effect.basename}_${variantPath}.webm`;
+  return `${assetBaseUrl.replace(/\/+$/, "")}/${effect.basename}_${variantPath}.webm`;
 }
 
 export function urlVariant(url: string, variant?: number) {
@@ -185,6 +191,9 @@ export function buildEffectImage(
   spellCaster?: string,
   spellCasterTokenId?: string,
   spellCharacterId?: string | number,
+  spellId?: string,
+  spellDisplayName?: string,
+  assetBaseUrl: string = ASSET_LOCATION,
 ) {
   const effectVariantName = getVariantName(effectName, size * effect.dpi);
   if (effectVariantName == undefined) {
@@ -214,6 +223,7 @@ export function buildEffectImage(
     variantIndex
       ? variantIndex % effect.variants[effectVariantName].name.length
       : undefined,
+    assetBaseUrl,
   );
   if (url == undefined) {
     log_error(
@@ -228,10 +238,13 @@ export function buildEffectImage(
   };
   if (spellName != undefined) {
     gatheredMetadata[spellMetadataKey] = {
+      id: spellId ?? spellName,
       name: spellName,
+      displayName: spellDisplayName,
       caster: spellCaster,
       casterTokenId: spellCasterTokenId,
       characterId: spellCharacterId,
+      assetBaseUrl,
     };
     if (spellName.toLowerCase() === "darkness") {
       const existingZoneMeta = (gatheredMetadata[DARKNESS_ZONE_METADATA_KEY] as Record<string, unknown>) || {};
@@ -298,6 +311,24 @@ export function prefetchAssets(assets: string[]) {
   return Promise.all(fetches);
 }
 
+function broadcastEffectInstructions(instructions: EffectInstruction[]) {
+  void Promise.all([getEffectiveAnimationsEnabled(), getEffectAssetBaseUrl()])
+    .then(([animationEnabled, assetBaseUrl]) => {
+      OBR.broadcast.sendMessage(
+        MESSAGE_CHANNEL,
+        {
+          instructions,
+          visualSettings: { animationEnabled, assetBaseUrl },
+        },
+        { destination: "ALL" },
+      );
+    })
+    .catch((error) => {
+      log_error("Could not resolve animation settings for the effect.", error);
+      OBR.notification.show("Could not play the selected effect.", "ERROR");
+    });
+}
+
 export function doEffect(effectName: string, effect?: Effect) {
   if (effect == undefined) {
     effect = getEffect(effectName);
@@ -318,19 +349,16 @@ export function doEffect(effectName: string, effect?: Effect) {
         return;
       }
 
-      OBR.broadcast.sendMessage(
-        MESSAGE_CHANNEL,
-        {
-          instructions: targets.slice(1).map((target) => ({
-            id: effectName,
-            effectProperties: {
-              copies: getTargetCount(target),
-              source: targets[0].position,
-              destination: target.position,
-            },
-          })),
-        },
-        { destination: "ALL" },
+      broadcastEffectInstructions(
+        targets.slice(1).map((target) => ({
+          type: "effect" as const,
+          id: effectName,
+          effectProperties: {
+            copies: getTargetCount(target) ?? 1,
+            source: targets[0].position,
+            destination: target.position,
+          },
+        })),
       );
     } else if (effect.type === "CIRCLE") {
       if (targets.length < 1) {
@@ -348,18 +376,15 @@ export function doEffect(effectName: string, effect?: Effect) {
       );
 
       Promise.all(targetAttachments).then((attachments) => {
-        OBR.broadcast.sendMessage(
-          MESSAGE_CHANNEL,
-          {
-            instructions: targets.map((target, i) => ({
-              id: effectName,
-              effectProperties: {
-                position: target.position,
-                size: attachments[i] ? getItemSize(attachments[i]) : 5,
-              },
-            })),
-          },
-          { destination: "ALL" },
+        broadcastEffectInstructions(
+          targets.map((target, i) => ({
+            type: "effect" as const,
+            id: effectName,
+            effectProperties: {
+              source: target.position,
+              size: attachments[i] ? getItemSize(attachments[i]) : 5,
+            },
+          })),
         );
       });
     } else if (effect.type === "CONE") {
@@ -371,20 +396,27 @@ export function doEffect(effectName: string, effect?: Effect) {
         return;
       }
 
-      OBR.broadcast.sendMessage(
-        MESSAGE_CHANNEL,
-        {
-          instructions: [
-            {
-              id: effectName,
-              effectProperties: {
-                source: targets[0].position,
-                destination: targets[1].position,
-              },
+      broadcastEffectInstructions(
+        [
+          {
+            type: "effect",
+            id: effectName,
+            effectProperties: {
+              source: targets[0].position,
+              rotation:
+                (Math.atan2(
+                  targets[1].position.y - targets[0].position.y,
+                  targets[1].position.x - targets[0].position.x,
+                ) *
+                  180) /
+                Math.PI,
+              size: Math.hypot(
+                targets[1].position.x - targets[0].position.x,
+                targets[1].position.y - targets[0].position.y,
+              ),
             },
-          ],
-        },
-        { destination: "ALL" },
+          },
+        ],
       );
     }
   });

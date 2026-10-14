@@ -78,6 +78,7 @@ export const CombatVitals: React.FC<CombatVitalsProps> = ({
                     resistances: character.defenses?.resistances || [],
                     immunities: character.defenses?.immunities || [],
                     vulnerabilities: character.defenses?.vulnerabilities || [],
+                    conditionImmunities: character.defenses?.conditionImmunities || (character as any).conditionImmunities || [],
                 })}
                 title="Defenses: Click for full breakdown"
             >

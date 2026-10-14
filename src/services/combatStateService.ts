@@ -16,6 +16,7 @@ export interface EmbersCombatState {
     pactSlotsUsed: number;
     featureUses: Record<string, number>;
     hpCurrent: number | null;
+    hpMax?: number | null;
     hpTemp: number;
     actionUsed: boolean;
     bonusActionUsed: boolean;
@@ -40,6 +41,15 @@ export function isHexConcentrationActive(state: EmbersCombatState | null | undef
     return id === "hex" || name === "hex" || (name ? name.startsWith("hex") : false);
 }
 
+export function isTargetHexed(
+    state: EmbersCombatState | null | undefined,
+    targetId: string | null | undefined
+): boolean {
+    if (!state || !targetId) return false;
+    if (!isHexConcentrationActive(state)) return false;
+    return Boolean(state.hexTargetId && state.hexTargetId === targetId);
+}
+
 export function getDefaultCombatState(characterId: number): EmbersCombatState {
     return {
         characterId,
@@ -48,6 +58,7 @@ export function getDefaultCombatState(characterId: number): EmbersCombatState {
         pactSlotsUsed: 0,
         featureUses: {},
         hpCurrent: null,
+        hpMax: null,
         hpTemp: 0,
         actionUsed: false,
         bonusActionUsed: false,

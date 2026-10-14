@@ -1,6 +1,7 @@
 import OBR from "@owlbear-rodeo/sdk";
 
 import { APP_KEY } from "../../../config";
+import { calculateResponsivePopoverDimensions } from "../../../utils/popoverSizing";
 
 export const actionDockPopoverId = `${APP_KEY}/action-dock-popover`;
 export const DOCK_SAVED_HEIGHT_KEY = "embers:action-dock-height";
@@ -55,18 +56,35 @@ export async function openActionDock() {
     const viewWidth = cachedDockViewWidth;
     const viewHeight = cachedDockViewHeight;
 
-    const extraLeftGutter = 60;
-    const dockWidth = Math.min(1480, Math.max(760, viewWidth - 140));
-
     const savedH = getSavedDockHeight();
     const defaultDockHeight = Math.min(280, Math.max(220, Math.round(viewHeight * 0.28)));
-    const dockHeight = savedH ?? defaultDockHeight;
-    const popoverHeight = dockHeight + RESOURCE_TRAY_FLOAT_HEIGHT;
+    const preferredDockHeight = savedH ?? defaultDockHeight;
+    const preferredDockWidth = Math.min(1480, Math.max(760, viewWidth - 140));
+    const preferredPopoverWidth = preferredDockWidth + 60;
+    const dimensions = calculateResponsivePopoverDimensions(
+        viewWidth,
+        viewHeight,
+        preferredPopoverWidth,
+        preferredDockHeight + RESOURCE_TRAY_FLOAT_HEIGHT,
+    );
+    const widthConstrained = dimensions.width < preferredPopoverWidth;
+    const extraLeftGutter = widthConstrained ? 0 : 60;
+    const dockWidth = dimensions.width - extraLeftGutter;
+    const dockHeight = dimensions.height - RESOURCE_TRAY_FLOAT_HEIGHT;
+    const popoverHeight = dimensions.height;
 
-    const dockLeft = Math.max(70, Math.round((viewWidth - dockWidth) / 2));
-    const popoverLeft = Math.max(0, dockLeft - extraLeftGutter);
-    const popoverWidth = dockWidth + extraLeftGutter;
-    const popoverTop = Math.max(10, Math.round(viewHeight - popoverHeight - 16));
+    const dockLeft = widthConstrained
+        ? Math.max(8, Math.round((viewWidth - dockWidth) / 2))
+        : Math.max(70, Math.round((viewWidth - dockWidth) / 2));
+    const popoverLeft = widthConstrained
+        ? dockLeft
+        : Math.max(0, dockLeft - extraLeftGutter);
+    const popoverWidth = dimensions.width;
+    const heightConstrained =
+        dimensions.height < preferredDockHeight + RESOURCE_TRAY_FLOAT_HEIGHT;
+    const popoverTop = heightConstrained
+        ? Math.max(8, Math.round(viewHeight - popoverHeight - 8))
+        : Math.max(10, Math.round(viewHeight - popoverHeight - 16));
 
     const dockSearch = new URLSearchParams(window.location.search || "");
     dockSearch.set("dockHeight", String(dockHeight));

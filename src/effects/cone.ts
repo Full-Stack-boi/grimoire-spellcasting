@@ -14,6 +14,11 @@ export async function cone(
   variant?: number,
   spellName?: string,
   spellCaster?: string,
+  spellCasterTokenId?: string,
+  spellCharacterId?: string | number,
+  spellId?: string,
+  spellDisplayName?: string,
+  assetBaseUrl?: string,
 ) {
   const effect = getEffect(coneInfo.name);
   if (effect == undefined) {
@@ -48,6 +53,11 @@ export async function cone(
     zIndex,
     spellName,
     spellCaster,
+    spellCasterTokenId,
+    spellCharacterId,
+    spellId,
+    spellDisplayName,
+    assetBaseUrl,
   );
   if (result == undefined) {
     return;

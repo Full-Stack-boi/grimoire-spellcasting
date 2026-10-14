@@ -6,7 +6,7 @@ import type { DetailDrawerItem } from "../domain/types";
 import { bindTokenToPlayer, focusCameraOnToken, unbindTokenFromPlayer } from "../../../features/player/playerCharacterService";
 import { openDDBSyncModal } from "../../../views/DDBSyncModal";
 import { toggleDDBRollLogPopover } from "../../../services/rollLogService";
-import { IconClearTargets, IconCheck, IconCondition, IconDiceD20, IconGameLog, IconGrimoire, IconLongRest } from "../shared/Bg3Icons";
+import { IconClearTargets, IconCheck, IconCondition, IconDiceD20, IconGameLog, IconGrimoire, IconShortRest, IconLongRest } from "../shared/Bg3Icons";
 import { CharacterIdentity } from "./CharacterIdentity";
 import { DeathSavesControl } from "./DeathSavesControl";
 import { HitPointSummary } from "./HitPointSummary";
@@ -47,6 +47,7 @@ interface ActionDockVitalsRailProps {
     onUnreadRollsClear: () => void;
     isSyncing?: boolean;
     onResync?: () => void;
+    onShortRest: () => void;
     onLongRest: () => void;
     onDeathSaveRoll: () => void;
     onHeal: () => void;
@@ -66,7 +67,7 @@ export function ActionDockVitalsRail({
     otherOwnerName, currentHp, maxHp, temporaryHp, customTemporaryHp, deathSaves, setDeathSaves,
     heroicInspiration, drawerItem, setDrawerItem, isDiceRollerOpen, setIsDiceRollerOpen,
     isConditionsMenuOpen, conditions, exhaustionLevel, setExhaustionLevel,
-    activeBuffs, concentrationSpell, unreadRolls, onUnreadRollsClear, isSyncing, onResync, onLongRest, onDeathSaveRoll,
+    activeBuffs, concentrationSpell, unreadRolls, onUnreadRollsClear, isSyncing, onResync, onShortRest, onLongRest, onDeathSaveRoll,
     onHeal, onDamage, onInitiativeRoll, onToggleInspiration, onOpenSpellBrowser, onClearTargets,
     onBreakConcentration, onToggleCondition, onToggleConditionMenu, onRemoveBuff,
 }: ActionDockVitalsRailProps) {
@@ -139,7 +140,8 @@ export function ActionDockVitalsRail({
             )}
 
             <div className="ddb-pillar-toolbar">
-                <button type="button" className="ddb-pillar-tool-btn rest" onClick={onLongRest} title="Long Rest: Reset all actions, spell slots, and feature uses"><IconLongRest size={12} /><span>Rest</span></button>
+                <button type="button" className="ddb-pillar-tool-btn rest" onClick={onShortRest} title="Short Rest (1 Hour): Reset actions, pact slots, and short rest features"><IconShortRest size={12} /><span>Short</span></button>
+                <button type="button" className="ddb-pillar-tool-btn rest" onClick={onLongRest} title="Long Rest (8 Hours): Reset HP, all actions, spell slots, hit dice, and feature uses"><IconLongRest size={12} /><span>Long</span></button>
                 <button type="button" className={`ddb-pillar-tool-btn ${drawerItem?.type === "checks" ? "active" : ""}`} onClick={() => setDrawerItem(drawerItem?.type === "checks" ? null : { type: "checks" })} title="Ability Checks & Saving Throws (Sheet Checks)"><IconCheck size={12} /><span>Checks</span></button>
                 <button type="button" className={`ddb-pillar-tool-btn ${isDiceRollerOpen ? "active" : ""}`} onClick={() => setIsDiceRollerOpen(prev => !prev)} title="D&D Beyond Custom Dice Roller"><IconDiceD20 size={12} /></button>
                 <button type="button" className={`ddb-pillar-tool-btn ${isConditionsMenuOpen ? "active" : ""}`} onClick={onToggleConditionMenu} title="Active Conditions & Exhaustion Tracker"><IconCondition size={12} />{conditions.length > 0 && <span className="ddb-pillar-tool-badge">{conditions.length}</span>}</button>
@@ -163,7 +165,15 @@ export function ActionDockVitalsRail({
                     onRemoveBuff={handleRemoveBuff}
                 />
             )}
-            {isConditionsMenuOpen && <ConditionsPopover conditions={conditions} exhaustionLevel={exhaustionLevel} onExhaustionChange={setExhaustionLevel} onToggleCondition={onToggleCondition} />}
+            {isConditionsMenuOpen && (
+                <ConditionsPopover
+                    conditions={conditions}
+                    exhaustionLevel={exhaustionLevel}
+                    onExhaustionChange={setExhaustionLevel}
+                    onToggleCondition={onToggleCondition}
+                    onClose={onToggleConditionMenu}
+                />
+            )}
         </aside>
     );
 }

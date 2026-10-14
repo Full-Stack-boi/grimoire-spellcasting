@@ -1,0 +1,233 @@
+.gm-export-modal {
+  width: 90%;
+  max-width: 760px;
+  max-height: 85vh;
+  background: #11141b;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(239, 68, 68, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e5e7eb;
+}
+
+.gm-export-modal-header {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #1f2937;
+  background: #161a23;
+}
+
+.gm-export-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gm-export-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: 0.5px;
+}
+
+.gm-export-badge {
+  font-size: 11px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.gm-export-close-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.gm-export-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.gm-export-tabs {
+  display: flex;
+  background: #131720;
+  border-bottom: 1px solid #1f2937;
+}
+
+.gm-export-tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.gm-export-tab-btn:hover {
+  color: #e5e7eb;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.gm-export-tab-btn.active {
+  color: #fca5a5;
+  border-bottom-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.gm-export-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.gm-export-description {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9ca3af;
+}
+
+.gm-export-ddb-banner {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d1d5db;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.gm-export-ddb-banner code {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #93c5fd;
+}
+
+.gm-export-link {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.gm-export-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.gm-export-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #e5e7eb;
+  transition: all 0.15s;
+}
+
+.gm-export-action-btn:hover {
+  background: #374151;
+  border-color: #4b5563;
+  color: #fff;
+}
+
+.gm-export-action-btn.primary {
+  background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
+  border-color: #ef4444;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+}
+
+.gm-export-action-btn.primary:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+}
+
+.gm-export-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.gm-export-field-card {
+  background: #181c25;
+  border: 1px solid #232936;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.gm-export-field-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.gm-export-field-val {
+  font-size: 12px;
+  color: #d1d5db;
+  line-height: 1.5;
+}
+
+.gm-export-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.gm-export-small-copy {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #d1d5db;
+  cursor: pointer;
+}
+
+.gm-export-small-copy:hover {
+  background: #374151;
+  color: #fff;
+}
+
+.gm-export-code-block {
+  margin: 0;
+  padding: 12px;
+  background: #0b0d12;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a7f3d0;
+  overflow-x: auto;
+  max-height: 240px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

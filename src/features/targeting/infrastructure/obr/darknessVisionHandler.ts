@@ -1,6 +1,10 @@
-import OBR, { Vector2 } from "@owlbear-rodeo/sdk";
+import OBR, { Vector2, type Item } from "@owlbear-rodeo/sdk";
 import { APP_KEY } from "../../../../config";
-import { GLOBAL_STORAGE_KEYS, getGlobalSettingsValue } from "../../../../components/Settings/settings";
+import {
+    GLOBAL_STORAGE_KEYS,
+    getEffectAssetBaseUrl,
+    getGlobalSettingsValue,
+} from "../../../../components/Settings/settings";
 import {
     DARKNESS_ZONE_METADATA_KEY,
     EFFECT_METADATA_KEY,
@@ -11,6 +15,7 @@ import {
     readTokenVisionRules
 } from "../../application/lineOfSightService";
 import { resolveActiveCaster } from "./activeCasterResolver";
+import type { ActiveCasterInfo } from "./activeCasterResolver";
 import { getLinkedDDBCharacterId } from "../../../../services/ddbService";
 import { buildEffectImage, getEffect } from "../../../../effects/effects";
 import { DarknessZone } from "../../domain/vision";
@@ -36,7 +41,7 @@ function getDarknessZoneIdFromLocalId(id: string): string | undefined {
 /**
  * Calculates distance in feet between two points using scene grid settings.
  */
-async function calculateDistanceFeet(posA: Vector2, posB: Vector2): Promise<number> {
+export async function calculateDistanceFeet(posA: Vector2, posB: Vector2): Promise<number> {
     try {
         const [gridDpi, gridScale] = await Promise.all([
             OBR.scene.grid.getDpi(),
@@ -57,12 +62,13 @@ async function calculateDistanceFeet(posA: Vector2, posB: Vector2): Promise<numb
 /**
  * Determines whether a creature with given vision rules can see inside or through a Darkness zone.
  */
-async function canCreatureSeeInDarkness(
+export async function canCreatureSeeInDarkness(
     creaturePos: Vector2,
     zone: DarknessZone,
-    creatureItem: any,
+    creatureItem: Item | null,
     activePlayerId?: string
 ): Promise<boolean> {
+    if (!creatureItem) return false;
     const vision = readTokenVisionRules(creatureItem);
     const distFeet = await calculateDistanceFeet(creaturePos, zone.position);
 
@@ -104,6 +110,65 @@ async function canCreatureSeeInDarkness(
     }
 
     return false;
+}
+
+export async function isTokenHiddenByDarkness(
+    token: Pick<Item, "position">,
+    playerRole: "GM" | "PLAYER",
+    playerId: string,
+    activeCaster: ActiveCasterInfo | null,
+    darknessZones: DarknessZone[],
+    opacityMode: "dynamic" | "always-transparent" | "always-opaque"
+): Promise<boolean> {
+    if (playerRole === "GM") return false;
+
+    for (const zone of darknessZones) {
+        const tokenDistance = await calculateDistanceFeet(token.position, zone.position);
+        if (tokenDistance > zone.radiusFeet) continue;
+
+        let canSee = false;
+        if (opacityMode === "always-opaque") {
+            canSee = false;
+        } else if (opacityMode === "always-transparent" || zone.transparent) {
+            canSee = true;
+        } else if (activeCaster) {
+            canSee = await canCreatureSeeInDarkness(
+                activeCaster.position,
+                zone,
+                activeCaster.item,
+                playerId
+            );
+        }
+
+        if (!canSee && opacityMode !== "always-opaque" && activeCaster) {
+            const casterDistance = await calculateDistanceFeet(activeCaster.position, zone.position);
+            if (casterDistance <= zone.radiusFeet) {
+                canSee = true;
+            }
+        }
+
+        if (!canSee) return true;
+    }
+
+    return false;
+}
+
+export async function getTokenIdsInsideDarkness(
+    tokens: Array<Pick<Item, "id" | "position">>,
+    darknessZones: DarknessZone[]
+): Promise<Set<string>> {
+    const hiddenTokenIds = new Set<string>();
+
+    for (const token of tokens) {
+        for (const zone of darknessZones) {
+            if (await calculateDistanceFeet(token.position, zone.position) <= zone.radiusFeet) {
+                hiddenTokenIds.add(token.id);
+                break;
+            }
+        }
+    }
+
+    return hiddenTokenIds;
 }
 
 /**
@@ -265,6 +330,7 @@ export async function updateDarknessVision(): Promise<void> {
             const effect = getEffect(desiredEffect);
             if (effect) {
                 const sizeCells = (zone.radiusFeet * 2) / 5;
+                const assetBaseUrl = await getEffectAssetBaseUrl();
                 const result = buildEffectImage(
                     desiredEffect,
                     effect,
@@ -280,7 +346,14 @@ export async function updateDarknessVision(): Promise<void> {
                     1,
                     undefined,
                     "ATTACHMENT",
-                    1
+                    1,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    assetBaseUrl
                 );
                 if (result) {
                     const fogImage = result.image

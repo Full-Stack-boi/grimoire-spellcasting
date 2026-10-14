@@ -16,6 +16,10 @@ import {
 } from "./services/rollLogService";
 import { checkAndFireMovementTriggers } from "./services/conditionalTriggerService";
 import { setupDarknessVisionHandler } from "./features/targeting/infrastructure/obr/darknessVisionHandler";
+import { setupTurnIndicatorSync } from "./features/combat/overlays/turnIndicatorRenderer";
+import { setupTokenVitalsSync } from "./features/combat/overlays/tokenVitalsRenderer";
+import { subscribeToEncounter } from "./features/combat/initiativeService";
+import { syncTopTurnTrackerPopover, closeTopTurnTrackerPopover } from "./features/combat/turnTrackerPopoverService";
 
 function loadSpellListFromLocalStorage() {
   // Update scene metadata
@@ -61,6 +65,9 @@ function setupScene() {
   setupDDBTokenContextMenuOption();
   setupPlayerCharacterContextMenus();
   const unsubscribeDarkness = setupDarknessVisionHandler();
+  const unsubscribeTurnIndicator = setupTurnIndicatorSync();
+  const unsubscribeVitals = setupTokenVitalsSync();
+  const unsubscribePopoverSync = subscribeToEncounter(syncTopTurnTrackerPopover);
   loadSpellListFromLocalStorage();
 
   let interval: number | null = null;
@@ -150,6 +157,10 @@ function setupScene() {
     unsubscribePlayer();
     unsubscribeTool?.();
     unsubscribeDarkness?.();
+    unsubscribeTurnIndicator?.();
+    unsubscribeVitals?.();
+    unsubscribePopoverSync?.();
+    closeTopTurnTrackerPopover();
     unsubGrid();
     unsubItems();
   };

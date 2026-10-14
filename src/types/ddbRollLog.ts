@@ -5,6 +5,9 @@ export interface DDBSubRollToHit {
   isCrit?: boolean;
   isMiss?: boolean;
   mode?: "normal" | "advantage" | "disadvantage";
+  targetAc?: number;
+  isHit?: boolean;
+  hitLabel?: string;
 }
 
 export interface DDBSubRollDamage {
@@ -27,15 +30,39 @@ export interface DDBSubRollExtraDamage {
 export interface DDBSubRollEntry {
   unitLabel: string; // e.g. "BEAM 1", "RAY 2", "DART 1", "ATTACK 1"
   targetName?: string; // e.g. "Goblin Archer"
+  targetId?: string;
   toHit?: DDBSubRollToHit; // Attack roll
   damage?: DDBSubRollDamage; // Base damage
   extraDamage?: DDBSubRollExtraDamage[]; // Optional riders (Hex, etc.)
+  damageResolutionStatus?: "pending" | "applied" | "shielded" | "dismissed";
+  appliedDamageAmount?: number;
+}
+
+export interface DDBDamageComponent {
+  total: number;
+  damageType: string;
+  diceBreakdown: string;
+  formula: string;
+}
+
+export interface DDBTargetSaveResolution {
+  targetId: string;
+  targetName: string;
+  saveAbility: string;
+  saveDc: number;
+  successDamageMultiplier: number;
+  failureDamageMultiplier: number;
+  outcome?: "success" | "failure";
+  damageResolutionStatus: "pending" | "applied" | "dismissed";
+  appliedDamageAmount?: number;
+  resolutionNote?: string;
 }
 
 export interface DDBRollCardData {
   id: string;
   casterName: string;
   targetName?: string;
+  targetId?: string;
   actionName: string; // e.g. "ARCANA", "ELDRITCH BLAST", "RAPIER", "FIRE BOLT"
   actionType:
     | "CHECK"
@@ -55,6 +82,26 @@ export interface DDBRollCardData {
   isMiss?: boolean;
   timestamp: number;
 
+  // Attack vs AC resolution
+  rollD20?: number;
+  attackTotal?: number;
+  targetAc?: number;
+  isHit?: boolean;
+  hitLabel?: string;
+  requiresHitApproval?: boolean;
+  hitApprovalStatus?: "pending" | "confirmed" | "missed";
+  relatedCardIds?: string[];
+
+  // Pending Damage & GM Approval
+  pendingDamage?: number;
+  damageType?: string;
+  damageComponents?: DDBDamageComponent[];
+  damageResolutionStatus?: "pending" | "applied" | "shielded" | "dismissed";
+  appliedDamageAmount?: number;
+  resolutionNote?: string;
+  targetSaveResolutions?: DDBTargetSaveResolution[];
+  requiresManualDamageAdjudication?: boolean;
+
   // Optional grouped multi-strike entries
   subRolls?: DDBSubRollEntry[];
 
@@ -72,7 +119,18 @@ export interface DDBRollCardData {
   isDisadvantage?: boolean;
 }
 
+export interface DDBRollCardUpdatePayload {
+  cardId: string;
+  damageResolutionStatus: "pending" | "applied" | "shielded" | "dismissed";
+  appliedDamageAmount?: number;
+  resolutionNote?: string;
+  hitApprovalStatus?: "pending" | "confirmed" | "missed";
+  subIndex?: number;
+  targetSaveResolutions?: DDBTargetSaveResolution[];
+}
+
 export interface DDBRollLogPayload {
   cards: DDBRollCardData[];
   senderId?: string;
+  update?: DDBRollCardUpdatePayload;
 }

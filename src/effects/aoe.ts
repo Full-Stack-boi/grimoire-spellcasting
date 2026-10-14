@@ -22,6 +22,9 @@ export async function aoe(
   spellCaster?: string,
   spellCasterTokenId?: string,
   spellCharacterId?: string | number,
+  spellId?: string,
+  spellDisplayName?: string,
+  assetBaseUrl?: string,
 ) {
   const effect = getEffect(aoeEffectProperties.name);
   if (effect == undefined) {
@@ -58,6 +61,9 @@ export async function aoe(
     spellCaster,
     spellCasterTokenId,
     spellCharacterId,
+    spellId,
+    spellDisplayName,
+    assetBaseUrl,
   );
   if (result == undefined) {
     return;

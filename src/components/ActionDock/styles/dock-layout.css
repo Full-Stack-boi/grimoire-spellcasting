@@ -446,11 +446,31 @@
 /* Conditions Popover floating relative to pillar */
 .ddb-conditions-popover.pillar-floating {
     position: absolute;
-    bottom: 45px;
-    left: 8px;
-    width: 250px;
-    z-index: 50;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+    bottom: 38px;
+    left: 4px;
+    right: 4px;
+    width: auto;
+    max-height: 155px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.95);
+    background: #0f172a;
+    border: 1px solid rgba(245, 158, 11, 0.6);
+    border-radius: 6px;
+    padding: 6px 8px;
+    box-sizing: border-box;
+}
+
+.ddb-conditions-popover.pillar-floating .ddb-conditions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px;
+}
+
+.ddb-conditions-popover.pillar-floating .ddb-condition-toggle-btn {
+    padding: 3px 5px;
+    font-size: 0.64rem;
+    border-radius: 3px;
 }
 
 /* --------------------------------------------------------- */
@@ -765,4 +785,43 @@
     overflow-x: hidden;
     padding: 8px;
     box-sizing: border-box;
+}
+
+@media (max-width: 680px) {
+    .ddb-dock-2col-layout {
+        flex-direction: column;
+    }
+
+    .ddb-vitals-pillar {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        height: auto;
+        max-height: 82px;
+        flex: 0 0 auto;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--ddb-border-subtle);
+        touch-action: pan-x;
+    }
+
+    .ddb-vitals-pillar > * {
+        flex: 0 0 auto;
+    }
+
+    .ddb-vitals-pillar .ddb-caster-text-block {
+        min-width: 110px;
+    }
+
+    .ddb-dock-main-content {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .ddb-detail-drawer {
+        width: min(320px, calc(100% - 12px));
+        max-width: 100%;
+    }
 }

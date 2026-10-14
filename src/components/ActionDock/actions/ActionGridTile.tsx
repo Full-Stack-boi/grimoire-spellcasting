@@ -166,7 +166,7 @@ export const ActionGridTile: React.FC<ActionGridTileProps> = ({
         >
             <span className="ddb-bg3-icon-tile-shortcut" aria-hidden="true">{shortcut}</span>
             <span className="ddb-bg3-icon-tile-art" aria-hidden="true">{icon}</span>
-            {selected && <span className="ddb-bg3-icon-tile-selected" aria-hidden="true">✓</span>}
+            {selected && <span className={`ddb-bg3-icon-tile-selected ${handBadge ? "with-hand-badge" : ""}`} aria-hidden="true">✓</span>}
             {handBadge && (
                 <span
                     className={`ddb-bg3-tile-hand-badge ${handBadge.type}`}

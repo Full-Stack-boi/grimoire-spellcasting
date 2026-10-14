@@ -14,7 +14,7 @@ import OBR, {
   isImage,
 } from "@owlbear-rodeo/sdk";
 
-import { APP_KEY } from "./config";
+import { APP_KEY, SELECTED_WEAPON_VARIANT_KEY } from "./config";
 import {
   doSpell,
   getSpell,
@@ -25,8 +25,12 @@ import {
 import { getItemSize } from "./utils";
 import { log_error } from "./logging";
 import { spellPopoverId } from "./views/SpellSelectionPopover";
+import {
+  calculateResponsivePopoverDimensions,
+} from "./utils/popoverSizing";
 import { resolveActiveCaster } from "./features/targeting/infrastructure/obr/activeCasterResolver";
 import { captureCastContext } from "./features/targeting/application/castContext";
+import { getHealResolutionStatus } from "./features/combat/damageModeService";
 import {
   clearAimingOverlay,
   renderAimingOverlay,
@@ -95,7 +99,25 @@ import {
   toggleDDBRollLogPopover,
 } from "./services/rollLogService";
 import {
+  getTokenVitals,
+  applyDamage,
+  applyHeal,
+  replaceTokenConcentration,
+} from "./features/combat/tokenVitalsService";
+import type { TokenVitals } from "./features/combat/domain/types";
+import {
+  resolveAttackHit,
+} from "./features/combat/domain/attackResolution";
+import {
+  aggregateSubRollDamages,
+} from "./features/combat/domain/multiTargetDamage";
+import {
+  normalizeSaveAbility,
+  parseSaveDamageMultipliers,
+} from "./features/combat/domain/savingThrowDamage";
+import {
   DDBRollCardData,
+  DDBTargetSaveResolution,
   DDBSubRollEntry,
   DDBSubRollExtraDamage,
 } from "./types/ddbRollLog";
@@ -103,6 +125,7 @@ import {
   loadCombatState,
   saveCombatState,
   isHexConcentrationActive,
+  isTargetHexed,
   getDefaultCombatState,
 } from "./services/combatStateService";
 import {
@@ -112,6 +135,9 @@ import {
 import { resolveSpellConditionalTrigger } from "./services/spellTriggerResolver";
 import type { DDBParsedCharacter, DDBParsedSpell } from "./types/ddb";
 import type { SpellFormula } from "./types/spellFormula";
+import type { MonsterAction } from "./features/monsters/domain/types";
+import { rollMonsterSaveAction } from "./features/monsters/monsterService";
+import { parseMonsterSaveMechanics } from "./features/monsters/domain/monsterSaveMechanics";
 
 export const toolID = `${APP_KEY}/effect-tool`;
 export const toolMetadataSelectedSpell = `${APP_KEY}/selected-spell`;
@@ -136,6 +162,160 @@ export const targetHighlightMetadataKey = `${APP_KEY}/target-highlight`;
 export const previousToolMetadataKey = `${APP_KEY}/previous-tool`;
 export const playerSelectedTargetsMetadataKey = `${APP_KEY}/selected-targets`;
 export const defaultCasterMenuId = `${APP_KEY}/default-caster-menu`;
+export const toolMetadataMonsterAoeAction = `${APP_KEY}/selected-monster-aoe-action`;
+
+interface MonsterAoeToolSelection {
+  action: MonsterAction;
+  monsterName: string;
+}
+
+function readMonsterAoeToolSelection(value: unknown): MonsterAoeToolSelection | null {
+  if (!value || typeof value !== "object") return null;
+  const selection = value as Record<string, unknown>;
+  const rawAction = selection.action;
+  if (!rawAction || typeof rawAction !== "object") return null;
+  const action = rawAction as Record<string, unknown>;
+  const actionType =
+    action.type === "ability" || action.type === "spell" ? action.type : undefined;
+  if (
+    typeof selection.monsterName !== "string" ||
+    typeof action.id !== "string" ||
+    typeof action.name !== "string" ||
+    typeof action.description !== "string" ||
+    !actionType
+  ) {
+    return null;
+  }
+  const saveStat =
+    action.saveStat === "str" ||
+    action.saveStat === "dex" ||
+    action.saveStat === "con" ||
+    action.saveStat === "int" ||
+    action.saveStat === "wis" ||
+    action.saveStat === "cha"
+      ? action.saveStat
+      : undefined;
+  const damageComponents = Array.isArray(action.damageComponents)
+    ? action.damageComponents.filter(
+        (component): component is { formula: string; damageType: string } =>
+          Boolean(
+            component &&
+              typeof component === "object" &&
+              typeof (component as Record<string, unknown>).formula === "string" &&
+              typeof (component as Record<string, unknown>).damageType === "string",
+          ),
+      )
+    : undefined;
+  const parsedAction: MonsterAction = {
+    id: action.id,
+    name: action.name,
+    type: actionType,
+    description: action.description,
+    damage: typeof action.damage === "string" ? action.damage : undefined,
+    damageType: typeof action.damageType === "string" ? action.damageType : undefined,
+    damageComponents,
+    saveDc: typeof action.saveDc === "number" ? action.saveDc : undefined,
+    saveStat,
+    saveSuccessDamageMultiplier:
+      typeof action.saveSuccessDamageMultiplier === "number"
+        ? action.saveSuccessDamageMultiplier
+        : undefined,
+    saveFailureDamageMultiplier:
+      typeof action.saveFailureDamageMultiplier === "number"
+        ? action.saveFailureDamageMultiplier
+        : undefined,
+    areaOfEffect:
+      action.areaOfEffect &&
+      typeof action.areaOfEffect === "object" &&
+      ["Sphere", "Cone", "Cube", "Line"].includes(
+        String((action.areaOfEffect as Record<string, unknown>).shape),
+      ) &&
+      typeof (action.areaOfEffect as Record<string, unknown>).sizeFeet === "number"
+        ? {
+            shape: (action.areaOfEffect as { shape: "Sphere" | "Cone" | "Cube" | "Line" }).shape,
+            sizeFeet: (action.areaOfEffect as { sizeFeet: number }).sizeFeet,
+          }
+        : undefined,
+  };
+  if (!parseMonsterSaveMechanics(parsedAction).areaOfEffect) return null;
+  return {
+    action: parsedAction,
+    monsterName: selection.monsterName,
+  };
+}
+
+interface SpellSaveDamageInfo {
+  ability?: string;
+  dc?: number;
+  successMultiplier?: number;
+  failureMultiplier?: number;
+  hasConflictingData: boolean;
+}
+
+function getSpellSaveDamageInfo(
+  spellFormula: SpellFormula,
+  ddbSpell: DDBParsedSpell | undefined,
+  ddbCharacter: DDBParsedCharacter | null | undefined,
+  saveDcBonus: number,
+): SpellSaveDamageInfo {
+  const formulaAbility = normalizeSaveAbility(
+    spellFormula.interaction?.saveAbility,
+  );
+  const ddbAbility = normalizeSaveAbility(ddbSpell?.saveOrAttack);
+  const ability = formulaAbility || ddbAbility;
+  const formulaOutcomes = parseSaveDamageMultipliers(spellFormula.notes || "");
+  const ddbOutcomes = parseSaveDamageMultipliers(ddbSpell?.description || "");
+  const dc =
+    typeof ddbCharacter?.spellSaveDC === "number"
+      ? ddbCharacter.spellSaveDC + saveDcBonus
+      : undefined;
+  return {
+    ability,
+    dc,
+    successMultiplier: formulaOutcomes.success ?? ddbOutcomes.success,
+    failureMultiplier: formulaOutcomes.failure ?? ddbOutcomes.failure,
+    hasConflictingData: Boolean(
+      (formulaAbility && ddbAbility && formulaAbility !== ddbAbility) ||
+        (formulaOutcomes.success !== undefined &&
+          ddbOutcomes.success !== undefined &&
+          formulaOutcomes.success !== ddbOutcomes.success) ||
+        (formulaOutcomes.failure !== undefined &&
+          ddbOutcomes.failure !== undefined &&
+          formulaOutcomes.failure !== ddbOutcomes.failure),
+    ),
+  };
+}
+
+function isCompleteSpellSaveDamageInfo(info: SpellSaveDamageInfo): boolean {
+  return Boolean(
+    !info.hasConflictingData &&
+    info.ability &&
+      typeof info.dc === "number" &&
+      info.dc > 0 &&
+      (info.successMultiplier === 0 ||
+        info.successMultiplier === 0.5 ||
+        info.successMultiplier === 1) &&
+      (info.failureMultiplier === 0 ||
+        info.failureMultiplier === 0.5 ||
+        info.failureMultiplier === 1),
+  );
+}
+
+function createTargetSaveResolutions(
+  targets: Array<{ id: string; name: string }>,
+  info: SpellSaveDamageInfo,
+): DDBTargetSaveResolution[] {
+  if (!isCompleteSpellSaveDamageInfo(info)) return [];
+  return targets.map((target) => ({
+    targetId: target.id,
+    targetName: target.name,
+    saveAbility: info.ability!,
+    saveDc: info.dc!,
+    successDamageMultiplier: info.successMultiplier!,
+    failureDamageMultiplier: info.failureMultiplier!,
+    damageResolutionStatus: "pending",
+  }));
+}
 
 export interface TargetHighlightMetadata {
   id: number;
@@ -263,9 +443,42 @@ export function rollSpellDamageWithMechanics(
   return rollDamageDDB(dice, dmgType, "", isCrit);
 }
 
+type ToolContext = Parameters<NonNullable<Parameters<typeof OBR.tool.createMode>[0]["onToolMove"]>>[0];
+type ToolEvent = Parameters<NonNullable<Parameters<typeof OBR.tool.createMode>[0]["onToolMove"]>>[1];
+
+let activeOverlayMode: "none" | "aiming" | "aoe" = "none";
+let isAimingWorkerRunning = false;
+let pendingAimingEvent: {
+  context: ToolContext;
+  event: ToolEvent;
+  playerRole: "GM" | "PLAYER";
+  playerID: string;
+} | null = null;
+
+let cachedGridInfo: { data: GridInfo; timestamp: number } | null = null;
+let cachedActiveCaster: { data: Awaited<ReturnType<typeof resolveActiveCaster>>; timestamp: number; key: string } | null = null;
+let cachedSceneItems: { data: Item[]; timestamp: number } | null = null;
+let cachedPlayerMetadata: { data: Record<string, unknown>; timestamp: number } | null = null;
+
+export function invalidateAimingEnvironmentCache(): void {
+  cachedGridInfo = null;
+  cachedActiveCaster = null;
+  cachedSceneItems = null;
+  cachedPlayerMetadata = null;
+}
+
+export async function clearAllAimingOverlays(): Promise<void> {
+  activeOverlayMode = "none";
+  await Promise.all([clearAimingOverlay(), clearAoePreview()]);
+}
+
 function deactivateTool() {
+  activeOverlayMode = "none";
+  invalidateAimingEnvironmentCache();
   clearAimingOverlay();
   clearAoePreview();
+  OBR.player.setMetadata({ [toolMetadataMonsterAoeAction]: undefined });
+  OBR.tool.setMetadata(toolID, { [toolMetadataMonsterAoeAction]: undefined });
   OBR.scene.local.getItems().then((items) => {
     const targets = items.filter(
       (item) => item.metadata[targetHighlightMetadataKey] != undefined,
@@ -282,26 +495,32 @@ function deactivateTool() {
 }
 
 export async function stopAiming(): Promise<void> {
+  activeOverlayMode = "none";
+  invalidateAimingEnvironmentCache();
   clearAimingOverlay();
   clearAoePreview();
   await clearAllTargets();
-  setSelectedSpell("");
+  await setSelectedSpell("");
   await OBR.player.setMetadata({
     [toolMetadataSelectedSpell]: undefined,
     [toolMetadataSelectedCaster]: undefined,
     [toolMetadataSelectedWeapon]: undefined,
+    [SELECTED_WEAPON_VARIANT_KEY]: undefined,
     [toolMetadataAttackCount]: undefined,
     [selectedRiderChoiceMetadataKey]: undefined,
     [toolMetadataWeaponRange]: undefined,
+    [toolMetadataMonsterAoeAction]: undefined,
     [playerSelectedTargetsMetadataKey]: [],
   });
   await OBR.tool.setMetadata(toolID, {
     [toolMetadataSelectedSpell]: undefined,
     [toolMetadataSelectedCaster]: undefined,
     [toolMetadataSelectedWeapon]: undefined,
+    [SELECTED_WEAPON_VARIANT_KEY]: undefined,
     [toolMetadataAttackCount]: undefined,
     [selectedRiderChoiceMetadataKey]: undefined,
     [toolMetadataWeaponRange]: undefined,
+    [toolMetadataMonsterAoeAction]: undefined,
   });
   try {
     const metadata = await OBR.player.getMetadata();
@@ -381,30 +600,54 @@ async function removeTarget(target: Image, targets: Image[]) {
   OBR.scene.local.deleteItems([target.id]);
 }
 
-export function setSelectedSpell(
+export async function setSelectedSpell(
   spellName: string,
   casterId?: string,
   weaponId?: string,
   attackCount?: number,
   riderChoice?: string,
   weaponRange?: number,
-) {
-  OBR.player.setMetadata({
-    [toolMetadataSelectedSpell]: spellName || undefined,
-    [toolMetadataSelectedCaster]: casterId || undefined,
-    [toolMetadataSelectedWeapon]: weaponId || undefined,
-    [toolMetadataAttackCount]: attackCount || undefined,
-    [selectedRiderChoiceMetadataKey]: riderChoice || undefined,
-    [toolMetadataWeaponRange]: weaponRange || undefined,
+  weaponVariant?: string,
+): Promise<void> {
+  invalidateAimingEnvironmentCache();
+  activeOverlayMode = "none";
+  await Promise.all([
+    OBR.player.setMetadata({
+      [toolMetadataSelectedSpell]: spellName || undefined,
+      [toolMetadataSelectedCaster]: casterId || undefined,
+      [toolMetadataSelectedWeapon]: weaponId || undefined,
+      [SELECTED_WEAPON_VARIANT_KEY]: weaponVariant || undefined,
+      [toolMetadataAttackCount]: attackCount || undefined,
+      [selectedRiderChoiceMetadataKey]: riderChoice || undefined,
+      [toolMetadataWeaponRange]: weaponRange || undefined,
+    }),
+    OBR.tool.setMetadata(toolID, {
+      [toolMetadataSelectedSpell]: spellName || undefined,
+      [toolMetadataSelectedCaster]: casterId || undefined,
+      [toolMetadataSelectedWeapon]: weaponId || undefined,
+      [SELECTED_WEAPON_VARIANT_KEY]: weaponVariant || undefined,
+      [toolMetadataAttackCount]: attackCount || undefined,
+      [selectedRiderChoiceMetadataKey]: riderChoice || undefined,
+      [toolMetadataWeaponRange]: weaponRange || undefined,
+    }),
+  ]);
+}
+
+export async function startMonsterAoeAction(
+  action: MonsterAction,
+  monsterName: string,
+  casterTokenId: string,
+): Promise<void> {
+  const mechanics = parseMonsterSaveMechanics(action);
+  if (!mechanics.areaOfEffect || !mechanics.hasSavingThrow) {
+    throw new Error(`Cannot target ${action.name}: save area metadata is unavailable.`);
+  }
+  await setSelectedSpell("", casterTokenId);
+  await OBR.player.setMetadata({
+    [toolMetadataMonsterAoeAction]: { action, monsterName },
   });
-  OBR.tool.setMetadata(toolID, {
-    [toolMetadataSelectedSpell]: spellName || undefined,
-    [toolMetadataSelectedCaster]: casterId || undefined,
-    [toolMetadataSelectedWeapon]: weaponId || undefined,
-    [toolMetadataAttackCount]: attackCount || undefined,
-    [selectedRiderChoiceMetadataKey]: riderChoice || undefined,
-    [toolMetadataWeaponRange]: weaponRange || undefined,
-  });
+  invalidateAimingEnvironmentCache();
+  await OBR.tool.activateTool(toolID);
 }
 
 export function getTargetHighlightMetadata(
@@ -442,6 +685,8 @@ export async function getSortedTargets() {
 }
 
 export async function clearAllTargets(): Promise<void> {
+  activeOverlayMode = "none";
+  invalidateAimingEnvironmentCache();
   clearAimingOverlay();
   clearAoePreview();
   const targets = await getSortedTargets();
@@ -616,13 +861,23 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
       },
     ],
     shortcut: ".",
-    onClick() {
+    async onClick() {
       // Open popup to select a spell
       const search = window.location.search || "";
+      const [viewportWidth, viewportHeight] = await Promise.all([
+        OBR.viewport.getWidth(),
+        OBR.viewport.getHeight(),
+      ]);
+      const dimensions = calculateResponsivePopoverDimensions(
+        viewportWidth,
+        viewportHeight,
+        760,
+        440,
+      );
       OBR.popover.open({
         id: spellPopoverId,
-        width: 760,
-        height: 440,
+        width: dimensions.width,
+        height: dimensions.height,
         url: `${window.location.origin}/spell-selection-popover${search}`,
         hidePaper: true,
       });
@@ -754,6 +1009,288 @@ async function getSceneGridInfo(): Promise<GridInfo> {
   };
 }
 
+export function getAimingWorkerStateForTest() {
+  return {
+    isAimingWorkerRunning,
+    pendingAimingEvent,
+    activeOverlayMode,
+  };
+}
+
+async function processAimingMove(
+  _context: ToolContext,
+  event: ToolEvent,
+  playerRole: "GM" | "PLAYER",
+  playerID: string,
+) {
+  const now = Date.now();
+  let metadata: Record<string, unknown>;
+  if (cachedPlayerMetadata && now - cachedPlayerMetadata.timestamp < 200) {
+    metadata = cachedPlayerMetadata.data;
+  } else {
+    metadata = (await OBR.player.getMetadata()) ?? {};
+    cachedPlayerMetadata = { data: metadata, timestamp: now };
+  }
+
+  const selectedSpell = metadata?.[toolMetadataSelectedSpell] as
+    | string
+    | undefined;
+  const monsterAoeSelection = readMonsterAoeToolSelection(
+    metadata[toolMetadataMonsterAoeAction],
+  );
+  if (!selectedSpell) {
+    if (monsterAoeSelection) {
+      const mechanics = parseMonsterSaveMechanics(monsterAoeSelection.action);
+      const activeCaster = await resolveActiveCaster(playerRole, playerID, {
+        purpose: "cast",
+      });
+      if (activeCaster && mechanics.areaOfEffect) {
+        let grid: GridInfo;
+        if (cachedGridInfo && now - cachedGridInfo.timestamp < 1000) {
+          grid = cachedGridInfo.data;
+        } else {
+          grid = await getSceneGridInfo();
+          cachedGridInfo = { data: grid, timestamp: now };
+        }
+        activeOverlayMode = "aoe";
+        await renderAoePreview({
+          template: {
+            shape: mechanics.areaOfEffect.shape,
+            origin: activeCaster.position,
+            cursor: isValidCombatTargetToken(event.target)
+              ? event.target!.position
+              : event.pointerPosition,
+            sizeFeet: mechanics.areaOfEffect.sizeFeet,
+          },
+          grid,
+          casterId: activeCaster.id,
+        });
+        return;
+      }
+    }
+    if (activeOverlayMode !== "none") {
+      activeOverlayMode = "none";
+      await Promise.all([clearAimingOverlay(), clearAoePreview()]);
+    }
+    return;
+  }
+
+  const casterKey = `${playerRole}_${playerID}`;
+  let activeCaster: Awaited<ReturnType<typeof resolveActiveCaster>>;
+  if (
+    cachedActiveCaster &&
+    cachedActiveCaster.key === casterKey &&
+    now - cachedActiveCaster.timestamp < 400
+  ) {
+    activeCaster = cachedActiveCaster.data;
+  } else {
+    activeCaster = await resolveActiveCaster(playerRole, playerID);
+    cachedActiveCaster = { data: activeCaster, timestamp: now, key: casterKey };
+  }
+
+  if (!activeCaster) {
+    if (activeOverlayMode !== "none") {
+      activeOverlayMode = "none";
+      await Promise.all([clearAimingOverlay(), clearAoePreview()]);
+    }
+    return;
+  }
+
+  let grid: GridInfo;
+  if (cachedGridInfo && now - cachedGridInfo.timestamp < 1000) {
+    grid = cachedGridInfo.data;
+  } else {
+    grid = await getSceneGridInfo();
+    cachedGridInfo = { data: grid, timestamp: now };
+  }
+
+  const spell = getSpell(selectedSpell, playerRole === "GM");
+  const aoe = getSpellAoE(spell, selectedSpell);
+
+  if (aoe) {
+    if (activeOverlayMode === "aiming") {
+      await clearAimingOverlay();
+    }
+    activeOverlayMode = "aoe";
+
+    const maxRange = getSpellRange(spell, selectedSpell);
+    const isSelfCentered = aoe.shape === "Sphere" && maxRange === 0;
+
+    const isTargetToken =
+      !event.shiftKey && isValidCombatTargetToken(event.target);
+    const targetPos = isSelfCentered
+      ? activeCaster.position
+      : isTargetToken
+        ? event.target!.position
+        : event.pointerPosition;
+
+    await renderAoePreview({
+      template: {
+        shape: aoe.shape,
+        origin: activeCaster.position,
+        cursor: targetPos,
+        sizeFeet: aoe.size,
+      },
+      grid,
+      casterId: activeCaster.id,
+    });
+  } else {
+    if (activeOverlayMode === "aoe") {
+      await clearAoePreview();
+    }
+    activeOverlayMode = "aiming";
+
+    const customWeaponRange = metadata?.[toolMetadataWeaponRange] as
+      | number
+      | undefined;
+    const maxRange =
+      (selectedSpell === "ranged_weapon_attack" ||
+        selectedSpell === "melee_weapon_attack") &&
+      typeof customWeaponRange === "number" &&
+      customWeaponRange > 0
+        ? customWeaponRange
+        : getSpellRange(spell, selectedSpell);
+    const isTargetToken =
+      !event.shiftKey && isValidCombatTargetToken(event.target);
+    const targetPos = isTargetToken
+      ? event.target!.position
+      : !event.shiftKey
+        ? snapToCellCenter(event.pointerPosition, grid)
+        : event.pointerPosition;
+
+    // Check Line of Sight against any darkness zones
+    let sceneItems: Item[];
+    if (cachedSceneItems && now - cachedSceneItems.timestamp < 300) {
+      sceneItems = cachedSceneItems.data;
+    } else {
+      sceneItems = await OBR.scene.items.getItems();
+      cachedSceneItems = { data: sceneItems, timestamp: now };
+    }
+
+    const darknessZones = extractDarknessZones(sceneItems);
+    const visionRules = activeCaster.item
+      ? readTokenVisionRules(activeCaster.item)
+      : {};
+    const casterElevation = readTokenElevation(activeCaster.item);
+    const targetElevation = readTokenElevation(event.target);
+    const visionCheck = evaluateLineOfSight(
+      activeCaster.position,
+      targetPos,
+      darknessZones,
+      grid,
+      {
+        isDM: false,
+        casterId: activeCaster.id,
+        playerId: playerID,
+        characterId: activeCaster.item
+          ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined
+          : undefined,
+        visionRules,
+        casterElevation,
+        targetElevation,
+      },
+    );
+
+    const isWeapon =
+      selectedSpell === "melee_weapon_attack" ||
+      selectedSpell === "ranged_weapon_attack";
+
+    let hasAdvantage = false;
+    let hasDisadvantage = false;
+
+    if (darknessZones.length > 0) {
+      const casterInDarkness = darknessZones.some((zone) => {
+        const dx = activeCaster.position.x - zone.position.x;
+        const dy = activeCaster.position.y - zone.position.y;
+        const distFeet =
+          (Math.sqrt(dx * dx + dy * dy) / grid.dpi) * grid.scaleMultiplier;
+        return distFeet <= zone.radiusFeet;
+      });
+
+      if (!visionCheck.canSee) {
+        if (isWeapon) {
+          hasDisadvantage = true;
+        }
+      } else if (casterInDarkness) {
+        const targetToken = sceneItems.find(
+          (item) =>
+            isValidCombatTargetToken(item) &&
+            Math.hypot(
+              item.position.x - targetPos.x,
+              item.position.y - targetPos.y,
+            ) <
+              grid.dpi / 2,
+        );
+        const targetVisionRules = targetToken
+          ? readTokenVisionRules(targetToken)
+          : {};
+        const targetHasDarknessVision = Boolean(
+          targetVisionRules.devilsSight ||
+            (targetVisionRules.truesight &&
+              targetVisionRules.truesight >= 15) ||
+            (targetVisionRules.blindFighting &&
+              targetVisionRules.blindFighting >= 10),
+        );
+        if (!targetHasDarknessVision) {
+          hasAdvantage = true;
+        }
+      }
+    }
+
+    await renderAimingOverlay({
+      casterPos: activeCaster.position,
+      cursorPos: targetPos,
+      maxRangeFeet: maxRange,
+      grid,
+      visionCheck,
+      isWeapon,
+      hasAdvantage,
+      hasDisadvantage,
+    });
+  }
+}
+
+async function handleToolMoveWorker(
+  context: ToolContext,
+  event: ToolEvent,
+  playerRole: "GM" | "PLAYER",
+  playerID: string,
+) {
+  if (isAimingWorkerRunning) {
+    pendingAimingEvent = { context, event, playerRole, playerID };
+    return;
+  }
+
+  isAimingWorkerRunning = true;
+  let nextToProcess: {
+    context: ToolContext;
+    event: ToolEvent;
+    playerRole: "GM" | "PLAYER";
+    playerID: string;
+  } | null = { context, event, playerRole, playerID };
+
+  try {
+    while (nextToProcess) {
+      const current = nextToProcess;
+      nextToProcess = null;
+      await processAimingMove(
+        current.context,
+        current.event,
+        current.playerRole,
+        current.playerID,
+      );
+      if (pendingAimingEvent) {
+        nextToProcess = pendingAimingEvent;
+        pendingAimingEvent = null;
+      }
+    }
+  } catch (err) {
+    log_error(err);
+  } finally {
+    isAimingWorkerRunning = false;
+  }
+}
+
 async function setupTargetToolModes(
   playerRole: "GM" | "PLAYER",
   playerID: string,
@@ -788,147 +1325,11 @@ async function setupTargetToolModes(
       },
     ],
     shortcut: "A",
-    async onToolMove(_context, event) {
-      const metadata = await OBR.player.getMetadata();
-      const selectedSpell = metadata?.[toolMetadataSelectedSpell] as
-        | string
-        | undefined;
-      if (!selectedSpell) {
-        clearAimingOverlay();
-        clearAoePreview();
-        return;
-      }
-
-      const activeCaster = await resolveActiveCaster(playerRole, playerID);
-      if (!activeCaster) {
-        clearAimingOverlay();
-        clearAoePreview();
-        return;
-      }
-
-      const grid = await getSceneGridInfo();
-
-      const spell = getSpell(selectedSpell, playerRole === "GM");
-      const aoe = getSpellAoE(spell, selectedSpell);
-
-      if (aoe) {
-        clearAimingOverlay();
-        const maxRange = getSpellRange(spell, selectedSpell);
-        const isSelfCentered = aoe.shape === "Sphere" && maxRange === 0;
-
-        const isTargetToken = !event.shiftKey && isValidCombatTargetToken(event.target);
-        const targetPos = isSelfCentered
-          ? activeCaster.position
-          : isTargetToken
-            ? event.target!.position
-            : event.pointerPosition;
-
-        await renderAoePreview({
-          template: {
-            shape: aoe.shape,
-            origin: activeCaster.position,
-            cursor: targetPos,
-            sizeFeet: aoe.size,
-          },
-          grid,
-          casterId: activeCaster.id,
-        });
-      } else {
-        clearAoePreview();
-        const customWeaponRange = (metadata?.[toolMetadataWeaponRange] as number | undefined);
-        const maxRange = (selectedSpell === "ranged_weapon_attack" || selectedSpell === "melee_weapon_attack") && typeof customWeaponRange === "number" && customWeaponRange > 0
-          ? customWeaponRange
-          : getSpellRange(spell, selectedSpell);
-        const isTargetToken = !event.shiftKey && isValidCombatTargetToken(event.target);
-        const targetPos = isTargetToken
-          ? event.target!.position
-          : !event.shiftKey
-            ? snapToCellCenter(event.pointerPosition, grid)
-            : event.pointerPosition;
-
-        // Check Line of Sight against any darkness zones
-        const sceneItems = await OBR.scene.items.getItems();
-        const darknessZones = extractDarknessZones(sceneItems);
-        const visionRules = activeCaster.item
-          ? readTokenVisionRules(activeCaster.item)
-          : {};
-        const casterElevation = readTokenElevation(activeCaster.item);
-        const targetElevation = readTokenElevation(event.target);
-        const visionCheck = evaluateLineOfSight(
-          activeCaster.position,
-          targetPos,
-          darknessZones,
-          grid,
-          {
-            isDM: false,
-            casterId: activeCaster.id,
-            playerId: playerID,
-            characterId: activeCaster.item ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined : undefined,
-            visionRules,
-            casterElevation,
-            targetElevation,
-          },
-        );
-
-        const isWeapon =
-          selectedSpell === "melee_weapon_attack" ||
-          selectedSpell === "ranged_weapon_attack";
-
-        let hasAdvantage = false;
-        let hasDisadvantage = false;
-
-        if (darknessZones.length > 0) {
-          const casterInDarkness = darknessZones.some((zone) => {
-            const dx = activeCaster.position.x - zone.position.x;
-            const dy = activeCaster.position.y - zone.position.y;
-            const distFeet =
-              (Math.sqrt(dx * dx + dy * dy) / grid.dpi) * grid.scaleMultiplier;
-            return distFeet <= zone.radiusFeet;
-          });
-
-          if (!visionCheck.canSee) {
-            if (isWeapon) {
-              hasDisadvantage = true;
-            }
-          } else if (casterInDarkness) {
-            const targetToken = sceneItems.find(
-              (item) =>
-                isValidCombatTargetToken(item) &&
-                Math.hypot(
-                  item.position.x - targetPos.x,
-                  item.position.y - targetPos.y,
-                ) <
-                  grid.dpi / 2,
-            );
-            const targetVisionRules = targetToken
-              ? readTokenVisionRules(targetToken)
-              : {};
-            const targetHasDarknessVision = Boolean(
-              targetVisionRules.devilsSight ||
-                (targetVisionRules.truesight &&
-                  targetVisionRules.truesight >= 15) ||
-                (targetVisionRules.blindFighting &&
-                  targetVisionRules.blindFighting >= 10),
-            );
-            if (!targetHasDarknessVision) {
-              hasAdvantage = true;
-            }
-          }
-        }
-
-        await renderAimingOverlay({
-          casterPos: activeCaster.position,
-          cursorPos: targetPos,
-          maxRangeFeet: maxRange,
-          grid,
-          visionCheck,
-          isWeapon,
-          hasAdvantage,
-          hasDisadvantage,
-        });
-      }
+    async onToolMove(context, event) {
+      await handleToolMoveWorker(context, event, playerRole, playerID);
     },
     async onToolClick(_context, event) {
+      invalidateAimingEnvironmentCache();
       let targetIsUnseenInDarkness = false;
       let casterHasDarknessAdvantage = false;
 
@@ -954,6 +1355,49 @@ async function setupTargetToolModes(
           ? (metadata[toolMetadataSelectedCaster] as string)
           : undefined;
       const activeCaster = await resolveActiveCaster(playerRole, playerID);
+      const monsterAoeSelection = readMonsterAoeToolSelection(
+        metadata?.[toolMetadataMonsterAoeAction],
+      );
+      if (monsterAoeSelection) {
+        const mechanics = parseMonsterSaveMechanics(monsterAoeSelection.action);
+        if (!activeCaster || !mechanics.areaOfEffect) {
+          OBR.notification.show(
+            "Select the monster token that is using this action before placing its area.",
+            "WARNING",
+          );
+          return;
+        }
+
+        const grid = await getSceneGridInfo();
+        const template: AoETemplate = {
+          shape: mechanics.areaOfEffect.shape,
+          origin: activeCaster.position,
+          cursor: event.pointerPosition,
+          sizeFeet: mechanics.areaOfEffect.sizeFeet,
+        };
+        const affectedCells = getAffectedGridCells(template, grid);
+        const sceneItems = await OBR.scene.items.getItems();
+        const targets = sceneItems
+          .filter((item) => item.visible && isValidCombatTargetToken(item))
+          .filter(
+            (token) =>
+              isTokenInAffectedCells(token.position, affectedCells) ||
+              isTokenInAffectedCells(snapToCellCenter(token.position, grid), affectedCells),
+          )
+          .map((token) => ({
+            id: token.id,
+            name: token.name || "Target",
+          }));
+        clearAimingOverlay();
+        clearAoePreview();
+        await rollMonsterSaveAction(
+          monsterAoeSelection.action,
+          monsterAoeSelection.monsterName,
+          targets,
+        );
+        await stopAiming();
+        return;
+      }
       if (selectedSpell) {
         const spell = getSpell(selectedSpell, playerRole === "GM");
         const aoe = getSpellAoE(spell, selectedSpell);
@@ -1251,6 +1695,7 @@ async function setupTargetToolModes(
 
             const casterName = castContext.casterName;
             const targetName = event.target?.name || "Target";
+            const targetTokenId = event.target?.id;
 
             const combatState = charId ? await loadCombatState(charId) : null;
             const isHexActive = isHexConcentrationActive(combatState);
@@ -1265,8 +1710,6 @@ async function setupTargetToolModes(
             );
             const spell = getSpell(selectedSpell, playerRole === "GM");
             const spellAttackBonus = ddbChar?.spellAttackBonus ?? 5;
-            const spellSaveDC =
-              (ddbChar?.spellSaveDC ?? 13) + buffMods.spellSaveDcBonus;
             const spellName = ddbSpell?.name || spell?.name || selectedSpell;
 
             const isCastingHex =
@@ -1308,8 +1751,9 @@ async function setupTargetToolModes(
             }
 
             // Concentration tracking for non-hex spells (Hex manages its own state below)
-            if (charId && ddbSpell?.concentration && !isCastingHex) {
+            if (ddbSpell?.concentration && !isCastingHex) {
               if (
+                charId &&
                 combatState?.concentrationSpellName &&
                 combatState.concentrationSpellId !== ddbSpell.id
               ) {
@@ -1318,10 +1762,21 @@ async function setupTargetToolModes(
                   "WARNING",
                 );
               }
-              await saveCombatState(charId, {
-                concentrationSpellId: ddbSpell.id,
-                concentrationSpellName: spellName,
-              });
+              if (charId) {
+                await saveCombatState(charId, {
+                  concentrationSpellId: ddbSpell.id,
+                  concentrationSpellName: spellName,
+                  hexTargetId: null,
+                  hexTargetName: null,
+                  hexAbility: null,
+                });
+              }
+              if (castContext.casterTokenId) {
+                await replaceTokenConcentration(castContext.casterTokenId, {
+                  spellId: ddbSpell.id,
+                  spellName,
+                });
+              }
             }
 
             if (isCastingHex) {
@@ -1349,6 +1804,13 @@ async function setupTargetToolModes(
                   hexTargetId: event.target?.id || "",
                   hexTargetName: targetName,
                   hexAbility: chosenAbility,
+                });
+              }
+              if (castContext.casterTokenId) {
+                await replaceTokenConcentration(castContext.casterTokenId, {
+                  spellId: "hex",
+                  spellName: `Hex (${abilityLabel})`,
+                  hexTargetId: event.target?.id || "",
                 });
               }
               const ddbCards: DDBRollCardData[] = [
@@ -1390,8 +1852,29 @@ async function setupTargetToolModes(
               const selectedWeaponId =
                 (playerMeta[toolMetadataSelectedWeapon] as string) ||
                 (selectedSpell === "flurry_of_blows" ? "weapon_unarmed_strike" : undefined);
+              const selectedWeapon = selectedWeaponId
+                ? ddbChar?.weapons?.find((w) => w.id === selectedWeaponId)
+                : undefined;
+              const hasMonsterWeapons = ddbChar?.weapons?.some(
+                (w) => w.id.startsWith("monster_weapon_") || w.id === "monster_unarmed_strike",
+              ) ?? false;
+              const isMonsterWeaponId = Boolean(
+                selectedWeaponId?.startsWith("monster_weapon_") ||
+                selectedWeaponId === "monster_unarmed_strike",
+              );
+              if (
+                (isMonsterWeaponId && !selectedWeapon) ||
+                (hasMonsterWeapons && !selectedWeaponId)
+              ) {
+                OBR.notification.show(
+                  "Monster attack data could not be resolved. The attack was not rolled.",
+                  "ERROR",
+                );
+                await stopAiming();
+                return;
+              }
               const weapon =
-                (selectedWeaponId && ddbChar?.weapons?.find((w) => w.id === selectedWeaponId)) ||
+                selectedWeapon ||
                 (selectedSpell === "flurry_of_blows"
                   ? ddbChar?.weapons?.find((w) => w.name.toLowerCase().includes("unarmed"))
                   : undefined) ||
@@ -1450,7 +1933,21 @@ async function setupTargetToolModes(
                 }
 
                 const attackBonus = buffMods.attackBonus || 0;
-                const effectiveToHit = weapon.toHit + attackBonus;
+                const effectiveToHit = (isThrown && weapon.thrownToHit != null ? weapon.thrownToHit : weapon.toHit) + attackBonus;
+
+                const targetVitals = targetTokenId ? await getTokenVitals(targetTokenId) : null;
+                const targetAc = targetVitals?.armorClass ?? 10;
+                const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+                const isMonsterWeapon = Boolean(
+                  weapon.id.startsWith("monster_weapon_") ||
+                  weapon.id === "monster_unarmed_strike",
+                );
+                const monsterHitResolutionMode = isMonsterWeapon
+                  ? await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.MONSTER_HIT_RESOLUTION_MODE)
+                      .catch(() => "gm_approval")
+                  : "auto_ac";
+                const requiresMonsterHitApproval =
+                  isMonsterWeapon && monsterHitResolutionMode !== "auto_ac";
 
                 for (let i = 1; i <= attackCount; i++) {
                   const strikeSuffix = isFlurry || attackCount > 1 ? ` (Strike ${i})` : "";
@@ -1461,6 +1958,13 @@ async function setupTargetToolModes(
                       : `${weapon.name.toUpperCase()}${strikeSuffix}`;
 
                   const roll = rollAttack(effectiveToHit, "", effectiveRollMode);
+                  const hitRes = resolveAttackHit(
+                    { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
+                    targetAc,
+                    { hideAcNumber: targetVitals?.hideNumbers }
+                  );
+                  const requiresHitApproval =
+                    requiresMonsterHitApproval && !roll.isMiss;
                   const reasonTag = disadvantageReasons.length > 0 ? ` (${disadvantageReasons.join(", ")})` : "";
                   const channeledTag = attackBonus > 0 ? ` • Channeled Attack (+${attackBonus})` : "";
                   const cardSubtitle = roll.isCrit
@@ -1468,11 +1972,20 @@ async function setupTargetToolModes(
                     : roll.isMiss
                       ? `Critical Miss!${reasonTag}${channeledTag}`
                       : `${weapon.name}${isThrown ? " Thrown" : ""} Attack Roll${reasonTag}${channeledTag}`;
+                  const attackCardId = `${Date.now()}-${i}-atk`;
 
                   ddbCards.push({
-                    id: `${Date.now()}-${i}-atk`,
+                    id: attackCardId,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: roll.d20,
+                    attackTotal: roll.total,
+                    isHit: requiresHitApproval ? undefined : hitRes.isHit,
+                    hitLabel: requiresHitApproval ? "AWAITING DM HIT APPROVAL" : hitRes.hitLabel,
+                    requiresHitApproval,
+                    hitApprovalStatus: requiresHitApproval ? "pending" : undefined,
                     actionName: actionLabel,
                     actionType: "TO HIT",
                     dieType: 20,
@@ -1491,7 +2004,7 @@ async function setupTargetToolModes(
                   let dmgReport = "";
                   let hexNotice = "";
 
-                  if (!roll.isMiss) {
+                  if (hitRes.isHit || requiresHitApproval) {
                     const attackType = isRangedAttack ? "ranged" : "melee";
                     const riders = resolveWeaponRiders({
                       character: ddbChar ?? null,
@@ -1502,7 +2015,7 @@ async function setupTargetToolModes(
                       usedRidersThisTurn,
                     });
 
-                    let baseWeaponDamage = weapon.damage;
+                    let baseWeaponDamage = isThrown && weapon.thrownDamage ? weapon.thrownDamage : weapon.damage;
                     if (isThrown && weapon.properties?.some((p) => p.toLowerCase().includes("versatile"))) {
                       baseWeaponDamage = baseWeaponDamage.replace(/\b1d8\b/, "1d6");
                     }
@@ -1600,10 +2113,14 @@ async function setupTargetToolModes(
                       );
                     }
 
-                    ddbCards.push({
+                    const weaponDmgCard: DDBRollCardData = {
                       id: `${Date.now()}-${i}-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
+                      rollD20: roll.d20,
+                      attackTotal: roll.total,
                       actionName: actionLabel,
                       actionType: "DAMAGE",
                       dieType: 8,
@@ -1612,11 +2129,25 @@ async function setupTargetToolModes(
                       total: totalDamage,
                       subtitle: subtitleParts.join(" • "),
                       isCrit: roll.isCrit,
+                      pendingDamage: totalDamage,
+                      damageType: weapon.damageType,
+                      damageResolutionStatus: damageMode === "auto" && !requiresHitApproval ? "applied" : "pending",
+                      requiresHitApproval,
+                      hitApprovalStatus: requiresHitApproval ? "pending" : undefined,
+                      relatedCardIds: requiresHitApproval ? [attackCardId] : undefined,
+                      appliedDamageAmount: undefined,
                       timestamp: Date.now() + (i * 3) + 1,
-                    });
+                    };
+
+                    if (damageMode === "auto" && targetTokenId && !requiresHitApproval) {
+                      const applyRes = await applyDamage(targetTokenId, totalDamage, weapon.damageType);
+                      weaponDmgCard.appliedDamageAmount = applyRes?.effectiveDamage ?? totalDamage;
+                      weaponDmgCard.resolutionNote = applyRes?.defenseNote;
+                    }
+                    ddbCards.push(weaponDmgCard);
                     dmgReport = ` | Damage: ${totalDamage}`;
 
-                    if (isHexActive) {
+                    if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                       const hexDice = roll.isCrit ? "2d6" : "1d6";
                       const hexDmg = rollDamageDDB(
                         "1d6",
@@ -1624,10 +2155,12 @@ async function setupTargetToolModes(
                         "",
                         roll.isCrit,
                       );
-                      ddbCards.push({
+                      const hexCard: DDBRollCardData = {
                         id: `${Date.now()}-${i}-hex-dmg`,
                         casterName,
                         targetName,
+                        targetId: targetTokenId,
+                        targetAc,
                         actionName: hexActionName,
                         actionType: "DAMAGE",
                         dieType: 6,
@@ -1638,19 +2171,32 @@ async function setupTargetToolModes(
                           ? "Hex Critical Hit (+2d6 Necrotic)"
                           : "Hex Curse (+1d6 Necrotic)",
                         isCrit: roll.isCrit,
+                        pendingDamage: hexDmg.total,
+                        damageType: "Necrotic",
+                        damageResolutionStatus: damageMode === "auto" && !requiresHitApproval ? "applied" : "pending",
+                        requiresHitApproval,
+                        hitApprovalStatus: requiresHitApproval ? "pending" : undefined,
                         timestamp: Date.now() + (i * 3) + 2,
-                      });
+                      };
+                      if (damageMode === "auto" && targetTokenId && !requiresHitApproval) {
+                        const hexApplyRes = await applyDamage(targetTokenId, hexDmg.total, "Necrotic");
+                        hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDmg.total;
+                        hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                      }
+                      ddbCards.push(hexCard);
                       hexNotice = ` | Hex: +${hexDmg.total} Necrotic`;
                     }
-                  } else if (hasWeaponGraze(weapon)) {
+                  } else if (hasWeaponGraze(weapon) && !isMonsterWeapon) {
                     const abilityMod = Math.max(
                       1,
                       weapon.toHit - (ddbChar?.proficiencyBonus ?? 2),
                     );
-                    ddbCards.push({
+                    const grazeCard: DDBRollCardData = {
                       id: `${Date.now()}-${i}-graze-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: `${actionLabel} (GRAZE)`,
                       actionType: "DAMAGE",
                       dieType: 0,
@@ -1658,11 +2204,20 @@ async function setupTargetToolModes(
                       formula: `${abilityMod} ${weapon.damageType}`,
                       total: abilityMod,
                       subtitle: "Weapon Mastery: Graze (Damage on Miss)",
+                      pendingDamage: abilityMod,
+                      damageType: weapon.damageType,
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + (i * 3) + 1,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const grazeApplyRes = await applyDamage(targetTokenId, abilityMod, weapon.damageType);
+                      grazeCard.appliedDamageAmount = grazeApplyRes?.effectiveDamage ?? abilityMod;
+                      grazeCard.resolutionNote = grazeApplyRes?.defenseNote;
+                    }
+                    ddbCards.push(grazeCard);
                     dmgReport = ` | Graze: ${abilityMod} ${weapon.damageType}`;
                   } else {
-                    dmgReport = " | Miss (0 Damage)";
+                    dmgReport = ` | Miss (0 Damage vs AC ${targetAc})`;
                   }
 
                   reports.push(`Strike ${i}: ${roll.formatted}${dmgReport}${hexNotice}`);
@@ -1679,6 +2234,10 @@ async function setupTargetToolModes(
                     "attack",
                   ).catch(() => {});
                 }
+                const targetVitals = targetTokenId ? await getTokenVitals(targetTokenId) : null;
+                const targetAc = targetVitals?.armorClass ?? 10;
+                const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+
                 const roll = rollAttack(
                   ddbChar?.modifiers?.str
                     ? ddbChar.modifiers.str + ddbChar.proficiencyBonus
@@ -1686,11 +2245,22 @@ async function setupTargetToolModes(
                   "",
                   rollMode,
                 );
+                const hitRes = resolveAttackHit(
+                  { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
+                  targetAc,
+                  { hideAcNumber: targetVitals?.hideNumbers }
+                );
                 const ddbCards: DDBRollCardData[] = [
                   {
                     id: `${Date.now()}-unarmed`,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: roll.d20,
+                    attackTotal: roll.total,
+                    isHit: hitRes.isHit,
+                    hitLabel: hitRes.hitLabel,
                     actionName: "UNARMED STRIKE",
                     actionType: "TO HIT",
                     dieType: 20,
@@ -1710,15 +2280,19 @@ async function setupTargetToolModes(
                     timestamp: Date.now(),
                   },
                 ];
-                if (!roll.isMiss) {
+                if (hitRes.isHit) {
                   const unarmedDmg = Math.max(
                     1,
                     1 + (ddbChar?.modifiers?.str ?? 0),
                   );
-                  ddbCards.push({
+                  const unarmedCard: DDBRollCardData = {
                     id: `${Date.now()}-dmg`,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: roll.d20,
+                    attackTotal: roll.total,
                     actionName: "UNARMED STRIKE",
                     actionType: "DAMAGE",
                     dieType: 0,
@@ -1727,10 +2301,19 @@ async function setupTargetToolModes(
                     total: unarmedDmg,
                     subtitle: "Unarmed Strike Damage",
                     isCrit: roll.isCrit,
+                    pendingDamage: unarmedDmg,
+                    damageType: "Bludgeoning",
+                    damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                     timestamp: Date.now() + 1,
-                  });
+                  };
+                  if (damageMode === "auto" && targetTokenId) {
+                    const unarmedRes = await applyDamage(targetTokenId, unarmedDmg, "Bludgeoning");
+                    unarmedCard.appliedDamageAmount = unarmedRes?.effectiveDamage ?? unarmedDmg;
+                    unarmedCard.resolutionNote = unarmedRes?.defenseNote;
+                  }
+                  ddbCards.push(unarmedCard);
 
-                  if (isHexActive) {
+                  if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                     const hexDice = roll.isCrit ? "2d6" : "1d6";
                     const hexDmg = rollDamageDDB(
                       "1d6",
@@ -1738,10 +2321,12 @@ async function setupTargetToolModes(
                       "",
                       roll.isCrit,
                     );
-                    ddbCards.push({
+                    const hexCard: DDBRollCardData = {
                       id: `${Date.now()}-hex-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: hexActionName,
                       actionType: "DAMAGE",
                       dieType: 6,
@@ -1752,8 +2337,17 @@ async function setupTargetToolModes(
                         ? "Hex Critical Hit (+2d6 Necrotic)"
                         : "Hex Curse (+1d6 Necrotic)",
                       isCrit: roll.isCrit,
+                      pendingDamage: hexDmg.total,
+                      damageType: "Necrotic",
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 2,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const hexApplyRes = await applyDamage(targetTokenId, hexDmg.total, "Necrotic");
+                      hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDmg.total;
+                      hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                    }
+                    ddbCards.push(hexCard);
                   }
                 }
                 broadcastDDBRoll(ddbCards);
@@ -1836,7 +2430,16 @@ async function setupTargetToolModes(
                         spellFormula.damage.find((entry) => entry.isBase)
                           ?.typeChoices?.[0] ?? "",
                       ).replace(/^./, (char) => char.toUpperCase());
+                const targetVitals = targetTokenId ? await getTokenVitals(targetTokenId) : null;
+                const targetAc = targetVitals?.armorClass ?? 10;
+                const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+
                 const attack = rollAttack(weaponSpellAttackBonus, "", rollMode);
+                const hitRes = resolveAttackHit(
+                  { d20: attack.d20, total: attack.total, bonus: attack.bonus, mode: attack.mode },
+                  targetAc,
+                  { hideAcNumber: targetVitals?.hideNumbers }
+                );
                 const extraDamageType = String(
                   spellFormula.cantripScale?.extraDamageType ?? "Cold",
                 );
@@ -1863,20 +2466,20 @@ async function setupTargetToolModes(
                 const extraDamage = damageParts.extraDice
                   ? exploding
                     ? rollDamageExplodingAnyDie(
-                        damageParts.extraDice,
-                        extraDamageType,
-                        Math.max(
-                          0,
-                          maxExplosions - (weaponDamage.explosionCount ?? 0),
-                        ),
-                        attack.isCrit,
-                      )
-                    : rollDamageDDB(
-                        damageParts.extraDice,
-                        extraDamageType,
-                        "",
-                        attack.isCrit,
-                      )
+                      damageParts.extraDice,
+                      extraDamageType,
+                      Math.max(
+                        0,
+                        maxExplosions - (weaponDamage.explosionCount ?? 0),
+                      ),
+                      attack.isCrit,
+                    )
+                  : rollDamageDDB(
+                      damageParts.extraDice,
+                      extraDamageType,
+                      "",
+                      attack.isCrit,
+                    )
                   : null;
                 const totalDamage =
                   weaponDamage.total + (extraDamage?.total ?? 0);
@@ -1900,6 +2503,12 @@ async function setupTargetToolModes(
                     id: `${Date.now()}-frigid-atk`,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: attack.d20,
+                    attackTotal: attack.total,
+                    isHit: hitRes.isHit,
+                    hitLabel: hitRes.hitLabel,
                     actionName: spellName.toUpperCase(),
                     actionType: "TO HIT",
                     dieType: 20,
@@ -1917,11 +2526,15 @@ async function setupTargetToolModes(
                     timestamp: Date.now(),
                   },
                 ];
-                if (!attack.isMiss) {
-                  ddbCards.push({
+                if (hitRes.isHit) {
+                  const frigidCard: DDBRollCardData = {
                     id: `${Date.now()}-frigid-dmg`,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: attack.d20,
+                    attackTotal: attack.total,
                     actionName: spellName.toUpperCase(),
                     actionType: "DAMAGE",
                     dieType: Number(
@@ -1938,10 +2551,19 @@ async function setupTargetToolModes(
                     total: totalDamage,
                     subtitle: `${weapon.name} + ${spellName} Damage`,
                     isCrit: attack.isCrit,
+                    pendingDamage: totalDamage,
+                    damageType: weaponDamageType,
+                    damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                     timestamp: Date.now() + 1,
-                  });
+                  };
+                  if (damageMode === "auto" && targetTokenId) {
+                    const frigidRes = await applyDamage(targetTokenId, totalDamage, weaponDamageType);
+                    frigidCard.appliedDamageAmount = frigidRes?.effectiveDamage ?? totalDamage;
+                    frigidCard.resolutionNote = frigidRes?.defenseNote;
+                  }
+                  ddbCards.push(frigidCard);
 
-                  if (isHexActive) {
+                  if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                     const hexDice = attack.isCrit ? "2d6" : "1d6";
                     const hexDamage = rollDamageDDB(
                       "1d6",
@@ -1949,10 +2571,12 @@ async function setupTargetToolModes(
                       "",
                       attack.isCrit,
                     );
-                    ddbCards.push({
+                    const hexCard: DDBRollCardData = {
                       id: `${Date.now()}-frigid-hex`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: hexActionName,
                       actionType: "DAMAGE",
                       dieType: 6,
@@ -1963,8 +2587,17 @@ async function setupTargetToolModes(
                         ? "Hex Critical Hit (+2d6 Necrotic)"
                         : "Hex Curse (+1d6 Necrotic)",
                       isCrit: attack.isCrit,
+                      pendingDamage: hexDamage.total,
+                      damageType: "Necrotic",
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 2,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const hexApplyRes = await applyDamage(targetTokenId, hexDamage.total, "Necrotic");
+                      hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDamage.total;
+                      hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                    }
+                    ddbCards.push(hexCard);
                   }
 
                   const triggerInfo = resolveSpellConditionalTrigger(
@@ -2011,10 +2644,12 @@ async function setupTargetToolModes(
                       1,
                       Math.floor(extraDamage.total / 2),
                     );
-                    ddbCards.push({
+                    const potentCard: DDBRollCardData = {
                       id: `${Date.now()}-potent-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: `${spellName.toUpperCase()} (POTENT CANTRIP)`,
                       actionType: "DAMAGE",
                       dieType: 8,
@@ -2022,17 +2657,28 @@ async function setupTargetToolModes(
                       formula: `${halfDamage} ${extraDamageType}`,
                       total: halfDamage,
                       subtitle: "Potent Cantrip (Half Damage on Miss)",
+                      pendingDamage: halfDamage,
+                      damageType: extraDamageType,
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 1,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const potentRes = await applyDamage(targetTokenId, halfDamage, extraDamageType);
+                      potentCard.appliedDamageAmount = potentRes?.effectiveDamage ?? halfDamage;
+                      potentCard.resolutionNote = potentRes?.defenseNote;
+                    }
+                    ddbCards.push(potentCard);
                   } else if (hasWeaponGraze(weapon)) {
                     const abilityMod = Math.max(
                       1,
                       weapon.toHit - (ddbChar?.proficiencyBonus ?? 2),
                     );
-                    ddbCards.push({
+                    const grazeCard: DDBRollCardData = {
                       id: `${Date.now()}-graze-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: `${weapon.name.toUpperCase()} (GRAZE)`,
                       actionType: "DAMAGE",
                       dieType: 0,
@@ -2040,8 +2686,17 @@ async function setupTargetToolModes(
                       formula: `${abilityMod} ${weaponDamageType}`,
                       total: abilityMod,
                       subtitle: "Weapon Mastery: Graze (Damage on Miss)",
+                      pendingDamage: abilityMod,
+                      damageType: weaponDamageType,
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 1,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const grazeRes = await applyDamage(targetTokenId, abilityMod, weaponDamageType);
+                      grazeCard.appliedDamageAmount = grazeRes?.effectiveDamage ?? abilityMod;
+                      grazeCard.resolutionNote = grazeRes?.defenseNote;
+                    }
+                    ddbCards.push(grazeCard);
                   }
                 }
 
@@ -2055,14 +2710,18 @@ async function setupTargetToolModes(
                 let anyCrit = false;
                 let allMiss = true;
 
-                // Resolve target tokens if multiple targets were selected
+                // Resolve target tokens if multiple targets were selected (including the final clicked token)
                 const targetTokens: string[] = [];
                 for (const t of targets) {
-                  const count = getTargetCount(t) ?? 1;
+                  const isLastClicked = Boolean(event.target?.id && t.attachedTo === event.target.id);
+                  const count = (getTargetCount(t) ?? 1) + (isLastClicked ? 1 : 0);
                   const attachedId = t.attachedTo;
                   for (let k = 0; k < count; k++) {
                     if (attachedId) targetTokens.push(attachedId);
                   }
+                }
+                if (!existingTarget && event.target?.id) {
+                  targetTokens.push(event.target.id);
                 }
 
                 let tokenNameMap = new Map<string, string>();
@@ -2080,6 +2739,16 @@ async function setupTargetToolModes(
                   }
                 }
 
+                const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+
+                // Pre-fetch vitals for all potential targets
+                const uniqueTokenIds = Array.from(new Set([...targetTokens, targetTokenId].filter(Boolean))) as string[];
+                const vitalsMap = new Map<string, TokenVitals | null>();
+                for (const tId of uniqueTokenIds) {
+                  const v = await getTokenVitals(tId).catch(() => null);
+                  vitalsMap.set(tId, v);
+                }
+
                 const damageType =
                   selectedDamageType || ddbSpell?.damageType || "Force";
                 const dieFaces = Number(
@@ -2087,9 +2756,19 @@ async function setupTargetToolModes(
                 );
 
                 for (let b = 1; b <= beamInfo.totalBeams; b++) {
+                  const beamTargetId = targetTokens[b - 1] || targetTokenId;
+                  const bVitals = beamTargetId ? vitalsMap.get(beamTargetId) : null;
+                  const bAc = bVitals?.armorClass ?? 10;
+
                   const roll = rollAttack(spellAttackBonus, "", rollMode);
+                  const hitRes = resolveAttackHit(
+                    { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
+                    bAc,
+                    { hideAcNumber: bVitals?.hideNumbers }
+                  );
+
                   if (roll.isCrit) anyCrit = true;
-                  if (!roll.isMiss) allMiss = false;
+                  if (hitRes.isHit) allMiss = false;
 
                   let hexSuffix = "";
                   const extraDamage: DDBSubRollExtraDamage[] = [];
@@ -2097,7 +2776,7 @@ async function setupTargetToolModes(
                     spellFormula.category.spellType === "cantrip";
                   let bDmgResult: DDBDamageResult | null = null;
 
-                  if (!roll.isMiss) {
+                  if (hitRes.isHit) {
                     const dmg = ddbSpell?.damage
                       ? rollSpellDamageFormula(
                           ddbSpell.damage,
@@ -2110,7 +2789,7 @@ async function setupTargetToolModes(
                       totalCombinedDamage += dmg.total;
                     }
 
-                    if (isHexActive) {
+                    if (isHexActive && isTargetHexed(combatState, beamTargetId)) {
                       const hexDice = roll.isCrit ? "2d6" : "1d6";
                       const hexDmg = rollDamageDDB(
                         "1d6",
@@ -2155,15 +2834,14 @@ async function setupTargetToolModes(
                     }
                   }
 
-                  const beamTargetId = targetTokens[b - 1];
                   const bTarget =
                     (beamTargetId
                       ? tokenNameMap.get(beamTargetId)
                       : undefined) || targetName;
                   const dmgStr = bDmgResult
                     ? ` | ${bDmgResult.formatted}`
-                    : roll.isMiss
-                      ? " | Miss (0 Damage)"
+                    : !hitRes.isHit
+                      ? ` | Miss (0 Damage vs AC ${bAc})`
                       : "";
                   beamReports.push(
                     `[${beamInfo.beamUnit} ${b}] ${roll.formatted}${dmgStr}${hexSuffix}`,
@@ -2172,12 +2850,16 @@ async function setupTargetToolModes(
                   subRolls.push({
                     unitLabel: `${beamInfo.beamUnit.toUpperCase()} ${b}`,
                     targetName: bTarget,
+                    targetId: beamTargetId,
                     toHit: {
                       total: roll.total,
                       diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
                       formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
                       isCrit: roll.isCrit,
                       isMiss: roll.isMiss,
+                      targetAc: bAc,
+                      isHit: hitRes.isHit,
+                      hitLabel: hitRes.hitLabel,
                     },
                     damage: bDmgResult
                       ? {
@@ -2216,10 +2898,39 @@ async function setupTargetToolModes(
                     ? `${totalCombinedDamage} + ${totalHexDamage}`
                     : totalCombinedDamage;
 
+                const totalNumericDmg = typeof summaryTotal === "number" ? summaryTotal : (totalCombinedDamage + totalHexDamage);
+
+                let totalEffectiveDmg = 0;
+                const autoNotes: string[] = [];
+                if (damageMode === "auto" && totalNumericDmg > 0) {
+                  const targetMap = aggregateSubRollDamages(subRolls);
+                  if (targetMap.size > 0) {
+                    for (const [tId, alloc] of targetMap.entries()) {
+                      const res = await applyDamage(tId, alloc.totalDamage, alloc.damageType || damageType);
+                      const eff = res?.effectiveDamage ?? alloc.totalDamage;
+                      totalEffectiveDmg += eff;
+                      autoNotes.push(`${alloc.targetName}: -${eff} HP${res?.defenseNote ? ` (${res.defenseNote})` : ""}`);
+                    }
+                  } else if (uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId) {
+                    const fallbackTid = (uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId)!;
+                    const res = await applyDamage(fallbackTid, totalNumericDmg, damageType);
+                    totalEffectiveDmg = res?.effectiveDamage ?? totalNumericDmg;
+                    if (res?.defenseNote) autoNotes.push(res.defenseNote);
+                  }
+
+                  // Mark each hitting subRoll as applied
+                  for (const sub of subRolls) {
+                    if (sub.damage && sub.toHit?.isHit !== false) {
+                      sub.damageResolutionStatus = "applied";
+                    }
+                  }
+                }
+
                 const groupedCard: DDBRollCardData = {
                   id: `${Date.now()}-multi-${spellName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
                   casterName,
                   targetName: targetLabel,
+                  targetId: uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId,
                   actionName: spellName.toUpperCase(),
                   actionType: "SPELL",
                   dieType: dieFaces,
@@ -2227,12 +2938,17 @@ async function setupTargetToolModes(
                     .map((s) => `${s.toHit?.total ?? 0}`)
                     .join(", "),
                   formula: `${beamInfo.totalBeams} ${beamInfo.beamUnit}s (${ddbSpell?.damage || ""} ${damageType} each)`,
-                  total: summaryTotal,
+                  total: totalNumericDmg,
                   subtitle: anyCrit
                     ? `Critical Hit! • ${beamInfo.totalBeams} ${beamInfo.beamUnit}s`
                     : `${beamInfo.totalBeams} ${beamInfo.beamUnit}s • ${damageType}`,
                   isCrit: anyCrit,
                   isMiss: allMiss,
+                  pendingDamage: totalNumericDmg > 0 ? totalNumericDmg : undefined,
+                  damageType,
+                  damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
+                  appliedDamageAmount: damageMode === "auto" ? totalEffectiveDmg : undefined,
+                  resolutionNote: autoNotes.length > 0 ? autoNotes.join(", ") : undefined,
                   timestamp: Date.now(),
                   subRolls,
                 };
@@ -2246,7 +2962,16 @@ async function setupTargetToolModes(
                 spell?.name?.toLowerCase().includes("attack") ||
                 selectedSpell.toLowerCase().includes("attack")
               ) {
+                const targetVitals = targetTokenId ? await getTokenVitals(targetTokenId) : null;
+                const targetAc = targetVitals?.armorClass ?? 10;
+                const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+
                 const roll = rollAttack(spellAttackBonus, "", rollMode);
+                const hitRes = resolveAttackHit(
+                  { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
+                  targetAc,
+                  { hideAcNumber: targetVitals?.hideNumbers }
+                );
                 const baseDamage = spellFormula.damage.find(
                   (entry) => entry.isBase,
                 );
@@ -2275,6 +3000,12 @@ async function setupTargetToolModes(
                     id: `${Date.now()}-atk`,
                     casterName,
                     targetName,
+                    targetId: targetTokenId,
+                    targetAc,
+                    rollD20: roll.d20,
+                    attackTotal: roll.total,
+                    isHit: hitRes.isHit,
+                    hitLabel: hitRes.hitLabel,
                     actionName: spellName.toUpperCase(),
                     actionType: "TO HIT",
                     dieType: 20,
@@ -2295,7 +3026,7 @@ async function setupTargetToolModes(
                   },
                 ];
 
-                if (!roll.isMiss) {
+                if (hitRes.isHit) {
                   if (dmg) {
                     const isExploded = Boolean(
                       dmg.explosionCount && dmg.explosionCount > 0,
@@ -2304,10 +3035,14 @@ async function setupTargetToolModes(
                     const dieFaces = Number(
                       damageDice?.match(/d(\d+)/i)?.[1] ?? 8,
                     );
-                    ddbCards.push({
+                    const spellDmgCard: DDBRollCardData = {
                       id: `${Date.now()}-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
+                      rollD20: roll.d20,
+                      attackTotal: roll.total,
                       actionName: spellName.toUpperCase(),
                       actionType: "DAMAGE",
                       dieType: dieFaces,
@@ -2325,11 +3060,20 @@ async function setupTargetToolModes(
                         ? `Damage (${damageType || "Spell"}) • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
                         : `Damage (${damageType || "Spell"})`,
                       isCrit: roll.isCrit,
+                      pendingDamage: dmg.total,
+                      damageType,
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now(),
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const applyRes = await applyDamage(targetTokenId, dmg.total, damageType);
+                      spellDmgCard.appliedDamageAmount = applyRes?.effectiveDamage ?? dmg.total;
+                      spellDmgCard.resolutionNote = applyRes?.defenseNote;
+                    }
+                    ddbCards.push(spellDmgCard);
                   }
 
-                  if (isHexActive) {
+                  if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                     const hexDice = roll.isCrit ? "2d6" : "1d6";
                     const hexDmg = rollDamageDDB(
                       "1d6",
@@ -2337,10 +3081,12 @@ async function setupTargetToolModes(
                       "",
                       roll.isCrit,
                     );
-                    ddbCards.push({
+                    const hexCard: DDBRollCardData = {
                       id: `${Date.now()}-hex-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: hexActionName,
                       actionType: "DAMAGE",
                       dieType: 6,
@@ -2351,8 +3097,17 @@ async function setupTargetToolModes(
                         ? "Hex Critical Hit (+2d6 Necrotic)"
                         : "Hex Curse (+1d6 Necrotic)",
                       isCrit: roll.isCrit,
+                      pendingDamage: hexDmg.total,
+                      damageType: "Necrotic",
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 1,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const hexApplyRes = await applyDamage(targetTokenId, hexDmg.total, "Necrotic");
+                      hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDmg.total;
+                      hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                    }
+                    ddbCards.push(hexCard);
                   }
                 } else {
                   // Miss / Critical Miss
@@ -2364,10 +3119,12 @@ async function setupTargetToolModes(
                     const dieFaces = Number(
                       damageDice?.match(/d(\d+)/i)?.[1] ?? 8,
                     );
-                    ddbCards.push({
+                    const potentCard: DDBRollCardData = {
                       id: `${Date.now()}-potent-dmg`,
                       casterName,
                       targetName,
+                      targetId: targetTokenId,
+                      targetAc,
                       actionName: `${spellName.toUpperCase()} (POTENT CANTRIP)`,
                       actionType: "DAMAGE",
                       dieType: dieFaces,
@@ -2375,8 +3132,17 @@ async function setupTargetToolModes(
                       formula: `${halfDamage} ${damageType}`,
                       total: halfDamage,
                       subtitle: "Potent Cantrip (Half Damage on Miss)",
+                      pendingDamage: halfDamage,
+                      damageType,
+                      damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
                       timestamp: Date.now() + 1,
-                    });
+                    };
+                    if (damageMode === "auto" && targetTokenId) {
+                      const potentRes = await applyDamage(targetTokenId, halfDamage, damageType);
+                      potentCard.appliedDamageAmount = potentRes?.effectiveDamage ?? halfDamage;
+                      potentCard.resolutionNote = potentRes?.defenseNote;
+                    }
+                    ddbCards.push(potentCard);
                   }
                 }
 
@@ -2384,12 +3150,15 @@ async function setupTargetToolModes(
               } else if (
                 spellFormula.interaction?.type === "save" ||
                 (ddbSpell?.saveOrAttack &&
-                  ddbSpell.saveOrAttack.includes("Save"))
+                  ddbSpell.saveOrAttack.toLowerCase().includes("save"))
               ) {
-                const saveType =
-                  spellFormula.interaction?.saveAbility ||
-                  ddbSpell?.saveOrAttack?.split(" ")[0] ||
-                  "DEX";
+                const saveInfo = getSpellSaveDamageInfo(
+                  spellFormula,
+                  ddbSpell,
+                  ddbChar,
+                  buffMods.spellSaveDcBonus,
+                );
+                const saveType = saveInfo.ability;
                 const baseDamage = spellFormula.damage.find(
                   (entry) => entry.isBase,
                 );
@@ -2416,14 +3185,27 @@ async function setupTargetToolModes(
                     actionName: spellName.toUpperCase(),
                     actionType: "SAVE",
                     dieType: 20,
-                    diceBreakdown: `DC ${spellSaveDC}`,
-                    formula: `${saveType} Save`,
-                    total: `DC ${spellSaveDC}`,
-                    subtitle: `Target makes ${saveType} Save`,
+                    diceBreakdown: saveInfo.dc ? `DC ${saveInfo.dc}` : "Save DC unavailable",
+                    formula: saveType ? `${saveType} Save` : "Saving Throw",
+                    total: saveInfo.dc ? `DC ${saveInfo.dc}` : "SAVE",
+                    subtitle: saveInfo.hasConflictingData
+                      ? "Save details conflict; DM adjudication required."
+                      : saveType
+                        ? `Target makes ${saveType} saving throw${saveInfo.dc ? ` (DC ${saveInfo.dc})` : ""}`
+                        : "Saving throw details are incomplete; DM adjudication required.",
                     timestamp: Date.now(),
                   },
                 ];
                 if (dmg) {
+                  const targetSaveResolutions = targetTokenId
+                    ? createTargetSaveResolutions(
+                        [{ id: targetTokenId, name: targetName }],
+                        saveInfo,
+                      )
+                    : [];
+                  const requiresManualDamageAdjudication =
+                    !isCompleteSpellSaveDamageInfo(saveInfo) ||
+                    targetSaveResolutions.length === 0;
                   const isExploded = Boolean(
                     dmg.explosionCount && dmg.explosionCount > 0,
                   );
@@ -2434,7 +3216,7 @@ async function setupTargetToolModes(
                   ddbCards.push({
                     id: `${Date.now()}-dmg`,
                     casterName,
-                    targetName,
+                    targetName: requiresManualDamageAdjudication ? undefined : targetName,
                     actionName: spellName.toUpperCase(),
                     actionType: "DAMAGE",
                     dieType: dieFaces,
@@ -2443,9 +3225,17 @@ async function setupTargetToolModes(
                       ? `${damageDice || ""} ${damageType} (+${explosionCount} Exploded)`.trim()
                       : `${damageDice || ""} ${damageType}`.trim(),
                     total: dmg.total,
-                    subtitle: isExploded
-                      ? `Damage (${damageType || "Spell"}) • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
-                      : `Damage (${damageType || "Spell"})`,
+                    pendingDamage: requiresManualDamageAdjudication ? undefined : dmg.total,
+                    damageType,
+                    damageResolutionStatus: requiresManualDamageAdjudication ? undefined : "pending",
+                    targetSaveResolutions:
+                      targetSaveResolutions.length > 0 ? targetSaveResolutions : undefined,
+                    requiresManualDamageAdjudication,
+                    subtitle: requiresManualDamageAdjudication
+                      ? `Damage rolled: ${dmg.total} (${damageType || "Spell"}). Save data is incomplete; no HP changed. DM adjudication required.`
+                      : isExploded
+                        ? `Damage (${damageType || "Spell"}) • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
+                        : `Damage (${damageType || "Spell"}) • Per-target save result required`,
                     timestamp: Date.now(),
                   });
                 }
@@ -2525,27 +3315,52 @@ async function setupTargetToolModes(
                       damageDice?.match(/d(\d+)/i)?.[1] ?? 8,
                     );
                     const isHealing = damageType?.toLowerCase() === "healing";
-                    broadcastDDBRoll([
-                      {
-                        id: `${Date.now()}-spell`,
-                        casterName,
-                        targetName,
-                        actionName: spellName.toUpperCase(),
-                        actionType: isHealing ? "HEAL" : "DAMAGE",
-                        dieType: dieFaces,
-                        diceBreakdown: dmg.breakdown.replace(/\+/g, " + "),
-                        formula: isExploded
-                          ? `${damageDice || ""} ${damageType} (+${explosionCount} Exploded)`.trim()
-                          : `${damageDice || ""} ${damageType}`.trim(),
-                        total: dmg.total,
-                        subtitle: isHealing
-                          ? `${spellName} • Healing`
-                          : (isExploded
-                            ? `${spellName} • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
-                            : `${spellName} Effect`),
-                        timestamp: Date.now(),
-                      },
-                    ]);
+                    const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
+                    const generalCard: DDBRollCardData = {
+                      id: `${Date.now()}-spell`,
+                      casterName,
+                      targetName,
+                      targetId: event.target?.id,
+                      actionName: spellName.toUpperCase(),
+                      actionType: isHealing ? "HEAL" : "DAMAGE",
+                      dieType: dieFaces,
+                      diceBreakdown: dmg.breakdown.replace(/\+/g, " + "),
+                      formula: isExploded
+                        ? `${damageDice || ""} ${damageType} (+${explosionCount} Exploded)`.trim()
+                        : `${damageDice || ""} ${damageType}`.trim(),
+                      total: dmg.total,
+                      subtitle: isHealing
+                        ? `${spellName} • Healing`
+                        : (isExploded
+                          ? `${spellName} • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
+                          : `${spellName} Effect`),
+                      pendingDamage: isHealing ? undefined : dmg.total,
+                      damageType: isHealing ? undefined : damageType,
+                      damageResolutionStatus: isHealing ? "pending" : (damageMode === "auto" ? "applied" : "pending"),
+                      timestamp: Date.now(),
+                    };
+                    if (event.target?.id) {
+                      if (isHealing && damageMode === "auto") {
+                        const healResult = await applyHeal(event.target.id, dmg.total);
+                        generalCard.damageResolutionStatus = getHealResolutionStatus(
+                          damageMode,
+                          healResult !== null,
+                        );
+                        if (healResult) {
+                          generalCard.appliedDamageAmount = healResult.hpRestored;
+                        } else {
+                          OBR.notification.show(
+                            `Could not apply healing to ${targetName}. Review the roll card to approve it manually.`,
+                            "WARNING",
+                          );
+                        }
+                      } else if (!isHealing && damageMode === "auto") {
+                        const res = await applyDamage(event.target.id, dmg.total, damageType);
+                        generalCard.appliedDamageAmount = res?.effectiveDamage ?? dmg.total;
+                        generalCard.resolutionNote = res?.defenseNote;
+                      }
+                    }
+                    broadcastDDBRoll([generalCard]);
                   }
                 }
                 if (isTeleportSpell(selectedSpell)) {
@@ -2695,22 +3510,33 @@ async function setupTargetToolModes(
             if (castSlotLevel >= 1) {
               await deductSpellSlotIfLeveled(charId, castSlotLevel, ddbChar);
             }
+          }
 
-            // Concentration tracking for ground/AoE spells (e.g. Darkness)
-            if (ddbSpell?.concentration) {
-              const combatState = await loadCombatState(charId);
-              if (
-                combatState?.concentrationSpellName &&
-                combatState.concentrationSpellId !== ddbSpell.id
-              ) {
-                OBR.notification.show(
-                  `Concentration broken on "${combatState.concentrationSpellName}"! Now concentrating on "${spellName}".`,
-                  "WARNING",
-                );
-              }
+          // Concentration tracking for ground/AoE spells (e.g. Darkness)
+          if (ddbSpell?.concentration) {
+            const combatState = charId ? await loadCombatState(charId) : null;
+            if (
+              combatState?.concentrationSpellName &&
+              combatState.concentrationSpellId !== ddbSpell.id
+            ) {
+              OBR.notification.show(
+                `Concentration broken on "${combatState.concentrationSpellName}"! Now concentrating on "${spellName}".`,
+                "WARNING",
+              );
+            }
+            if (charId) {
               await saveCombatState(charId, {
                 concentrationSpellId: ddbSpell.id,
                 concentrationSpellName: spellName,
+                hexTargetId: null,
+                hexTargetName: null,
+                hexAbility: null,
+              });
+            }
+            if (castContext.casterTokenId) {
+              await replaceTokenConcentration(castContext.casterTokenId, {
+                spellId: ddbSpell.id,
+                spellName,
               });
             }
           }
@@ -2732,9 +3558,6 @@ async function setupTargetToolModes(
             ddbSpell,
             ddbChar?.spellAttackBonus ?? 5,
           );
-          const spellSaveDC =
-            (ddbChar?.spellSaveDC ?? 13) + buffMods.spellSaveDcBonus;
-
           const damageChoice = metadata?.[selectedSpellDamageTypeMetadataKey] as
             | { spellId?: unknown; damageType?: unknown }
             | undefined;
@@ -2747,6 +3570,8 @@ async function setupTargetToolModes(
 
           // Detect affected tokens if AoE spell
           let targetName = "GROUND / AOE";
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let affectedTokens: any[] = [];
           if (aoe) {
             const template: AoETemplate = {
               shape: aoe.shape,
@@ -2759,7 +3584,7 @@ async function setupTargetToolModes(
             const validTokens = sceneItems.filter(
               (item) => item.visible && isValidCombatTargetToken(item),
             );
-            const affectedTokens = validTokens.filter((token) =>
+            affectedTokens = validTokens.filter((token) =>
               isTokenInAffectedCells(token.position, affectedCells) ||
               isTokenInAffectedCells(snapToCellCenter(token.position, grid), affectedCells),
             );
@@ -2774,11 +3599,15 @@ async function setupTargetToolModes(
 
           const isSaveSpell =
             spellFormula.interaction?.type === "save" ||
-            Boolean(ddbSpell?.saveOrAttack && ddbSpell.saveOrAttack.includes("Save"));
-          const saveType =
-            spellFormula.interaction?.saveAbility ||
-            ddbSpell?.saveOrAttack?.split(" ")[0] ||
-            "DEX";
+            Boolean(ddbSpell?.saveOrAttack && ddbSpell.saveOrAttack.toLowerCase().includes("save"));
+          const saveInfo = isSaveSpell
+            ? getSpellSaveDamageInfo(
+                spellFormula,
+                ddbSpell,
+                ddbChar,
+                buffMods.spellSaveDcBonus,
+              )
+            : undefined;
 
           const baseDamage = spellFormula.damage.find((entry) => entry.isBase);
           const damageDice =
@@ -2804,10 +3633,14 @@ async function setupTargetToolModes(
               actionName: spellName.toUpperCase(),
               actionType: "SAVE",
               dieType: 20,
-              diceBreakdown: `DC ${spellSaveDC}`,
-              formula: `${saveType} Save`,
-              total: `DC ${spellSaveDC}`,
-              subtitle: `Target makes ${saveType} Save${ddbSpell?.concentration ? " • Concentration Active" : ""}`,
+              diceBreakdown: saveInfo?.dc ? `DC ${saveInfo.dc}` : "Save DC unavailable",
+              formula: saveInfo?.ability ? `${saveInfo.ability} Save` : "Saving Throw",
+              total: saveInfo?.dc ? `DC ${saveInfo.dc}` : "SAVE",
+              subtitle: saveInfo?.hasConflictingData
+                ? "Save details conflict; DM adjudication required."
+                : saveInfo?.ability
+                  ? `Each affected target makes a ${saveInfo.ability} saving throw${saveInfo.dc ? ` (DC ${saveInfo.dc})` : ""}${ddbSpell?.concentration ? " • Concentration Active" : ""}`
+                  : "Saving throw details are incomplete; DM adjudication required.",
               timestamp: Date.now(),
             });
           }
@@ -2830,10 +3663,31 @@ async function setupTargetToolModes(
               );
               const isHealing = damageType?.toLowerCase() === "healing";
 
+              let singleTargetId: string | undefined = undefined;
+              if (!isSaveSpell && aoe && typeof affectedTokens !== "undefined" && affectedTokens.length === 1) {
+                singleTargetId = affectedTokens[0].id;
+              }
+              const targetSaveResolutions =
+                isSaveSpell && saveInfo
+                  ? createTargetSaveResolutions(
+                      affectedTokens.map((target) => ({
+                        id: target.id,
+                        name: target.name || "Target",
+                      })),
+                      saveInfo,
+                    )
+                  : [];
+              const requiresManualDamageAdjudication =
+                isSaveSpell &&
+                (!saveInfo ||
+                  !isCompleteSpellSaveDamageInfo(saveInfo) ||
+                  targetSaveResolutions.length === 0);
+
               ddbCards.push({
                 id: `${Date.now()}-dmg`,
                 casterName: casterName || "Character",
-                targetName,
+                targetName: requiresManualDamageAdjudication ? undefined : targetName,
+                targetId: singleTargetId,
                 actionName: spellName.toUpperCase(),
                 actionType: isHealing ? "HEAL" : "DAMAGE",
                 dieType: dieFaces,
@@ -2842,8 +3696,24 @@ async function setupTargetToolModes(
                   ? `${damageDice || ""} ${damageType} (+${explosionCount} Exploded)`.trim()
                   : `${damageDice || ""} ${damageType}`.trim(),
                 total: dmg.total,
-                subtitle: isSaveSpell
-                  ? `Damage (${damageType || "Spell"}) • Half on Save`
+                pendingDamage:
+                  isHealing || requiresManualDamageAdjudication
+                    ? undefined
+                    : dmg.total,
+                damageType: isHealing ? undefined : damageType,
+                damageResolutionStatus:
+                  isHealing || requiresManualDamageAdjudication
+                    ? undefined
+                    : "pending",
+                targetSaveResolutions:
+                  targetSaveResolutions.length > 0
+                    ? targetSaveResolutions
+                    : undefined,
+                requiresManualDamageAdjudication,
+                subtitle: requiresManualDamageAdjudication
+                  ? `Damage rolled: ${dmg.total} (${damageType || "Spell"}). Save or target data is incomplete; no HP changed. DM adjudication required.`
+                  : isSaveSpell
+                    ? `Damage (${damageType || "Spell"}) • Per-target save result required`
                   : isHealing
                     ? `${spellName} • Healing`
                     : (isExploded
@@ -2904,6 +3774,8 @@ async function setupTargetToolModes(
       }
     },
     onDeactivate(context) {
+      activeOverlayMode = "none";
+      invalidateAimingEnvironmentCache();
       clearAimingOverlay();
       clearAoePreview();
       if (
@@ -3050,4 +3922,3 @@ export async function setupElevationMenuOption() {
     },
   });
 }
-

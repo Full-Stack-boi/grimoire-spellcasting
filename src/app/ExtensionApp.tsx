@@ -10,6 +10,7 @@ import DDBSyncModal from "../views/DDBSyncModal";
 import Main from "../views/Main";
 import SpellDetailModal from "../views/SpellDetailModal";
 import SpellSelectionPopover from "../views/SpellSelectionPopover";
+import BG3TopTurnTracker from "../views/BG3TopTurnTracker";
 import { log_error } from "../logging";
 
 class ActionDockErrorBoundary extends React.Component<
@@ -72,6 +73,7 @@ export default function ExtensionApp() {
                             <Route path="spell-detail-modal/:spellID?" element={<SpellDetailModal />} />
                             <Route path="ddb-sync-modal/:tokenId?" element={<DDBSyncModal />} />
                             <Route path="ddb-roll-log" element={<DDBRollLogPopover />} />
+                            <Route path="turn-tracker" element={<BG3TopTurnTracker />} />
                         </Routes>
                     </Box>
                 </ThemeProvider>
@@ -79,9 +81,20 @@ export default function ExtensionApp() {
         );
     }, [themeMode]);
 
-    const isRollLog = window.location.pathname.includes("ddb-roll-log");
+    const isRollLog =
+        window.location.pathname.includes("ddb-roll-log") ||
+        window.location.search.includes("ddb-roll-log") ||
+        window.location.hash.includes("ddb-roll-log");
     if (isRollLog) {
         return <DDBRollLogPopover />;
+    }
+
+    const isTurnTracker =
+        window.location.pathname.includes("turn-tracker") ||
+        window.location.search.includes("turn-tracker") ||
+        window.location.hash.includes("turn-tracker");
+    if (isTurnTracker) {
+        return <BG3TopTurnTracker />;
     }
 
     return routes;

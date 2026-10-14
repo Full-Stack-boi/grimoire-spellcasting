@@ -1,6 +1,9 @@
 import OBR, { Item, Vector2 } from "@owlbear-rodeo/sdk";
 import { resolveActiveCaster } from "../infrastructure/obr/activeCasterResolver";
 import { resolveCasterCharacter } from "../../../services/ddbService";
+import { extractTokenVitals } from "../../combat/tokenVitalsService";
+import { getBoundMonsterFromToken } from "../../monsters/monsterService";
+import { monsterToDdbCharacter } from "../../monsters/monsterToDdbAdapter";
 import type { DDBParsedCharacter } from "../../../types/ddb";
 
 export interface CastContext {
@@ -59,7 +62,14 @@ export async function captureCastContext(
         resolvedName = activeCaster.name;
     }
 
-    const ddbChar = resolveCasterCharacter(casterItem);
+    const boundMonster = getBoundMonsterFromToken(casterItem);
+    const ddbChar = boundMonster
+        ? monsterToDdbCharacter(
+            boundMonster,
+            casterItem,
+            extractTokenVitals(casterItem.metadata)
+        )
+        : resolveCasterCharacter(casterItem);
     const ddbCharId = ddbChar?.id ?? null;
     const isDM = playerRole === "GM";
     const casterName = ddbChar?.name || resolvedName || casterItem.name || (isDM ? "Dungeon Master" : "Caster");

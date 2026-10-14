@@ -7,11 +7,12 @@ import type { DetailDrawerItem } from "../domain/types";
 interface StaticDetailContentProps {
     item: NonNullable<DetailDrawerItem>;
     character: DDBParsedCharacter | null;
+    tokenId?: string;
     activeRiderMap: Record<string, string | null | undefined>;
     onRiderClick: (weapon: DDBWeaponAttack, rider: ReturnType<typeof parseRiderString>) => void;
 }
 
-export const StaticDetailContent: React.FC<StaticDetailContentProps> = ({ item, character, activeRiderMap, onRiderClick }) => {
+export const StaticDetailContent: React.FC<StaticDetailContentProps> = ({ item, character, tokenId, activeRiderMap, onRiderClick }) => {
     if (item.type === "weapon") {
         return (
             <div className="ddb-drawer-weapon-content">
@@ -58,12 +59,14 @@ export const StaticDetailContent: React.FC<StaticDetailContentProps> = ({ item, 
     if (item.type === "defenses") {
         return (
             <div className="ddb-drawer-defenses-content">
-                <h4 className="ddb-drawer-subtitle">Resistances</h4>
+                <h4 className="ddb-drawer-subtitle">Damage Resistances</h4>
                 <p className="ddb-drawer-para">{item.resistances.length > 0 ? item.resistances.join(", ") : "None"}</p>
                 <h4 className="ddb-drawer-subtitle">Damage Immunities</h4>
                 <p className="ddb-drawer-para">{item.immunities.length > 0 ? item.immunities.join(", ") : "None"}</p>
-                <h4 className="ddb-drawer-subtitle">Condition Immunities</h4>
+                <h4 className="ddb-drawer-subtitle">Damage Vulnerabilities</h4>
                 <p className="ddb-drawer-para">{item.vulnerabilities.length > 0 ? item.vulnerabilities.join(", ") : "None"}</p>
+                <h4 className="ddb-drawer-subtitle">Condition Immunities</h4>
+                <p className="ddb-drawer-para">{item.conditionImmunities && item.conditionImmunities.length > 0 ? item.conditionImmunities.join(", ") : "None"}</p>
             </div>
         );
     }
@@ -78,7 +81,7 @@ export const StaticDetailContent: React.FC<StaticDetailContentProps> = ({ item, 
     }
 
     if (item.type === "checks") {
-        return <div className="ddb-drawer-checks-embed"><CharacterChecks passedChar={character} /></div>;
+        return <div className="ddb-drawer-checks-embed"><CharacterChecks passedChar={character} passedTokenId={tokenId} /></div>;
     }
 
     return null;

@@ -363,6 +363,10 @@
     font-weight: 800;
 }
 
+.ddb-bg3-icon-tile-selected.with-hand-badge {
+    right: 28px;
+}
+
 .ddb-bg3-grid-tooltip {
     position: fixed;
     z-index: 120;
@@ -498,7 +502,7 @@
 /* BG3 Tile Badges: Hand Swapping & Spell Pills */
 .ddb-bg3-tile-hand-badge {
     position: absolute;
-    bottom: 2px;
+    top: 2px;
     right: 2px;
     font-size: 0.52rem;
     font-weight: 800;

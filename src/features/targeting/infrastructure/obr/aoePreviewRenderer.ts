@@ -230,12 +230,21 @@ function buildAoEGeometricOverlay(template: AoETemplate, grid: GridInfo): Item[]
     return items;
 }
 
+let activeAoeToken = 0;
+let knownAoeItems = new Map<string, string>(); // id -> item.type
+
+export function resetAoePreviewState(): void {
+    activeAoeToken = 0;
+    knownAoeItems.clear();
+}
+
 /**
  * Renders or updates the AoE grid cell highlights, token warning highlights,
  * and the geometric wireframe overlay (red cone/sphere outline + distance label).
  * Rendered on OBR.scene.local (private to this player's screen).
  */
 export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<AoePreviewRenderResult> {
+    const currentToken = ++activeAoeToken;
     const { template, grid, casterId, themeColor = "#f97316", strokeColor = "#ea580c" } = state;
     const affectedCells = getAffectedGridCells(template, grid);
 
@@ -305,21 +314,26 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
     const newItems = [...cellItems, ...tokenHighlights, ...overlayItems];
     const newIds = new Set(newItems.map(i => i.id));
 
-    // Get current local items matching our AoE prefixes
-    const localItems = await OBR.scene.local.getItems();
-    const existingAoeItems = localItems.filter(
-        item =>
-            item.id.startsWith(AOE_GRID_PREFIX) ||
-            item.id.startsWith(AOE_TOKEN_HIGHLIGHT_PREFIX) ||
-            item.id === AOE_OUTLINE_ID ||
-            item.id === AOE_OUTLINE_LABEL_ID
-    );
-    const existingMap = new Map(existingAoeItems.map(i => [i.id, i]));
+    // If knownAoeItems is empty, discover any existing items once
+    if (knownAoeItems.size === 0) {
+        const localItems = await OBR.scene.local.getItems();
+        if (currentToken !== activeAoeToken) return { affectedCellCount: affectedCells.length, affectedTokenIds };
+        for (const item of localItems) {
+            if (
+                item.id.startsWith(AOE_GRID_PREFIX) ||
+                item.id.startsWith(AOE_TOKEN_HIGHLIGHT_PREFIX) ||
+                item.id === AOE_OUTLINE_ID ||
+                item.id === AOE_OUTLINE_LABEL_ID
+            ) {
+                knownAoeItems.set(item.id, item.type);
+            }
+        }
+    }
 
     const idsToDelete: string[] = [];
-    for (const existing of existingAoeItems) {
-        if (!newIds.has(existing.id)) {
-            idsToDelete.push(existing.id);
+    for (const [existingId] of knownAoeItems) {
+        if (!newIds.has(existingId)) {
+            idsToDelete.push(existingId);
         }
     }
 
@@ -327,14 +341,14 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
     const itemsToUpdate: Item[] = [];
 
     for (const item of newItems) {
-        const existing = existingMap.get(item.id);
+        const existingType = knownAoeItems.get(item.id);
         // If it already exists and shares the exact same item type, update in place
-        if (existing && existing.type === item.type) {
+        if (existingType && existingType === item.type) {
             itemsToUpdate.push(item);
         } else {
             // If item changed type (e.g. from Curve to Shape when switching spell), delete old and add new
-            if (existing) {
-                idsToDelete.push(existing.id);
+            if (existingType) {
+                idsToDelete.push(item.id);
             }
             itemsToAdd.push(item);
         }
@@ -343,11 +357,19 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
     // Delete removed or type-changed items
     if (idsToDelete.length > 0) {
         await OBR.scene.local.deleteItems(idsToDelete);
+        for (const id of idsToDelete) {
+            knownAoeItems.delete(id);
+        }
+        if (currentToken !== activeAoeToken) return { affectedCellCount: affectedCells.length, affectedTokenIds };
     }
 
     // Add new items
     if (itemsToAdd.length > 0) {
         await OBR.scene.local.addItems(itemsToAdd);
+        for (const item of itemsToAdd) {
+            knownAoeItems.set(item.id, item.type);
+        }
+        if (currentToken !== activeAoeToken) return { affectedCellCount: affectedCells.length, affectedTokenIds };
     }
 
     // Update existing items
@@ -375,18 +397,33 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
  * Clears all AoE grid highlights, geometric outlines, and token warning rings from the local scene.
  */
 export async function clearAoePreview(): Promise<void> {
-    const localItems = await OBR.scene.local.getItems();
-    const aoeIds = localItems
-        .filter(
-            item =>
-                item.id.startsWith(AOE_GRID_PREFIX) ||
-                item.id.startsWith(AOE_TOKEN_HIGHLIGHT_PREFIX) ||
-                item.id === AOE_OUTLINE_ID ||
-                item.id === AOE_OUTLINE_LABEL_ID
-        )
-        .map(item => item.id);
+    activeAoeToken++;
+    if (knownAoeItems.size > 0) {
+        const ids = Array.from(knownAoeItems.keys());
+        knownAoeItems.clear();
+        try {
+            await OBR.scene.local.deleteItems(ids);
+        } catch {
+            // Safe to ignore
+        }
+    } else {
+        const localItems = await OBR.scene.local.getItems();
+        const aoeIds = localItems
+            .filter(
+                item =>
+                    item.id.startsWith(AOE_GRID_PREFIX) ||
+                    item.id.startsWith(AOE_TOKEN_HIGHLIGHT_PREFIX) ||
+                    item.id === AOE_OUTLINE_ID ||
+                    item.id === AOE_OUTLINE_LABEL_ID
+            )
+            .map(item => item.id);
 
-    if (aoeIds.length > 0) {
-        await OBR.scene.local.deleteItems(aoeIds);
+        if (aoeIds.length > 0) {
+            try {
+                await OBR.scene.local.deleteItems(aoeIds);
+            } catch {
+                // Safe to ignore
+            }
+        }
     }
 }

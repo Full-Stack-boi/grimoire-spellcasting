@@ -32,7 +32,7 @@ describe("Bg3WeaponCard Thrown & Melee Rendering", () => {
     properties: ["Heavy", "Two-Handed"],
   };
 
-  it("renders a normal melee card with THROW text badge (NO emoji 🎯) when weapon hasThrown is true", () => {
+  it("renders a clean melee card without cramped badges (NO emoji 🎯) when weapon hasThrown is true", () => {
     const html = renderToStaticMarkup(
       <Bg3WeaponCard
         weapon={dagger}
@@ -45,8 +45,8 @@ describe("Bg3WeaponCard Thrown & Melee Rendering", () => {
 
     // Verify Dagger name is present
     expect(html).toContain("Dagger");
-    // Verify THROW text badge is present
-    expect(html).toContain("THROW");
+    // Verify no cramped THROW badge on outside melee card (relocated to Aiming Flyout Bar)
+    expect(html).not.toContain("THROW");
     // Verify strict constraint: NO emojis like 🎯
     expect(html).not.toContain("🎯");
   });

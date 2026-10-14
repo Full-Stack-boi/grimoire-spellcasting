@@ -44,10 +44,17 @@ export interface InteractionData {
 export interface MessageType {
   instructions: EffectInstruction[];
   interactions?: InteractionData;
+  visualSettings?: {
+    animationEnabled?: boolean;
+    assetBaseUrl?: string;
+  };
   spellData?: {
     name: string;
     caster: string;
+    id?: string;
+    displayName?: string;
     casterTokenId?: string;
     characterId?: string | number;
+    announce?: boolean;
   };
 }

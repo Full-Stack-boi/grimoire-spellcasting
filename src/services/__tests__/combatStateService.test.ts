@@ -1,4 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+
+vi.mock("@owlbear-rodeo/sdk", () => ({
+    default: {
+        isReady: false,
+        player: {
+            getMetadata: vi.fn(async () => ({})),
+            setMetadata: vi.fn(async () => {}),
+        },
+    },
+}));
+
 import {
     loadCombatState,
     saveCombatState,

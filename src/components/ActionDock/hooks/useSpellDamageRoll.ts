@@ -4,6 +4,11 @@ import { rollDamageDDB, rollDamageExploding, rollDamageExplodingAnyDie } from ".
 import { resolveFormulaFullDamage, resolveSpellFormula } from "../../../services/spellFormulaBuilder";
 import type { SpellFormulaRegistry } from "../../../services/spellFormulaRegistry";
 import type { DDBParsedCharacter } from "../../../types/ddb";
+import { applyDamage, applyHeal } from "../../../features/combat/tokenVitalsService";
+import {
+    getDamageApplicationMode,
+    getHealResolutionStatus,
+} from "../../../features/combat/damageModeService";
 
 interface SpellDamageRollInput {
     id: string;
@@ -37,7 +42,7 @@ export function useSpellDamageRoll({
     onSelectSpell,
     onOpenUpcastPicker,
 }: UseSpellDamageRollOptions) {
-    return (spell: SpellDamageRollInput) => {
+    return async (spell: SpellDamageRollInput) => {
         const ddbSpell = character?.spells?.find(s => s.id === spell.id || s.name.toLowerCase() === spell.name.toLowerCase());
         const isSpellPrepared = spell.isPrepared ?? ddbSpell?.isPrepared ?? true;
         if (!isSpellPrepared && (spell.level ?? 0) > 0) {
@@ -97,16 +102,68 @@ export function useSpellDamageRoll({
             dmgResult = rollDamageDDB(effectiveDice, chosenType);
         }
 
+        let targetId: string | undefined;
+        let targetName = "TARGET";
+        try {
+            const selection = await OBR.player.getSelection().catch(() => [] as string[]);
+            if (selection?.length) {
+                const sceneItems = await OBR.scene.items.getItems(selection);
+                if (sceneItems[0]) {
+                    targetId = sceneItems[0].id;
+                    targetName = sceneItems[0].name || "Target";
+                }
+            }
+        } catch {}
+
         const isExploded = Boolean(dmgResult.explosionCount && dmgResult.explosionCount > 0);
         const explosionCount = dmgResult.explosionCount ?? 0;
+
+        const damageMode = await getDamageApplicationMode();
+        let appliedDamageAmount: number | undefined;
+        let resolutionNote: string | undefined;
+        let damageResolutionStatus: "pending" | "applied" = "pending";
+
+        if (damageMode === "auto" && targetId) {
+            if (isHealing) {
+                const healRes = await applyHeal(targetId, dmgResult.total);
+                damageResolutionStatus = getHealResolutionStatus(
+                    damageMode,
+                    healRes !== null,
+                );
+                if (healRes) {
+                    appliedDamageAmount = healRes.hpRestored;
+                } else {
+                    OBR.notification.show(
+                        `Could not apply healing to ${targetName}. Review the roll card to approve it manually.`,
+                        "WARNING",
+                    );
+                }
+            } else {
+                const applyRes = await applyDamage(targetId, dmgResult.total, damageTypeLabel);
+                appliedDamageAmount = applyRes?.effectiveDamage ?? dmgResult.total;
+                resolutionNote = applyRes?.defenseNote;
+                damageResolutionStatus = "applied";
+            }
+        }
+
         broadcastDDBRoll([{
-            id: `${Date.now()}-dock-spell-dmg`, casterName, targetName: "TARGET",
-            actionName: spell.name.toUpperCase(), actionType: isHealing ? "HEAL" : "DAMAGE", dieType: dieFaces,
+            id: `${Date.now()}-dock-spell-dmg`,
+            casterName,
+            targetName,
+            targetId,
+            actionName: spell.name.toUpperCase(),
+            actionType: isHealing ? "HEAL" : "DAMAGE",
+            dieType: dieFaces,
             diceBreakdown: dmgResult.breakdown.replace(/\+/g, " + "),
             formula: isExploded
                 ? `${effectiveDice} ${damageTypeLabel} (+${explosionCount} Exploded)`.trim()
                 : `${effectiveDice} ${damageTypeLabel}`.trim(),
             total: dmgResult.total,
+            pendingDamage: isHealing ? undefined : dmgResult.total,
+            appliedDamageAmount,
+            resolutionNote,
+            damageType: isHealing ? undefined : (damageTypeLabel || undefined),
+            damageResolutionStatus,
             subtitle: isHealing
                 ? `Healing (${damageTypeLabel || "Spell"})`
                 : (isExploded

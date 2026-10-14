@@ -20,10 +20,11 @@ interface UseSpellResourceHandlersOptions {
     setCreatedSpellSlots: Dispatch<SetStateAction<Record<number, number>>>;
     setActionUsed: Dispatch<SetStateAction<boolean>>;
     setBonusActionUsed: Dispatch<SetStateAction<boolean>>;
-    setConcentrationSpell: Dispatch<SetStateAction<{ id: string; name: string } | null>>;
+    setConcentrationSpell: Dispatch<SetStateAction<{ id: string; name: string; hexTargetId?: string | null } | null>>;
     setDeathSaves: Dispatch<SetStateAction<{ successes: number; failures: number }>>;
     setHitDiceUsed: Dispatch<SetStateAction<Record<string, number>>>;
     setExhaustionLevel: Dispatch<SetStateAction<number>>;
+    onResetHpToMax?: () => void;
 }
 
 export function useSpellResourceHandlers({
@@ -43,6 +44,7 @@ export function useSpellResourceHandlers({
     setDeathSaves,
     setHitDiceUsed,
     setExhaustionLevel,
+    onResetHpToMax,
 }: UseSpellResourceHandlersOptions) {
     const toggleSlotPip = (level: number) => {
         setSpellSlots(prev => {
@@ -138,6 +140,36 @@ export function useSpellResourceHandlers({
         setFeatureUses(prev => ({ ...prev, [feat.id]: nextUsed }));
     };
 
+    const handleShortRest = () => {
+        setActionUsed(false);
+        setBonusActionUsed(false);
+        setConcentrationSpell(null);
+        setPactSlots(prev => ({ ...prev, used: 0 }));
+        setFeatureUses(prev => {
+            const next = { ...prev };
+            if (character) {
+                const features = getCharacterFeatures(character);
+                for (const feat of features) {
+                    const rt = (feat.limitedUse?.resetType || "").toLowerCase();
+                    const name = feat.name.toLowerCase();
+                    const isShortRest = rt.includes("short") ||
+                        name.includes("action surge") ||
+                        name.includes("second wind") ||
+                        name.includes("focus point") ||
+                        name.includes("ki") ||
+                        name.includes("channel divinity") ||
+                        name.includes("wild shape") ||
+                        name.includes("font of inspiration");
+                    if (isShortRest) {
+                        delete next[feat.id];
+                    }
+                }
+            }
+            return next;
+        });
+        OBR.notification.show("Short Rest completed: Actions, Pact Slots, and Short Rest abilities restored! (Spend Hit Dice from HP details)", "SUCCESS");
+    };
+
     const handleLongRest = () => {
         setActionUsed(false);
         setBonusActionUsed(false);
@@ -156,9 +188,18 @@ export function useSpellResourceHandlers({
         setDeathSaves({ successes: 0, failures: 0 });
         setHitDiceUsed({});
         setExhaustionLevel(prev => Math.max(0, prev - 1));
+        if (onResetHpToMax) onResetHpToMax();
         if (character?.id) resetCombatState(character.id).catch(console.error);
-        OBR.notification.show("Long Rest completed: Actions, slots, hit dice, and 1 exhaustion level restored!", "INFO");
+        OBR.notification.show("Long Rest completed: HP, actions, slots, hit dice, and 1 exhaustion level restored!", "INFO");
     };
 
-    return { toggleSlotPip, handleConvertSlotToSorceryPoints, handleCreateSorcererSpellSlot, togglePactPip, toggleClassResource, handleLongRest };
+    return {
+        toggleSlotPip,
+        handleConvertSlotToSorceryPoints,
+        handleCreateSorcererSpellSlot,
+        togglePactPip,
+        toggleClassResource,
+        handleShortRest,
+        handleLongRest,
+    };
 }

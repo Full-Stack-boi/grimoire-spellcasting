@@ -1,0 +1,478 @@
+/* ==========================================================================
+   BG3 TOP-CENTER INITIATIVE TURN TRACKER RIBBON
+   Clean Floating Layout: Transparent Background, Symmetrical Centering & Generous Headroom
+   ========================================================================== */
+
+.bg3-turn-tracker-root {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  user-select: none;
+  font-family: Roboto, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  box-sizing: border-box;
+  overflow: visible;
+  padding: 10px 0 0 0;
+}
+
+/* Outer floating transparent ribbon container - Zero black background */
+.bg3-turn-ribbon-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0;
+  gap: 0;
+  height: auto;
+  min-height: 64px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* Hide corner box rivets and redundant side SVGs for a completely clean floating look */
+.bg3-ribbon-rivet {
+  display: none !important;
+}
+
+.bg3-filigree-svg {
+  display: none !important;
+}
+
+.bg3-ribbon-divider {
+  display: none !important;
+}
+
+/* Symmetrical Left & Right wings ensuring portraits track is dead-center on the screen */
+.bg3-filigree-wing {
+  display: flex;
+  align-items: center;
+  flex: 0 0 76px;
+  width: 76px;
+  min-width: 76px;
+  box-sizing: border-box;
+}
+
+.bg3-filigree-wing.left {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-right: 16px; /* Separation from first portrait */
+}
+
+.bg3-filigree-wing.right {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-left: 16px; /* Separation from last portrait */
+}
+
+/* Round Badge Medallion: Standalone floating dark-crimson badge */
+.bg3-round-gem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: rgba(26, 16, 20, 0.94);
+  border: 1.5px solid #8b1d24;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.75),
+    0 0 8px rgba(139, 29, 36, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #fbbf24;
+  cursor: default;
+  user-select: none;
+  box-sizing: border-box;
+  backdrop-filter: blur(8px);
+}
+
+.bg3-round-label {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fbbf24;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* GM Step buttons (< and >) */
+.bg3-turn-step-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.bg3-turn-step-btn.prev {
+  width: 24px;
+  background: rgba(19, 26, 38, 0.94);
+  border: 1.5px solid #243044;
+  color: #94a3b8;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.bg3-turn-step-btn.prev:hover {
+  background: #1c2638;
+  border-color: #60a5fa;
+  color: #f1f5f9;
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
+  transform: scale(1.06);
+}
+
+.bg3-turn-step-btn.prev:active {
+  transform: scale(0.92);
+}
+
+/* Next button uses Extension Signature Crimson Primary */
+.bg3-turn-step-btn.next {
+  width: 28px;
+  background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+  border: 1.5px solid #ef4444;
+  color: #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.75),
+    0 0 10px rgba(239, 68, 68, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(8px);
+}
+
+.bg3-turn-step-btn.next:hover {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  border-color: #f87171;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.85);
+  transform: scale(1.06);
+}
+
+.bg3-turn-step-btn.next:active {
+  transform: scale(0.92);
+}
+
+/* Portraits Track - Centered, spacious, and with ample headroom */
+.bg3-portraits-track {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 100%;
+  padding-top: 8px; /* Headroom for active card */
+  padding-bottom: 10px; /* Room for active arrow */
+  overflow: visible;
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+
+.bg3-portraits-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* Standalone Floating Portrait Card */
+.bg3-portrait-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 44px;
+  height: 52px;
+  border-radius: 6px;
+  background: rgba(15, 20, 31, 0.92);
+  border: 1px solid rgba(30, 40, 56, 0.8);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+  overflow: visible;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75);
+}
+
+.bg3-portrait-card:hover {
+  transform: translateY(-2px);
+  z-index: 25;
+}
+
+/* Ally Frame (Sapphire & Clean Blue Rim) */
+.bg3-portrait-card.ally {
+  border: 1.5px solid rgba(37, 99, 235, 0.9);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.65),
+    0 0 8px rgba(37, 99, 235, 0.3);
+}
+
+.bg3-portrait-card.ally:hover {
+  border-color: #60a5fa;
+  box-shadow: 
+    0 6px 16px rgba(0, 0, 0, 0.8),
+    0 0 14px rgba(96, 165, 250, 0.6);
+}
+
+/* Enemy Frame (Extension Crimson Accent #8b1d24) */
+.bg3-portrait-card.enemy {
+  border: 1.5px solid rgba(139, 29, 36, 0.9);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.65),
+    0 0 8px rgba(139, 29, 36, 0.4);
+}
+
+.bg3-portrait-card.enemy:hover {
+  border-color: #ef4444;
+  box-shadow: 
+    0 6px 16px rgba(0, 0, 0, 0.8),
+    0 0 14px rgba(239, 68, 68, 0.6);
+}
+
+/* Active Turn Portrait - Elevated with Warm Radiant Amber Glow (Zero Top Clipping!) */
+.bg3-portrait-card.active {
+  width: 46px;
+  height: 54px;
+  border: 2px solid #f59e0b !important;
+  box-shadow: 
+    0 6px 20px rgba(0, 0, 0, 0.85),
+    0 0 18px rgba(245, 158, 11, 0.8),
+    inset 0 0 4px rgba(245, 158, 11, 0.35) !important;
+  transform: translateY(-3px);
+  z-index: 20;
+}
+
+.bg3-portrait-card.active:hover {
+  transform: translateY(-4px);
+}
+
+.bg3-portrait-card.defeated {
+  opacity: 0.45;
+  filter: grayscale(0.85);
+  border-color: #334155 !important;
+}
+
+/* Avatar Image Box with Inner Vignette */
+.bg3-portrait-img-box {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #090d14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg3-portrait-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bg3-portrait-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.6) 100%);
+  pointer-events: none;
+}
+
+.bg3-portrait-fallback {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #cbd5e1;
+  text-transform: uppercase;
+}
+
+/* Micro Health Gauge Bar along bottom of portrait */
+.bg3-portrait-hp-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(13, 17, 23, 0.9);
+  border-radius: 0 0 5px 5px;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.bg3-portrait-hp-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.bg3-portrait-hp-fill.healthy {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.6);
+}
+
+.bg3-portrait-hp-fill.injured {
+  background: #f59e0b;
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.6);
+}
+
+.bg3-portrait-hp-fill.critical {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.7);
+}
+
+.bg3-portrait-hp-fill.dead {
+  background: #475569;
+}
+
+/* Active marker pointer arrow underneath portrait */
+.bg3-active-marker-arrow {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid #f59e0b;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.9));
+  animation: bg3ArrowPulse 1.8s ease-in-out infinite;
+  z-index: 25;
+}
+
+@keyframes bg3ArrowPulse {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+    filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.8));
+  }
+  50% {
+    transform: translateX(-50%) translateY(-2px);
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 1));
+  }
+}
+
+/* Extension Theme Hover Tooltip */
+.bg3-portrait-card .bg3-portrait-tooltip,
+.bg3-portrait-tooltip-portal {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 17, 24, 0.96);
+  border: 1px solid rgba(30, 40, 56, 0.8);
+  border-top: 2px solid #8b1d24;
+  border-radius: 6px;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 5px 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  backdrop-filter: blur(8px);
+}
+
+.bg3-portrait-card:hover .bg3-portrait-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(2px);
+}
+
+.bg3-portrait-card .bg3-portrait-tooltip[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.bg3-portrait-tooltip-portal {
+  position: fixed;
+  max-width: calc(100vw - 16px);
+  opacity: 1;
+  transform: translateX(-50%) translateY(2px);
+  z-index: 10000;
+}
+
+.bg3-tooltip-name {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+}
+
+.bg3-tooltip-vitals {
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.bg3-tooltip-init {
+  font-size: 0.62rem;
+  color: #fbbf24;
+  font-weight: 700;
+  background: #1e293b;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid #334155;
+}
+
+@media (max-width: 680px) {
+  .bg3-turn-tracker-root {
+    padding: 4px 0 0;
+    overflow: hidden;
+  }
+
+  .bg3-turn-ribbon-bar {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+    overflow: hidden;
+  }
+
+  .bg3-filigree-wing {
+    flex: 0 0 92px;
+    width: 92px;
+    min-width: 92px;
+    gap: 4px;
+  }
+
+  .bg3-filigree-wing.left {
+    margin-right: 4px;
+  }
+
+  .bg3-filigree-wing.right {
+    margin-left: 4px;
+  }
+
+  .bg3-round-gem {
+    min-width: 38px;
+    height: 38px;
+    padding: 0 6px;
+  }
+
+  .bg3-turn-step-btn.prev,
+  .bg3-turn-step-btn.next {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .bg3-portraits-track {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: safe center;
+    gap: 6px;
+    touch-action: pan-x;
+  }
+
+  .bg3-portrait-card {
+    flex: 0 0 auto;
+  }
+}

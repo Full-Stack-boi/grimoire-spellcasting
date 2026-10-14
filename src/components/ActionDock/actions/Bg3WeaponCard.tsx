@@ -25,9 +25,11 @@ export function Bg3WeaponCard({
 }: Bg3WeaponCardProps) {
     const isThrownMode = mode === "thrown";
     const displayName = isThrownMode ? `Throw ${weapon.name}` : weapon.name;
-    const baseDamage = isThrownMode && weapon.properties?.some(p => p.toLowerCase().includes("versatile"))
-        ? weapon.damage.replace(/\b1d8\b/, "1d6")
-        : weapon.damage;
+    const baseDamage = isThrownMode && weapon.thrownDamage
+        ? weapon.thrownDamage
+        : (isThrownMode && weapon.properties?.some(p => p.toLowerCase().includes("versatile"))
+            ? weapon.damage.replace(/\b1d8\b/, "1d6")
+            : weapon.damage);
 
     const handBadge = isMainHand
         ? {
@@ -49,13 +51,6 @@ export function Bg3WeaponCard({
             className: "thrown-indicator",
             title: `Thrown Ranged Attack (${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft.)`,
         }
-        : weapon.hasThrown
-        ? {
-            label: "THROW",
-            className: "throw",
-            title: `Throw ${weapon.name} (${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft.)`,
-            onClick: () => onActivate(weapon, "thrown"),
-        }
         : undefined;
 
     const subtitle = isThrownMode
@@ -66,9 +61,10 @@ export function Bg3WeaponCard({
         ? `Off Hand · ${weapon.type || "Melee"}`
         : (weapon.type || "Attack");
 
+    const effectiveToHit = isThrownMode && weapon.thrownToHit != null ? weapon.thrownToHit : weapon.toHit;
     const details = [
         isThrownMode ? "Thrown Ranged Attack" : isMainHand ? "Main Hand (Primary)" : isOffHand ? "Off Hand (Bonus Action)" : undefined,
-        `+${weapon.toHit} to hit`,
+        `+${effectiveToHit} to hit`,
         baseDamage,
         weapon.damageType,
         isThrownMode ? `${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft` : weapon.rangeText,

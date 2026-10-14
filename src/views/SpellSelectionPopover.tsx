@@ -30,7 +30,7 @@ async function selectSpell(spellName: string, casterId?: string) {
     }
     await OBR.player.setMetadata({ [mostRecentEffectsMetadataKey]: mostRecentSpellsList });
 
-    setSelectedSpell(spellName, casterId);
+    await setSelectedSpell(spellName, casterId);
     await OBR.tool.activateTool(toolID);
 
     // Close this popover

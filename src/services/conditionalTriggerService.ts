@@ -3,6 +3,8 @@ import { ConditionalTrigger } from "../types/conditionalTrigger";
 import { DDBRollCardData } from "../types/ddbRollLog";
 import { rollDamageDDB } from "../utils/dice";
 import { broadcastDDBRoll } from "./rollLogService";
+import { applyDamage } from "../features/combat/tokenVitalsService";
+import { getDamageApplicationMode } from "../features/combat/damageModeService";
 
 export const CONDITIONAL_TRIGGERS_METADATA_KEY = `${APP_KEY}/conditional-triggers`;
 
@@ -148,16 +150,34 @@ export async function fireConditionalTrigger(triggerId: string): Promise<DDBRoll
             subtitle = "Action Trigger (Target attacked or cast a spell)";
         }
 
+        const damageMode = await getDamageApplicationMode();
+        let appliedDamageAmount: number | undefined;
+        let resolutionNote: string | undefined;
+        let damageResolutionStatus: "pending" | "applied" = "pending";
+
+        if (damageMode === "auto" && trigger.targetId) {
+            const applyRes = await applyDamage(trigger.targetId, dmg.total, trigger.damageType);
+            appliedDamageAmount = applyRes?.effectiveDamage ?? dmg.total;
+            resolutionNote = applyRes?.defenseNote;
+            damageResolutionStatus = "applied";
+        }
+
         const card: DDBRollCardData = {
             id: `${Date.now()}-trigger-${trigger.id}`,
             casterName: trigger.casterName || "Character",
             targetName: trigger.targetName || "Target",
+            targetId: trigger.targetId,
             actionName: `${trigger.spellName.toUpperCase()} (TRIGGER)`,
             actionType: "DAMAGE",
             dieType: dieFaces,
             diceBreakdown: dmg.breakdown.replace(/\+/g, " + "),
             formula: `${trigger.damageFormula} ${trigger.damageType}`,
             total: dmg.total,
+            pendingDamage: dmg.total,
+            appliedDamageAmount,
+            resolutionNote,
+            damageType: trigger.damageType,
+            damageResolutionStatus,
             subtitle,
             isConditionTrigger: true,
             triggerConditionDesc: trigger.conditionDescription || subtitle,

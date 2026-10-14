@@ -13,6 +13,7 @@ import {
 } from "../../../services/ddbService";
 import { DDBParsedCharacter } from "../../../types/ddb";
 import { TOKEN_VISION_METADATA_KEY } from "../../../features/targeting/application/lineOfSightService";
+import { syncTokenVitalsFromDDB } from "../../../features/combat/tokenVitalsService";
 
 interface DDBCharacterSyncModalProps {
     isOpen: boolean;
@@ -73,6 +74,7 @@ export const DDBCharacterSyncModal: React.FC<DDBCharacterSyncModalProps> = ({
             // Link to active token if present
             if (activeTokenId) {
                 await linkCharacterToToken(activeTokenId, charId);
+                await syncTokenVitalsFromDDB(activeTokenId, parsed);
 
                 // Also sync vision rules to token metadata
                 if (parsed.senses) {
@@ -120,6 +122,7 @@ export const DDBCharacterSyncModal: React.FC<DDBCharacterSyncModalProps> = ({
 
             if (activeTokenId) {
                 await linkCharacterToToken(activeTokenId, parsed.id);
+                await syncTokenVitalsFromDDB(activeTokenId, parsed);
                 if (parsed.senses) {
                     await OBR.scene.items.updateItems([activeTokenId], items => {
                         items.forEach(item => {

@@ -11,14 +11,17 @@ import type { DDBFeatureAction, DDBParsedCharacter } from "../../../types/ddb";
 import type { SpellSlotConfig } from "../domain/types";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
+import { resolveConditionRules } from "../../../features/combat/domain/conditionRules";
 
 interface UseSpellCastingOptions {
     selectedSpell: string | null;
     casterId?: string;
     player?: { role?: string; id?: string };
     character: DDBParsedCharacter | null;
+    conditions: string[];
+    exhaustionLevel: number;
     castLevel: number;
-    concentrationSpell: { id: string; name: string } | null;
+    concentrationSpell: { id: string; name: string; hexTargetId?: string | null } | null;
     selectedHexAbility: string;
     characterFeatures: DDBFeatureAction[];
     spellSlots: Record<number, SpellSlotConfig>;
@@ -28,7 +31,7 @@ interface UseSpellCastingOptions {
     setSelectedHexAbility: Dispatch<SetStateAction<string>>;
     setSpellSlots: Dispatch<SetStateAction<Record<number, SpellSlotConfig>>>;
     setPactSlots: Dispatch<SetStateAction<SpellSlotConfig>>;
-    setConcentrationSpell: Dispatch<SetStateAction<{ id: string; name: string } | null>>;
+    setConcentrationSpell: Dispatch<SetStateAction<{ id: string; name: string; hexTargetId?: string | null } | null>>;
 }
 
 export function useSpellCasting({
@@ -36,6 +39,8 @@ export function useSpellCasting({
     casterId,
     player,
     character,
+    conditions,
+    exhaustionLevel,
     castLevel,
     concentrationSpell,
     selectedHexAbility,
@@ -55,8 +60,21 @@ export function useSpellCasting({
             OBR.notification.show("Select an attack or spell to cast", "INFO");
             return;
         }
+        const conditionRules = resolveConditionRules({
+            conditions,
+            exhaustionLevel,
+            rollKind: "attack",
+            actionType: "action",
+        });
+        if (conditionRules.blocked) {
+            OBR.notification.show(
+                `Spellcasting prevented by condition: ${conditionRules.reasons.join("; ")}`,
+                "WARNING",
+            );
+            return;
+        }
 
-        setSelectedSpell(targetId, casterId);
+        await setSelectedSpell(targetId, casterId);
         setSelected(targetId);
         await OBR.tool.activateTool(toolID);
 
@@ -136,10 +154,14 @@ export function useSpellCasting({
             const concentrationName = isHexSpell
                 ? `Hex (${(hexAbility || selectedHexAbility || "dexterity").toUpperCase()})`
                 : matchedSpell.name;
+            const hexTid = isHexSpell ? (currentTargets[0]?.attachedTo || currentTargets[0]?.id || null) : null;
             if (concentrationSpell && concentrationSpell.id !== matchedSpell.id) {
                 OBR.notification.show(`Concentration broken on "${concentrationSpell.name}"! Now concentrating on "${concentrationName}".`, "WARNING");
             }
-            setConcentrationSpell({ id: matchedSpell.id, name: concentrationName });
+            setConcentrationSpell({ id: matchedSpell.id, name: concentrationName, hexTargetId: hexTid });
+            if (isHexSpell && character?.id && hexTid) {
+                saveCombatState(character.id, { hexTargetId: hexTid, hexTargetName: currentTargets[0]?.name || null }).catch(console.error);
+            }
         }
 
         const casterName = character?.name || "Character";

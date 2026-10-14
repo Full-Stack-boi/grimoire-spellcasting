@@ -17,6 +17,7 @@ import { log_error } from "../logging";
 export function precomputeProjectileAssets(
   projectileInfo: ProjectileProperties,
   variant?: number,
+  assetBaseUrl?: string,
 ) {
   const assets: string[] = [];
 
@@ -44,6 +45,7 @@ export function precomputeProjectileAssets(
       projectileInfo.name,
       effectVariantName,
       i % effect.variants[effectVariantName].name.length,
+      assetBaseUrl,
     );
     if (url == undefined) {
       log_error(
@@ -81,6 +83,11 @@ export async function projectile(
   variant?: number,
   spellName?: string,
   spellCaster?: string,
+  spellCasterTokenId?: string,
+  spellCharacterId?: string | number,
+  spellId?: string,
+  spellDisplayName?: string,
+  assetBaseUrl?: string,
 ) {
   const effect = getEffect(projectileInfo.name);
   if (effect == undefined) {
@@ -118,6 +125,11 @@ export async function projectile(
       zIndex,
       spellName,
       spellCaster,
+      spellCasterTokenId,
+      spellCharacterId,
+      spellId,
+      spellDisplayName,
+      assetBaseUrl,
     );
     if (result == undefined) {
       return;

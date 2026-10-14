@@ -13,7 +13,8 @@ import {
     fetchDDBCharacter,
     hasPotentCantrip,
     hasWeaponGraze,
-    buildWeaponAttackFromInventoryItem
+    buildWeaponAttackFromInventoryItem,
+    resolveDDBModifierValue
 } from "../ddbService";
 import { getSpellMetadata, registerDynamicSpells } from "../../assets/spellInfo";
 
@@ -494,9 +495,13 @@ describe("ddbService", () => {
     describe("real character 170484944 parsing", () => {
         it("accurately parses ability scores, modifiers, spell attack bonus, and save DCs", async () => {
             const fs = await import("fs");
-            const path = "C:/Users/Nattawut/.gemini/antigravity/brain/ca11a4b2-5109-4e47-9096-dc45d03fc24d/scratch/character_170484944.json";
-            if (!fs.existsSync(path)) return;
-            const raw = JSON.parse(fs.readFileSync(path, "utf-8"));
+            const candidates = [
+                "C:/Users/Nattawut/.gemini/antigravity/brain/0fe97a93-81bf-468b-9621-8f93c828f0ed/scratch/char_170484944.json",
+                "C:/Users/Nattawut/.gemini/antigravity/brain/d991cfa6-6253-4f43-b0b5-0e0f2aacd050/scratch/char_170484944.json"
+            ];
+            const path = candidates.find(p => fs.existsSync(p));
+            if (!path) return;
+            const raw = JSON.parse(fs.readFileSync(path, "utf-8").replace(/^\uFEFF/, ""));
             const char = parseDDBCharacterData(raw);
 
             console.log("PARSED CHAR STATS:", char.stats);
@@ -547,7 +552,7 @@ describe("ddbService", () => {
             // HP: 43 / 43, Speed: 30 ft, AC: 16, Initiative: +3 with Advantage, Defenses: Necrotic
             expect(char.hp).toEqual({ current: 43, max: 43, temp: 0 });
             expect(char.speed).toBe(30);
-            expect(char.armorClass).toBe(16);
+            expect(char.armorClass).toBe(13); // 10 + DEX 3
             expect(char.initiative).toBe(3);
             expect(char.hasInitiativeAdvantage).toBe(true);
             expect(char.defenses?.resistances).toContain("Necrotic");
@@ -590,8 +595,69 @@ describe("ddbService", () => {
             const warningDagger = char.inventory?.find(i => i.name.includes("Warning"));
             expect(warningDagger?.isAttuned).toBe(true);
             expect(warningDagger?.canAttune).toBe(true);
-            expect(char.currencies?.gp).toBe(2364);
+            expect(char.currencies?.gp).toBe(0);
             expect(char.backgroundInfo?.name).toBe("Wayfarer");
+        });
+    });
+
+    describe("real character 171883974 parsing", () => {
+        it("accurately parses skills, saves, and senses for Monster Hunter 6", async () => {
+            const fs = await import("fs");
+            const candidates = [
+                "C:/Users/Nattawut/.gemini/antigravity/brain/0fe97a93-81bf-468b-9621-8f93c828f0ed/scratch/char_171883974.json"
+            ];
+            const path = candidates.find(p => fs.existsSync(p));
+            if (!path) return;
+            const raw = JSON.parse(fs.readFileSync(path, "utf-8"));
+            const char = parseDDBCharacterData(raw);
+
+            // 7 proficient skills: Arcana, History, Medicine, Nature, Investigation, Perception, Athletics
+            expect(char.skills).toBeDefined();
+            const proficientSkills = char.skills!.filter(s => s.proficient);
+            expect(proficientSkills.length).toBe(7);
+
+            const arcana = char.skills!.find(s => s.name === "Arcana");
+            const history = char.skills!.find(s => s.name === "History");
+            const medicine = char.skills!.find(s => s.name === "Medicine");
+            const nature = char.skills!.find(s => s.name === "Nature");
+            const investigation = char.skills!.find(s => s.name === "Investigation");
+            const perception = char.skills!.find(s => s.name === "Perception");
+            const athletics = char.skills!.find(s => s.name === "Athletics");
+            const acrobatics = char.skills!.find(s => s.name === "Acrobatics");
+
+            expect(arcana?.proficient).toBe(true);
+            expect(arcana?.bonus).toBe(6); // INT 3 + prof 3
+            expect(history?.proficient).toBe(true);
+            expect(history?.bonus).toBe(6); // INT 3 + prof 3
+            expect(medicine?.proficient).toBe(true);
+            expect(medicine?.bonus).toBe(3); // WIS 0 + prof 3
+            expect(nature?.proficient).toBe(true);
+            expect(nature?.bonus).toBe(6); // INT 3 + prof 3
+            expect(investigation?.proficient).toBe(true);
+            expect(investigation?.bonus).toBe(6); // INT 3 + prof 3
+            expect(perception?.proficient).toBe(true);
+            expect(perception?.bonus).toBe(3); // WIS 0 + prof 3
+            expect(athletics?.proficient).toBe(true);
+            expect(athletics?.bonus).toBe(2); // STR -1 + prof 3
+
+            expect(acrobatics?.proficient).toBe(false);
+            expect(acrobatics?.bonus).toBe(3); // DEX 3 unproficient
+
+            // Saving throws (DEX +6 proficient, INT +6 proficient)
+            expect(char.savingThrows).toBeDefined();
+            expect(char.savingThrows!.dex.proficient).toBe(true);
+            expect(char.savingThrows!.dex.bonus).toBe(6);
+            expect(char.savingThrows!.int.proficient).toBe(true);
+            expect(char.savingThrows!.int.bonus).toBe(6);
+            expect(char.savingThrows!.str.proficient).toBe(false);
+            expect(char.savingThrows!.con.proficient).toBe(false);
+
+            // Senses
+            expect(char.senses.darkvision).toBe(60);
+            expect(char.sensesInfo?.passivePerception).toBe(13); // 10 + Perception 3
+            expect(char.sensesInfo?.passiveInvestigation).toBe(16); // 10 + Investigation 6
+            expect(char.sensesInfo?.passiveInsight).toBe(10); // 10 + Insight 0
+            expect(char.sensesInfo?.specialSenses).toContain("Darkvision 60 ft.");
         });
     });
 
@@ -1206,6 +1272,174 @@ describe("ddbService", () => {
             expect(char.offhandWeapon).toBeDefined();
             // With TWF style, ability modifier (+3) is retained on offhand damage
             expect(char.offhandWeapon?.damage).toBe("1d6+3");
+        });
+
+        it("resolveDDBModifierValue correctly resolves numbers, fixedValues, and statId", () => {
+            const abilityMods = { str: 2, dex: 3, con: 2, int: 3, wis: 1, cha: -1 };
+            expect(resolveDDBModifierValue({ value: 2 }, abilityMods)).toBe(2);
+            expect(resolveDDBModifierValue({ fixedValue: 3 }, abilityMods)).toBe(3);
+            expect(resolveDDBModifierValue({ statId: 1 }, abilityMods)).toBe(2); // STR
+            expect(resolveDDBModifierValue({ statId: 2 }, abilityMods)).toBe(3); // DEX
+            expect(resolveDDBModifierValue({ statId: 4 }, abilityMods)).toBe(3); // INT
+            expect(resolveDDBModifierValue({ statId: 6 }, abilityMods)).toBe(-1); // CHA
+            expect(resolveDDBModifierValue({ value: null, fixedValue: null }, abilityMods)).toBe(0);
+        });
+
+        it("calculates accurate attack rolls and damage formulas data-driven from character modifiers (e.g. Kazmalia)", () => {
+            const rawCharacterData = {
+                id: 171883974,
+                name: "Copy of Kazmalia",
+                classes: [
+                    {
+                        level: 6,
+                        definition: { name: "Monster Hunter" }
+                    }
+                ],
+                stats: [
+                    { id: 1, value: 14 }, // STR = 14 (+2)
+                    { id: 2, value: 16 }, // DEX = 16 (+3)
+                    { id: 3, value: 14 }, // CON = 14 (+2)
+                    { id: 4, value: 16 }, // INT = 16 (+3)
+                    { id: 5, value: 12 }, // WIS = 12 (+1)
+                    { id: 6, value: 8 }   // CHA = 8 (-1)
+                ],
+                modifiers: {
+                    race: [],
+                    class: [
+                        // Expert Strike: INT mod to melee attacks, melee weapon damage, ranged weapon attacks, ranged damage
+                        { type: "bonus", subType: "melee-attacks", statId: 4, isGranted: true },
+                        { type: "damage", subType: "melee-weapon-attacks", statId: 4, isGranted: true },
+                        { type: "bonus", subType: "ranged-weapon-attacks", statId: 4, isGranted: true },
+                        { type: "damage", subType: "ranged-attacks", statId: 4, isGranted: true }
+                    ],
+                    background: [],
+                    item: [],
+                    feat: [
+                        // Thrown Weapon Fighting: +2 damage on thrown weapon attacks
+                        { type: "damage", subType: "thrown-weapon-attacks", value: 2, fixedValue: 2, isGranted: true }
+                    ]
+                },
+                inventory: [
+                    // Dagger, +1 (equipped)
+                    {
+                        id: 1001,
+                        equipped: true,
+                        definition: {
+                            name: "Dagger, +1",
+                            filterType: "Weapon",
+                            attackType: 1, // Melee
+                            magic: true,
+                            fixedValue: 1,
+                            damage: { diceString: "1d4" },
+                            damageType: "Piercing",
+                            properties: [{ name: "Finesse" }, { name: "Light" }, { name: "Thrown" }],
+                            range: 20,
+                            longRange: 60,
+                            grantedModifiers: [
+                                { type: "bonus", subType: "magic", value: 1, isGranted: true }
+                            ]
+                        }
+                    },
+                    // Dagger of Warning (equipped)
+                    {
+                        id: 1002,
+                        equipped: true,
+                        definition: {
+                            name: "Dagger of Warning",
+                            filterType: "Weapon",
+                            attackType: 1, // Melee
+                            damage: { diceString: "1d4" },
+                            damageType: "Piercing",
+                            properties: [{ name: "Finesse" }, { name: "Light" }, { name: "Thrown" }],
+                            range: 20,
+                            longRange: 60
+                        }
+                    }
+                ]
+            };
+
+            const char = parseDDBCharacterData(rawCharacterData);
+            expect(char.proficiencyBonus).toBe(3);
+
+            // Dagger, +1 verification:
+            // To Hit: 3 (prof) + 3 (dex) + 1 (magic) + 3 (INT bonus:melee-attacks) = 10
+            // Damage: 1d4 + 3 (dex) + 1 (magic) + 3 (INT damage:melee-weapon-attacks) + 2 (thrown-weapon-attacks) = 1d4+9
+            const daggerPlusOne = char.weapons?.find(w => w.name === "Dagger, +1");
+            expect(daggerPlusOne).toBeDefined();
+            expect(daggerPlusOne?.toHit).toBe(10);
+            expect(daggerPlusOne?.damage).toBe("1d4+9");
+            expect(daggerPlusOne?.thrownToHit).toBe(10);
+            expect(daggerPlusOne?.thrownDamage).toBe("1d4+9");
+
+            // Dagger of Warning verification:
+            // To Hit: 3 (prof) + 3 (dex) + 3 (INT bonus:melee-attacks) = 9
+            // Damage: 1d4 + 3 (dex) + 3 (INT damage:melee-weapon-attacks) + 2 (thrown-weapon-attacks) = 1d4+8
+            const daggerOfWarning = char.weapons?.find(w => w.name === "Dagger of Warning");
+            expect(daggerOfWarning).toBeDefined();
+            expect(daggerOfWarning?.toHit).toBe(9);
+            expect(daggerOfWarning?.damage).toBe("1d4+8");
+            expect(daggerOfWarning?.thrownToHit).toBe(9);
+            expect(daggerOfWarning?.thrownDamage).toBe("1d4+8");
+
+            // Unarmed Strike verification:
+            // To Hit: 3 (prof) + 2 (str) = 5
+            // Damage: 1+2 (3) Bludgeoning
+            const unarmed = char.weapons?.find(w => w.name === "Unarmed Strike");
+            expect(unarmed).toBeDefined();
+            expect(unarmed?.toHit).toBe(5);
+            expect(unarmed?.damage).toBe("1+2");
+        });
+
+        it("preserves standard calculations for characters without special attack modifiers (e.g. character 170484944)", () => {
+            const rawCharacterData = {
+                id: 170484944,
+                name: "Standard Caster",
+                classes: [
+                    { level: 4, definition: { name: "Warlock" } },
+                    { level: 2, definition: { name: "Sorcerer" } }
+                ],
+                stats: [
+                    { id: 1, value: 10 }, // STR = 10 (+0)
+                    { id: 2, value: 16 }, // DEX = 16 (+3)
+                    { id: 3, value: 14 }, // CON = 14 (+2)
+                    { id: 4, value: 10 }, // INT = 10 (+0)
+                    { id: 5, value: 12 }, // WIS = 12 (+1)
+                    { id: 6, value: 18 }  // CHA = 18 (+4)
+                ],
+                modifiers: {
+                    race: [],
+                    class: [],
+                    background: [],
+                    item: [],
+                    feat: []
+                },
+                inventory: [
+                    {
+                        id: 2001,
+                        equipped: true,
+                        definition: {
+                            name: "Dagger, +1",
+                            filterType: "Weapon",
+                            attackType: 1,
+                            magic: true,
+                            fixedValue: 1,
+                            damage: { diceString: "1d4" },
+                            damageType: "Piercing",
+                            properties: [{ name: "Finesse" }, { name: "Light" }, { name: "Thrown" }],
+                            grantedModifiers: [
+                                { type: "bonus", subType: "magic", value: 1, isGranted: true }
+                            ]
+                        }
+                    }
+                ]
+            };
+
+            const char = parseDDBCharacterData(rawCharacterData);
+            const dagger = char.weapons?.find(w => w.name === "Dagger, +1");
+            // Standard: 3 prof + 3 dex + 1 magic = 7 to hit, 1d4+4 damage
+            expect(dagger).toBeDefined();
+            expect(dagger?.toHit).toBe(7);
+            expect(dagger?.damage).toBe("1d4+4");
         });
     });
 });

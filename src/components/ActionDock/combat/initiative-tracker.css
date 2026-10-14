@@ -1,0 +1,590 @@
+/* ==========================================================================
+   BG3 GM INITIATIVE & TURN ORDER TRACKER BAR
+   Authentic Baldur's Gate 3 dark fantasy aesthetic: slate, gold & obsidian
+   ========================================================================== */
+
+.ddb-bg3-initiative-tracker {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #131722 0%, #0d1017 100%);
+  border: 1px solid #2b3548;
+  border-bottom: 2px solid #1a2230;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  user-select: none;
+  font-family: inherit;
+  color: #e2e8f0;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ddb-bg3-initiative-tracker.collapsed {
+  margin-bottom: 4px;
+}
+
+/* Header toolbar */
+.ddb-bg3-initiative-header {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  background: rgba(15, 20, 30, 0.95);
+  border-bottom: 1px solid rgba(43, 53, 72, 0.6);
+  gap: 6px;
+}
+
+.ddb-bg3-initiative-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.ddb-bg3-initiative-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ddb-bg3-round-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2a2012 0%, #17130a 100%);
+  border: 1px solid #d97706;
+  color: #fbbf24;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.25);
+  flex-shrink: 0;
+}
+
+.ddb-bg3-round-badge.inactive {
+  background: #1a202c;
+  border-color: #3b4252;
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+.ddb-bg3-turn-summary {
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 160px;
+}
+
+.ddb-bg3-turn-summary strong {
+  color: #fbbf24;
+}
+
+.ddb-bg3-header-right-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Header buttons group (GM controls) */
+.ddb-bg3-initiative-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: 100%;
+}
+
+.ddb-bg3-combat-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #1e2638;
+  border: 1px solid #3b4861;
+  color: #e2e8f0;
+  font-size: 0.70rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ddb-bg3-combat-btn:hover:not(:disabled) {
+  background: #2b374e;
+  border-color: #60759f;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(96, 117, 159, 0.3);
+}
+
+.ddb-bg3-combat-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ddb-bg3-combat-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: #242c3d;
+}
+
+.ddb-bg3-combat-btn.primary {
+  background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.ddb-bg3-combat-btn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+  border-color: #f87171;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.ddb-bg3-combat-btn.gold {
+  background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+  border-color: #d97706;
+  color: #fffbeb;
+}
+
+.ddb-bg3-combat-btn.gold:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border-color: #fbbf24;
+  box-shadow: 0 0 10px rgba(217, 119, 6, 0.45);
+}
+
+.ddb-bg3-combat-btn.icon-only {
+  padding: 5px 7px;
+  min-width: 28px;
+}
+
+/* Combatants Reel */
+.ddb-bg3-combatants-reel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.ddb-bg3-combatants-reel::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ddb-bg3-combatants-reel::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+
+.ddb-bg3-combatants-reel::-webkit-scrollbar-track {
+  background: #0f141f;
+}
+
+/* Combatant Card */
+.ddb-bg3-combatant-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  max-width: 130px;
+  padding: 6px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #182030 0%, #111622 100%);
+  border: 1px solid #2d374d;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.ddb-bg3-combatant-card:hover {
+  background: linear-gradient(180deg, #202b40 0%, #161e2e 100%);
+  border-color: #475569;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.ddb-bg3-combatant-card.active {
+  background: linear-gradient(180deg, #2e2617 0%, #1a1610 100%);
+  border: 1.5px solid #d97706;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.4), inset 0 0 6px rgba(217, 119, 6, 0.2);
+}
+
+.ddb-bg3-combatant-card.defeated {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+  background: #11141a;
+  border-color: #262c38;
+}
+
+/* Turn active banner */
+.ddb-bg3-card-turn-banner {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #d97706;
+  color: #111622;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  text-transform: uppercase;
+}
+
+/* Card top: Avatar + Info */
+.ddb-bg3-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.ddb-bg3-card-avatar {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 1px solid #3b4861;
+  overflow: hidden;
+  background: #0d111a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ddb-bg3-combatant-card.active .ddb-bg3-card-avatar {
+  border-color: #d97706;
+}
+
+.ddb-bg3-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ddb-bg3-card-avatar-fallback {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.ddb-bg3-card-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.ddb-bg3-card-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ddb-bg3-combatant-card.defeated .ddb-bg3-card-name {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.ddb-bg3-card-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.ddb-bg3-init-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #1e2638;
+  border: 1px solid #3b4861;
+  color: #38bdf8;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.ddb-bg3-init-badge.interactive {
+  cursor: pointer;
+}
+
+.ddb-bg3-init-badge.interactive:hover {
+  background: #2b374e;
+  border-color: #38bdf8;
+}
+
+.ddb-bg3-ac-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #1e2638;
+  border: 1px solid #3b4861;
+  color: #cbd5e1;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+/* Card bottom: HP Bar */
+.ddb-bg3-card-hp-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ddb-bg3-card-hp-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  color: #94a3b8;
+}
+
+.ddb-bg3-card-hp-track {
+  width: 100%;
+  height: 4px;
+  background: #11141c;
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ddb-bg3-card-hp-fill {
+  height: 100%;
+  transition: width 0.25s ease, background-color 0.25s ease;
+}
+
+.ddb-bg3-card-hp-fill.high {
+  background: #10b981;
+}
+
+.ddb-bg3-card-hp-fill.mid {
+  background: #f59e0b;
+}
+
+.ddb-bg3-card-hp-fill.low {
+  background: #ef4444;
+}
+
+.ddb-bg3-card-hp-fill.dead {
+  background: #475569;
+}
+
+/* Remove button on hover */
+.ddb-bg3-card-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  color: #94a3b8;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.ddb-bg3-combatant-card:hover .ddb-bg3-card-remove-btn {
+  display: flex;
+}
+
+.ddb-bg3-card-remove-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+/* Empty State */
+.ddb-bg3-initiative-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  gap: 12px;
+}
+
+.ddb-bg3-initiative-empty-text {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Player Initiative Roll Prompt */
+.ddb-bg3-player-roll-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: linear-gradient(180deg, #182030 0%, #121824 100%);
+  border: 1px solid #3b4861;
+  border-left: 3px solid #d97706;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 4px 6px;
+}
+
+.ddb-bg3-player-roll-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.73rem;
+  color: #cbd5e1;
+}
+
+.ddb-bg3-player-roll-label strong {
+  color: #fbbf24;
+}
+
+.ddb-bg3-player-roll-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ddb-bg3-roll-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 0.70rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #3b4861;
+  background: #1e2638;
+  color: #e2e8f0;
+  transition: all 0.15s ease;
+}
+
+.ddb-bg3-roll-mode-btn:hover {
+  background: #2b3850;
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+.ddb-bg3-roll-mode-btn.advantage {
+  border-color: #1e40af;
+  background: #172554;
+  color: #93c5fd;
+}
+.ddb-bg3-roll-mode-btn.advantage:hover {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.ddb-bg3-roll-mode-btn.disadvantage {
+  border-color: #7f1d1d;
+  background: #450a0a;
+  color: #fca5a5;
+}
+.ddb-bg3-roll-mode-btn.disadvantage:hover {
+  background: #991b1b;
+  color: #ffffff;
+}
+
+/* Card Roll Button & Popover Menu */
+.ddb-bg3-card-roll-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 3px;
+  background: #1a2234;
+  border: 1px solid #3b4861;
+  color: #fbbf24;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.ddb-bg3-card-roll-btn:hover {
+  background: #2b3850;
+  border-color: #d97706;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.4);
+}
+
+.ddb-bg3-roll-menu-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.ddb-bg3-roll-menu-popover {
+  display: flex;
+  flex-direction: column;
+  background: #111622;
+  border: 1px solid #3b4861;
+  border-top: 2px solid #8b1d24;
+  border-radius: 5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
+  padding: 4px;
+  gap: 2px;
+  min-width: 135px;
+  z-index: 99999;
+  backdrop-filter: blur(8px);
+}
+
+.ddb-bg3-roll-menu-portal {
+  position: fixed !important;
+  z-index: 99999 !important;
+}
+
+.ddb-bg3-roll-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ddb-bg3-roll-menu-item:hover {
+  background: #1e2638;
+  color: #fbbf24;
+}
+
+.ddb-bg3-roll-menu-item.adv:hover {
+  color: #60a5fa;
+  background: #172554;
+}
+
+.ddb-bg3-roll-menu-item.disadv:hover {
+  color: #f87171;
+  background: #450a0a;
+}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useState, useMemo, useRef, Dispatch, SetStateAction } from "react";
 import "./ActionDock.css";
 import OBR, { isImage, Item } from "@owlbear-rodeo/sdk";
 import { spellIDs } from "../../effects/spells";
@@ -7,7 +7,7 @@ import {
     getSpellMetadata,
     registerDynamicSpells,
 } from "../../assets/spellInfo";
-import { setSelectedSpell, toolID, toolMetadataSelectedSpell, toolMetadataSelectedCaster, targetHighlightMetadataKey, stopAiming, hexChosenAbilityMetadataKey, selectedSpellDamageTypeMetadataKey, selectedSpellSlotLevelMetadataKey } from "../../effectsTool";
+import { setSelectedSpell, startMonsterAoeAction, toolID, toolMetadataSelectedSpell, toolMetadataSelectedCaster, targetHighlightMetadataKey, stopAiming, hexChosenAbilityMetadataKey, selectedSpellDamageTypeMetadataKey, selectedSpellSlotLevelMetadataKey } from "../../effectsTool";
 import { openSpellDetailModal } from "../../views/SpellDetailModal";
 import { spellPopoverId } from "../../views/SpellSelectionPopover";
 import { useOBR } from "../../platform/obr/react/providers/BaseOBRProvider";
@@ -22,7 +22,8 @@ import { focusCameraOnToken, isTokenOwnedByPlayer, getOtherClaimedPlayer, getMyP
 import {
     cacheDDBCharacter,
     ddbSpellToMetadata,
-    buildWeaponAttackFromInventoryItem
+    buildWeaponAttackFromInventoryItem,
+    getLinkedDDBCharacterId
 } from "../../services/ddbService";
 import { DDBParsedCharacter, DDBWeaponAttack, DDBFeatureAction, DDBParsedSpell, DDBInventoryItem } from "../../types/ddb";
 import { openDDBSyncModal } from "../../views/DDBSyncModal";
@@ -40,6 +41,15 @@ import {
     type DdbResourceBaseline
 } from "../../services/combatStateService";
 import {
+    setTokenVitals,
+    getTokenVitals,
+    extractTokenVitals,
+    syncTokenVitalsFromDDB,
+    applyDamage,
+    replaceTokenConcentration,
+} from "../../features/combat/tokenVitalsService";
+import { getDamageApplicationMode } from "../../features/combat/damageModeService";
+import {
     mergeSpellSlots,
     mergePactSlots,
     mergeFeatureUses,
@@ -52,10 +62,14 @@ import { buildRegistry, setActiveRegistry } from "../../services/spellFormulaReg
 import { BG3FlyoutBar } from "./overlays/BG3FlyoutBar";
 import { getFeatureFlyoutKind, findMatchingActionFormula } from "../../assets/manual-formulas";
 import { resolveWeaponRiders } from "../../services/weaponDamageRiders";
+import { getWeaponAnimationVariant } from "./domain/weaponAnimationVariant";
 import "./overlays/BG3FlyoutBar.css";
 import { ActionGridTooltipProvider } from "./actions/ActionGridTile";
 import { DEFAULT_WEAPONS } from "./domain/constants";
 import { closeActionDock } from "./domain/popover";
+import {
+    calculateResponsivePopoverDimensions,
+} from "../../utils/popoverSizing";
 import type { ActionsFilter, DetailDrawerItem, FeaturesFilter, InventoryFilter, MainTab, SpellSlotConfig, SpellsFilter } from "./domain/types";
 import { useRollHistory } from "./hooks/useRollHistory";
 import { useDockSizing } from "./hooks/useDockSizing";
@@ -89,6 +103,8 @@ import { useSpellDamageRoll } from "./hooks/useSpellDamageRoll";
 import { useSpellAttackRoll } from "./hooks/useSpellAttackRoll";
 import { useFeatureActivation } from "./hooks/useFeatureActivation";
 import { useSpellResourceHandlers } from "./hooks/useSpellResourceHandlers";
+import { GmMonsterDrawer } from "../../features/monsters/ui/GmMonsterDrawer";
+import { MonsterStatblockView } from "../../features/monsters/ui/MonsterStatblockView";
 
 export { getFeatureFlyoutKind };
 export {
@@ -136,7 +152,7 @@ export const ActionDock: React.FC = () => {
     const [isDiceRollerOpen, setIsDiceRollerOpen] = useState<boolean>(false);
 
     // Combat Trackers
-    const [concentrationSpell, setConcentrationSpell] = useState<{ id: string; name: string } | null>(null);
+    const [concentrationSpell, setConcentrationSpell] = useState<{ id: string; name: string; hexTargetId?: string | null } | null>(null);
     const [deathSaves, setDeathSaves] = useState<{ successes: number; failures: number }>({ successes: 0, failures: 0 });
     const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>({});
     const [exhaustionLevel, setExhaustionLevel] = useState<number>(0);
@@ -238,6 +254,7 @@ export const ActionDock: React.FC = () => {
 
     const {
         caster,
+        boundMonster,
         selectedSpell,
         syncedDdbChar,
         activeBuffs,
@@ -266,7 +283,7 @@ export const ActionDock: React.FC = () => {
         if (!tokenId) return;
         await OBR.player.select([tokenId], true);
         if (selectedSpell) {
-            setSelectedSpell(selectedSpell, tokenId);
+            await setSelectedSpell(selectedSpell, tokenId);
         } else {
             await OBR.player.setMetadata({ [toolMetadataSelectedCaster]: undefined });
         }
@@ -274,10 +291,12 @@ export const ActionDock: React.FC = () => {
 
     const [riderChoice, setRiderChoice] = useState<string | undefined>(undefined);
     const [aimingWeapon, setAimingWeapon] = useState<DDBWeaponAttack | null>(null);
+    const [aimingWeaponMode, setAimingWeaponMode] = useState<"melee" | "thrown">("melee");
 
     useEffect(() => {
         setRiderChoice(undefined);
         setAimingWeapon(null);
+        setAimingWeaponMode("melee");
     }, [syncedDdbChar?.id, caster?.id]);
 
     useEffect(() => {
@@ -334,6 +353,7 @@ export const ActionDock: React.FC = () => {
         handleCreateSorcererSpellSlot,
         togglePactPip,
         toggleClassResource,
+        handleShortRest,
         handleLongRest,
     } = useSpellResourceHandlers({
         character: syncedDdbChar,
@@ -352,6 +372,15 @@ export const ActionDock: React.FC = () => {
         setDeathSaves,
         setHitDiceUsed,
         setExhaustionLevel,
+        onResetHpToMax: () => {
+            setCustomHp(prev => {
+                const max = prev?.max ?? (syncedDdbChar?.hp?.max ?? 10);
+                if (caster?.id) {
+                    setTokenVitals(caster.id, { hpCurrent: max, hpMax: max, hpTemp: 0 }).catch(() => {});
+                }
+                return { current: max, max, temp: 0 };
+            });
+        },
     });
 
     const [castLevel, setCastLevel] = useState<number>(1);
@@ -491,11 +520,11 @@ export const ActionDock: React.FC = () => {
     }, [syncedDdbChar?.spells, syncedDdbChar?.id]);
 
     // Active spell selection
-    const handleSelectSpell = (spellID: string) => {
+    const handleSelectSpell = async (spellID: string) => {
         const meta = getSpellMetadata(spellID, syncedDdbChar?.id);
         const matchedDdbSpell = syncedDdbChar?.spells.find(s => s.id === spellID || s.name.toLowerCase() === spellID.toLowerCase());
         const effectiveLevel = matchedDdbSpell ? matchedDdbSpell.level : (meta.level ?? 0);
-        setSelectedSpell(spellID, caster?.id);
+        await setSelectedSpell(spellID, caster?.id);
         setSelected(spellID);
         setCastLevel(effectiveLevel);
         OBR.tool.activateTool(toolID);
@@ -507,6 +536,7 @@ export const ActionDock: React.FC = () => {
         setUpcastPickerSpellId(null);
         setActiveFlyoutFeatureId(null);
         setAimingWeapon(null);
+        setAimingWeaponMode("melee");
         stopAiming().catch(() => {});
         OBR.notification.show("Aiming canceled", "INFO");
     };
@@ -549,6 +579,7 @@ export const ActionDock: React.FC = () => {
                     setSelected(null);
                     setUpcastPickerSpellId(null);
                     setAimingWeapon(null);
+                    setAimingWeaponMode("melee");
                 }
                 if (syncedDdbChar?.id) {
                     const key = `${COMBAT_STATE_STORAGE_PREFIX}${syncedDdbChar.id}`;
@@ -612,6 +643,83 @@ export const ActionDock: React.FC = () => {
         }
     }, [obr.ready, syncedDdbChar?.id]);
 
+    // Initialize token vitals when caster changes
+    useEffect(() => {
+        if (!obr.ready || !obr.sceneReady || !caster?.id) return;
+        let cancelled = false;
+        getTokenVitals(caster.id).then(vitals => {
+            if (cancelled) return;
+            if (vitals) {
+                setCustomHp(prev => {
+                    if (prev && prev.current === vitals.hpCurrent && prev.max === vitals.hpMax && prev.temp === (vitals.hpTemp ?? 0)) {
+                        return prev;
+                    }
+                    return {
+                        current: vitals.hpCurrent,
+                        max: vitals.hpMax,
+                        temp: vitals.hpTemp ?? 0,
+                    };
+                });
+                if (vitals.conditions && Array.isArray(vitals.conditions)) {
+                    setConditions(prev => {
+                        if (JSON.stringify(prev) === JSON.stringify(vitals.conditions)) return prev;
+                        return vitals.conditions ?? [];
+                    });
+                }
+                const linkedId = caster.item ? getLinkedDDBCharacterId(caster.item) : null;
+                if (
+                    syncedDdbChar &&
+                    linkedId === syncedDdbChar.id &&
+                    (!vitals.resistances || vitals.resistances.length === 0) &&
+                    (syncedDdbChar.defenses?.resistances?.length || syncedDdbChar.defenses?.immunities?.length)
+                ) {
+                    setTokenVitals(caster.id, {
+                        resistances: syncedDdbChar.defenses?.resistances || [],
+                        immunities: syncedDdbChar.defenses?.immunities || [],
+                        vulnerabilities: syncedDdbChar.defenses?.vulnerabilities || [],
+                    }).catch(() => {});
+                }
+            } else if (syncedDdbChar) {
+                const linkedId = caster.item ? getLinkedDDBCharacterId(caster.item) : null;
+                if (linkedId === syncedDdbChar.id) {
+                    syncTokenVitalsFromDDB(caster.id, syncedDdbChar).catch(() => {});
+                }
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [obr.ready, obr.sceneReady, caster?.id, syncedDdbChar]);
+
+    // Live listener for external scene item metadata updates (e.g. DM adjusts token HP via context menu / map / turn tracker)
+    useEffect(() => {
+        if (!obr.ready || !obr.sceneReady || !caster?.id) return;
+        const unsub = OBR.scene.items.onChange(items => {
+            const token = items.find(i => i.id === caster.id);
+            if (!token) return;
+            const vitals = extractTokenVitals(token.metadata);
+            if (vitals) {
+                setCustomHp(prev => {
+                    if (prev && prev.current === vitals.hpCurrent && prev.max === vitals.hpMax && prev.temp === (vitals.hpTemp ?? 0)) {
+                        return prev;
+                    }
+                    return {
+                        current: vitals.hpCurrent,
+                        max: vitals.hpMax,
+                        temp: vitals.hpTemp ?? 0,
+                    };
+                });
+                if (vitals.conditions && Array.isArray(vitals.conditions)) {
+                    setConditions(prev => {
+                        if (JSON.stringify(prev) === JSON.stringify(vitals.conditions)) return prev;
+                        return vitals.conditions ?? [];
+                    });
+                }
+            }
+        });
+        return () => unsub();
+    }, [obr.ready, obr.sceneReady, caster?.id]);
+
     const {
         activeFlyoutSpell,
         getAvailableSlotLevels,
@@ -660,6 +768,8 @@ export const ActionDock: React.FC = () => {
         casterId: caster?.id,
         player: obr.player ?? undefined,
         character: syncedDdbChar,
+        conditions,
+        exhaustionLevel,
         castLevel,
         concentrationSpell,
         selectedHexAbility,
@@ -679,6 +789,8 @@ export const ActionDock: React.FC = () => {
         casterId: caster?.id,
         character: syncedDdbChar,
         hasAttackAdvantage: buffMods.hasAttackAdvantage,
+        conditions,
+        exhaustionLevel,
         attackBonus: buffMods.attackBonus,
         damageBonus: buffMods.damageBonus,
         activeBuffs: activeBuffNames,
@@ -690,10 +802,40 @@ export const ActionDock: React.FC = () => {
         setSelected,
     });
 
+    // Weapon selection & aiming
+    const handleSelectWeapon = useCallback(async (weapon: DDBWeaponAttack, mode: "melee" | "thrown" = "melee", attackCount = 1) => {
+        const isRanged = weapon.type === "ranged" || mode === "thrown";
+        const spellId = isRanged ? "ranged_weapon_attack" : "melee_weapon_attack";
+        const effectiveRange = isRanged
+            ? (mode === "thrown" ? (weapon.thrownLongRange || weapon.thrownRange || 20) : (weapon.longRangeFeet || weapon.rangeFeet || 60))
+            : (weapon.reachFeet || 5);
+        await setSelectedSpell(
+            spellId,
+            caster?.id,
+            weapon.id,
+            attackCount,
+            riderChoice !== "none" ? riderChoice : undefined,
+            effectiveRange,
+            getWeaponAnimationVariant(weapon, mode),
+        );
+        setSelected(spellId);
+        setUpcastPickerSpellId(null);
+        setActiveFlyoutFeatureId(null);
+        setAimingWeapon(weapon);
+        setAimingWeaponMode(mode);
+        OBR.tool.activateTool(toolID);
+        const rangeDisplay = isRanged
+            ? (mode === "thrown" ? `${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft Thrown` : `${weapon.rangeFeet || 60}${weapon.longRangeFeet ? `/${weapon.longRangeFeet}` : ""} ft Range`)
+            : `${weapon.reachFeet || 5} ft Reach`;
+        OBR.notification.show(`Aiming ${weapon.name} (${rangeDisplay}${attackCount > 1 ? ` - ${attackCount} Attacks` : ""})`, "INFO");
+    }, [caster?.id, riderChoice, setSelected]);
+
     const activeFlyoutWeaponData = useMemo(() => {
         if (!aimingWeapon) return null;
         const bonusNum = typeof buffMods.damageBonus === "number" && buffMods.damageBonus > 0 ? buffMods.damageBonus : 0;
-        const effectiveDamage = combineDamageBonus(aimingWeapon.damage, bonusNum);
+        const isThrown = aimingWeaponMode === "thrown";
+        const baseDamageFormula = isThrown ? (aimingWeapon.thrownDamage ?? aimingWeapon.damage) : aimingWeapon.damage;
+        const effectiveDamage = combineDamageBonus(baseDamageFormula, bonusNum);
         const resolvedRiders = resolveWeaponRiders({
             character: syncedDdbChar,
             weapon: aimingWeapon,
@@ -703,19 +845,36 @@ export const ActionDock: React.FC = () => {
         return {
             weapon: aimingWeapon,
             effectiveDamage,
+            mode: aimingWeaponMode,
+            onToggleMode: (newMode: "melee" | "thrown") => {
+                handleSelectWeapon(aimingWeapon, newMode);
+            },
             resolvedRiders,
             selectedRiderChoice: riderChoice,
             onSelectRiderChoice: (choice: string) => {
                 setRiderChoice(choice);
                 if (aimingWeapon) {
-                    const spellId = aimingWeapon.type === "ranged" ? "ranged_weapon_attack" : "melee_weapon_attack";
-                    setSelectedSpell(spellId, caster?.id, aimingWeapon.id, 1, choice !== "none" ? choice : undefined);
+                    const isRanged = aimingWeapon.type === "ranged" || aimingWeaponMode === "thrown";
+                    const spellId = isRanged ? "ranged_weapon_attack" : "melee_weapon_attack";
+                    void setSelectedSpell(
+                        spellId,
+                        caster?.id,
+                        aimingWeapon.id,
+                        1,
+                        choice !== "none" ? choice : undefined,
+                        undefined,
+                        getWeaponAnimationVariant(aimingWeapon, aimingWeaponMode),
+                    )
+                        .catch((error) => {
+                            console.error("Failed to update the selected weapon rider:", error);
+                            OBR.notification.show("Could not update the selected weapon rider.", "ERROR");
+                        });
                 }
             },
-            onAttackRoll: handleWeaponAttackRoll,
-            onDamageRoll: handleWeaponDamageRoll,
+            onAttackRoll: (w: DDBWeaponAttack) => handleWeaponAttackRoll(w, aimingWeaponMode),
+            onDamageRoll: (w: DDBWeaponAttack, rider?: string | null) => handleWeaponDamageRoll(w, rider, aimingWeaponMode),
         };
-    }, [aimingWeapon, buffMods.damageBonus, syncedDdbChar, activeBuffNames, riderChoice, caster?.id, handleWeaponAttackRoll, handleWeaponDamageRoll]);
+    }, [aimingWeapon, aimingWeaponMode, buffMods.damageBonus, syncedDdbChar, activeBuffNames, riderChoice, caster?.id, handleWeaponAttackRoll, handleWeaponDamageRoll, handleSelectWeapon]);
     const handleSpellDamageRoll = useSpellDamageRoll({
         character: syncedDdbChar,
         spellRegistry,
@@ -727,6 +886,8 @@ export const ActionDock: React.FC = () => {
         casterId: caster?.id,
         character: syncedDdbChar,
         hasSpellAdvantage: buffMods.hasSpellAdvantage,
+        conditions,
+        exhaustionLevel,
         concentrationSpell,
         selectedHexAbility,
         onSelectSpell: handleSelectSpell,
@@ -735,6 +896,9 @@ export const ActionDock: React.FC = () => {
         if (concentrationSpell) {
             OBR.notification.show(`Ended concentration on "${concentrationSpell.name}".`, "INFO");
             setConcentrationSpell(null);
+            if (caster?.id) {
+                replaceTokenConcentration(caster.id, null).catch(console.error);
+            }
             if (syncedDdbChar?.id) {
                 saveCombatState(syncedDdbChar.id, {
                     concentrationSpellId: null,
@@ -749,11 +913,16 @@ export const ActionDock: React.FC = () => {
     const handleRollDeathSave = () => {
         const roll = Math.floor(Math.random() * 20) + 1;
         if (roll === 20) {
-            setCustomHp(prev => ({
+            const max = maxHpVal;
+            const temp = customHp?.temp ?? 0;
+            setCustomHp({
                 current: 1,
-                max: prev?.max ?? (syncedDdbChar?.hp?.max ?? 10),
-                temp: prev?.temp ?? 0
-            }));
+                max,
+                temp,
+            });
+            if (caster?.id) {
+                setTokenVitals(caster.id, { hpCurrent: 1, hpMax: max, hpTemp: temp }).catch(() => {});
+            }
             setDeathSaves({ successes: 0, failures: 0 });
             OBR.notification.show("Natural 20! You regain 1 HP and stand back up!", "SUCCESS");
         } else if (roll === 1) {
@@ -798,12 +967,21 @@ export const ActionDock: React.FC = () => {
         const currentHp = currentHpVal;
         const maxHp = maxHpVal;
         const nextHp = Math.min(maxHp, currentHp + totalHeal);
+        const tempHp = customHp?.temp ?? (syncedDdbChar?.hp?.temp ?? 0);
 
-        setCustomHp(prev => ({
+        setCustomHp({
             current: nextHp,
             max: maxHp,
-            temp: prev?.temp ?? 0
-        }));
+            temp: tempHp,
+        });
+
+        if (caster?.id) {
+            setTokenVitals(caster.id, { hpCurrent: nextHp, hpMax: maxHp, hpTemp: tempHp }).catch(() => {});
+        }
+
+        if (nextHp > 0 && (deathSaves.successes > 0 || deathSaves.failures > 0)) {
+            setDeathSaves({ successes: 0, failures: 0 });
+        }
 
         setHitDiceUsed(prev => ({
             ...prev,
@@ -813,13 +991,90 @@ export const ActionDock: React.FC = () => {
         OBR.notification.show(`Short Rest Hit Die (${die}): Rolled ${dieRoll} + ${conMod} CON = healed ${totalHeal} HP (${nextHp}/${maxHp})`, "SUCCESS");
     };
 
-    const handleToggleCondition = (cond: string) => {
-        setConditions(prev => {
-            if (prev.includes(cond)) {
-                return prev.filter(c => c !== cond);
-            } else {
-                return [...prev, cond];
+    const handleToggleCondition = async (cond: string) => {
+        const normalized = cond.trim().toLowerCase();
+        if (!normalized) return;
+
+        const previousConditions = conditions;
+        const isActive = previousConditions.some(
+            value => value.trim().toLowerCase() === normalized
+        );
+        const nextConditions = isActive
+            ? previousConditions.filter(value => value.trim().toLowerCase() !== normalized)
+            : [...previousConditions, normalized];
+
+        setConditions(nextConditions);
+
+        if (caster?.id) {
+            try {
+                const savedVitals = await setTokenVitals(caster.id, { conditions: nextConditions });
+                if (!savedVitals) {
+                    throw new Error(`Could not save ${normalized} condition to token ${caster.id}`);
+                }
+
+                const persistedVitals = await getTokenVitals(caster.id);
+                const persistedConditions = persistedVitals?.conditions ?? [];
+                const expectedConditions = nextConditions.map(value => value.trim().toLowerCase()).sort();
+                const actualConditions = persistedConditions.map(value => value.trim().toLowerCase()).sort();
+                if (JSON.stringify(actualConditions) !== JSON.stringify(expectedConditions)) {
+                    throw new Error(`Token ${caster.id} did not retain its updated conditions`);
+                }
+            } catch (error) {
+                console.error("Failed to persist Action Bar condition to token:", error);
+                OBR.notification.show(
+                    `Could not save ${cond} condition to the selected token.`,
+                    "ERROR"
+                );
+                const persistedVitals = await getTokenVitals(caster.id);
+                setConditions(persistedVitals?.conditions ?? previousConditions);
+                return;
             }
+        }
+
+        if (syncedDdbChar?.id) {
+            try {
+                await saveCombatState(syncedDdbChar.id, { conditions: nextConditions });
+            } catch (error) {
+                console.error("Failed to synchronize Action Bar conditions to character state:", error);
+                OBR.notification.show(
+                    "The token condition was applied, but character state could not be synchronized.",
+                    "WARNING"
+                );
+            }
+        }
+    };
+
+    const handleExhaustionChange: Dispatch<SetStateAction<number>> = (value) => {
+        setExhaustionLevel(prev => {
+            const next = Math.max(0, Math.min(6, Math.floor(typeof value === "function" ? value(prev) : value)));
+            const nextConditions = conditions.filter(condition => condition.toLowerCase() !== "exhaustion");
+            if (next > 0) nextConditions.push("exhaustion");
+            if (next === 6 && !nextConditions.includes("dead")) nextConditions.push("dead");
+            setConditions(nextConditions);
+            if (next === 6) {
+                setCustomHp({
+                    current: 0,
+                    max: maxHpVal,
+                    temp: customHp?.temp ?? 0,
+                });
+                setDeathSaves({ successes: 0, failures: 0 });
+                OBR.notification.show("Exhaustion level 6: the creature dies.", "ERROR");
+            }
+            if (caster?.id) {
+                setTokenVitals(caster.id, {
+                    ...(next === 6 ? { hpCurrent: 0 } : {}),
+                    conditions: nextConditions,
+                    exhaustionLevel: next,
+                }).catch(console.error);
+            }
+            if (syncedDdbChar?.id) {
+                saveCombatState(syncedDdbChar.id, {
+                    ...(next === 6 ? { hpCurrent: 0 } : {}),
+                    exhaustionLevel: next,
+                    conditions: nextConditions,
+                }).catch(console.error);
+            }
+            return next;
         });
     };
 
@@ -831,34 +1086,25 @@ export const ActionDock: React.FC = () => {
         }
     };
 
-    const handleOpenBrowserClick = () => {
+    const handleOpenBrowserClick = async () => {
         const search = window.location.search || "";
+        const [viewportWidth, viewportHeight] = await Promise.all([
+            OBR.viewport.getWidth(),
+            OBR.viewport.getHeight(),
+        ]);
+        const dimensions = calculateResponsivePopoverDimensions(
+            viewportWidth,
+            viewportHeight,
+            760,
+            440,
+        );
         OBR.popover.open({
             id: spellPopoverId,
-            width: 760,
-            height: 440,
+            width: dimensions.width,
+            height: dimensions.height,
             url: `${window.location.origin}/spell-selection-popover${search}`,
             hidePaper: true
         });
-    };
-
-    // Weapon selection & aiming
-    const handleSelectWeapon = (weapon: DDBWeaponAttack, mode: "melee" | "thrown" = "melee", attackCount = 1) => {
-        const isRanged = weapon.type === "ranged" || mode === "thrown";
-        const spellId = isRanged ? "ranged_weapon_attack" : "melee_weapon_attack";
-        const effectiveRange = isRanged
-            ? (mode === "thrown" ? (weapon.thrownLongRange || weapon.thrownRange || 20) : (weapon.longRangeFeet || weapon.rangeFeet || 60))
-            : (weapon.reachFeet || 5);
-        setSelectedSpell(spellId, caster?.id, weapon.id, attackCount, riderChoice !== "none" ? riderChoice : undefined, effectiveRange);
-        setSelected(spellId);
-        setUpcastPickerSpellId(null);
-        setActiveFlyoutFeatureId(null);
-        setAimingWeapon(weapon);
-        OBR.tool.activateTool(toolID);
-        const rangeDisplay = isRanged
-            ? (mode === "thrown" ? `${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft Thrown` : `${weapon.rangeFeet || 60}${weapon.longRangeFeet ? `/${weapon.longRangeFeet}` : ""} ft Range`)
-            : `${weapon.reachFeet || 5} ft Reach`;
-        OBR.notification.show(`Aiming ${weapon.name} (${rangeDisplay}${attackCount > 1 ? ` - ${attackCount} Attacks` : ""})`, "INFO");
     };
 
     // Monk Flurry of Blows (2 Unarmed Strikes, 1 Focus Point, Bonus Action)
@@ -994,18 +1240,25 @@ export const ActionDock: React.FC = () => {
         handleInitiativeRoll,
         handleToggleInspiration,
     } = useCombatActionHandlers({
+        tokenId: caster?.id,
         character: syncedDdbChar,
+        conditions,
+        exhaustionLevel,
         weapons: weaponsList,
         offhandWeapon: effectiveOffhandWeapon,
         setHeroicInspiration,
         onSelectWeapon: handleSelectWeapon,
     });
-    // Quick HP Adjustments (Heal / Damage)
+    // Quick HP Adjustments (Heal / Damage) & Direct Setters
     const {
         currentHp: currentHpVal,
         maxHp: maxHpVal,
+        tempHp: tempHpVal,
         heal: handleHpHeal,
         takeDamage: handleHpDamage,
+        setDirectHp,
+        setDirectMaxHp,
+        setDirectTempHp,
     } = useHitPoints({
         customHp,
         setCustomHp,
@@ -1013,6 +1266,7 @@ export const ActionDock: React.FC = () => {
         concentrationSpell,
         deathSaves,
         setDeathSaves,
+        casterId: caster?.id,
     });
     // Toggle expand description
     const toggleExpandFeature = (id: string) => {
@@ -1106,6 +1360,7 @@ export const ActionDock: React.FC = () => {
                     modifiers: syncedDdbChar.modifiers,
                     proficiencyBonus: syncedDdbChar.proficiencyBonus,
                     level: syncedDdbChar.level,
+                    characterModifiers: syncedDdbChar.characterModifiers,
                 }
             );
             if (weaponAttack) {
@@ -1178,7 +1433,7 @@ export const ActionDock: React.FC = () => {
         return "cha";
     }
 
-    const handleFeatureOptionRoll = (feature: { id: string; name: string }, optionId: string) => {
+    const handleFeatureOptionRoll = async (feature: { id: string; name: string }, optionId: string) => {
         const matching = findMatchingActionFormula(feature.name);
         const rider = matching?.weaponRider;
         if (!matching) return;
@@ -1195,15 +1450,47 @@ export const ActionDock: React.FC = () => {
             const label = optObj?.name || (optionId.charAt(0).toUpperCase() + optionId.slice(1));
             const casterName = syncedDdbChar?.name || "Character";
 
+            let targetId: string | undefined;
+            let targetName = "TARGET";
+            try {
+                const selection = await OBR.player.getSelection().catch(() => [] as string[]);
+                if (selection?.length) {
+                    const sceneItems = await OBR.scene.items.getItems(selection);
+                    if (sceneItems[0]) {
+                        targetId = sceneItems[0].id;
+                        targetName = sceneItems[0].name || "Target";
+                    }
+                }
+            } catch {}
+
+            const damageMode = await getDamageApplicationMode();
+            let appliedDamageAmount: number | undefined;
+            let resolutionNote: string | undefined;
+            let damageResolutionStatus: "pending" | "applied" = "pending";
+
+            if (damageMode === "auto" && targetId) {
+                const applyRes = await applyDamage(targetId, roll.total, label);
+                appliedDamageAmount = applyRes?.effectiveDamage ?? roll.total;
+                resolutionNote = applyRes?.defenseNote;
+                damageResolutionStatus = "applied";
+            }
+
             const card: DDBRollCardData = {
                 id: `${feature.id}_${optionId}_${Date.now()}`,
                 casterName,
+                targetName,
+                targetId,
                 actionName: feature.name.toUpperCase(),
                 actionType: "DAMAGE",
                 dieType: 6,
                 diceBreakdown: roll.breakdown,
                 formula: `${formula} ${label}`,
                 total: roll.total,
+                pendingDamage: roll.total,
+                appliedDamageAmount,
+                resolutionNote,
+                damageType: label,
+                damageResolutionStatus,
                 subtitle: `${matching.source || feature.name} • ${label}`,
                 timestamp: Date.now(),
             };
@@ -1362,12 +1649,13 @@ export const ActionDock: React.FC = () => {
             {/* Top Resize Handle (Drag up/down to resize, double click to toggle expand) */}
             <div
                 className={`ddb-resize-handle ${isDraggingHeight ? "active" : ""}`}
-                onMouseDown={handleResizeStart}
+                onPointerDown={handleResizeStart}
                 onDoubleClick={handleToggleExpandHeight}
                 title="Drag to resize dock height (or double-click to expand/shrink)"
             >
                 <span className="ddb-resize-grip">— — —</span>
             </div>
+
             {/* ========================================================= */}
             {/* 2-COLUMN DOCK LAYOUT (Left Vitals Pillar + Right Action Deck) */}
             {/* ========================================================= */}
@@ -1388,8 +1676,8 @@ export const ActionDock: React.FC = () => {
                     otherOwnerName={otherOwner?.playerName || (otherOwner ? "Player" : undefined)}
                     currentHp={currentHpVal}
                     maxHp={maxHpVal}
-                    temporaryHp={customHp?.temp ?? syncedDdbChar?.hp?.temp ?? 0}
-                    customTemporaryHp={customHp?.temp ?? (syncedDdbChar?.hp?.temp ?? 0)}
+                    temporaryHp={tempHpVal}
+                    customTemporaryHp={tempHpVal}
                     deathSaves={deathSaves}
                     setDeathSaves={setDeathSaves}
                     heroicInspiration={heroicInspiration}
@@ -1400,11 +1688,12 @@ export const ActionDock: React.FC = () => {
                     isConditionsMenuOpen={isConditionsMenuOpen}
                     conditions={conditions}
                     exhaustionLevel={exhaustionLevel}
-                    setExhaustionLevel={setExhaustionLevel}
+                    setExhaustionLevel={handleExhaustionChange}
                     activeBuffs={activeBuffs}
                     concentrationSpell={concentrationSpell}
                     unreadRolls={unreadRolls}
                     onUnreadRollsClear={() => setUnreadRolls(0)}
+                    onShortRest={handleShortRest}
                     onLongRest={handleLongRest}
                     onDeathSaveRoll={handleRollDeathSave}
                     onHeal={() => handleHpHeal(1)}
@@ -1464,6 +1753,16 @@ export const ActionDock: React.FC = () => {
                                 >
                                     FEATURES
                                 </button>
+                                {isGM && (
+                                    <button
+                                        className={`ddb-deck-tab-btn ${mainTab === "BESTIARY" ? "active" : ""}`}
+                                        onClick={() => setMainTab("BESTIARY")}
+                                        style={{ color: mainTab === "BESTIARY" ? "#fff" : "#fca5a5" }}
+                                        title="GM Bestiary & Monster Statblocks"
+                                    >
+                                        BESTIARY
+                                    </button>
+                                )}
                             </div>
                             {(mainTab === "ACTIONS" || mainTab === "SPELLS") && (
                                 <>
@@ -1628,7 +1927,49 @@ export const ActionDock: React.FC = () => {
                                 />
                             </div>
                         )}
-                        {viewMode === "grid" && (mainTab === "ACTIONS" || mainTab === "SPELLS") ? (
+                        {boundMonster && mainTab === "ACTIONS" ? (
+                            <div className="ddb-bg3-grid-pane" style={{ overflowY: "auto", height: "100%", padding: 0 }}>
+                                <MonsterStatblockView
+                                    monster={boundMonster}
+                                    token={caster?.item}
+                                    filter={actionsFilter}
+                                    search={actionSearch}
+                                    onAimAction={(act) => {
+                                        const weaponId = `monster_weapon_${act.id}`;
+                                        const weapon = weaponsList.find((candidate) => candidate.id === weaponId);
+                                        if (!weapon) {
+                                            OBR.notification.show(
+                                                `Could not find ${act.name}'s monster-specific attack data. Aim was not started.`,
+                                                "ERROR",
+                                            );
+                                            return;
+                                        }
+                                        void handleSelectWeapon(weapon).catch((error) => {
+                                            console.error("Failed to start monster attack aim:", error);
+                                            OBR.notification.show(
+                                                "Could not start aiming this monster attack.",
+                                                "ERROR",
+                                            );
+                                        });
+                                    }}
+                                    onAimSaveAction={(act, casterTokenId) => {
+                                        void startMonsterAoeAction(
+                                            act,
+                                            boundMonster.name,
+                                            casterTokenId,
+                                        ).catch((error) => {
+                                            console.error("Failed to start monster area action:", error);
+                                            OBR.notification.show(
+                                                "Could not start aiming this monster area action.",
+                                                "ERROR",
+                                            );
+                                        });
+                                    }}
+                                    onCastSpell={(spellId) => handleCastClick(spellId)}
+                                    showBindControls={false}
+                                />
+                            </div>
+                        ) : viewMode === "grid" && (mainTab === "ACTIONS" || mainTab === "SPELLS") ? (
                             <div className="ddb-bg3-grid-pane">
                                 <ActionGridTooltipProvider>
                                     <Bg3GridContent
@@ -1820,6 +2161,29 @@ export const ActionDock: React.FC = () => {
             {mainTab === "EXTRAS" && (
                 <ExtrasTab characterName={casterName} />
             )}
+
+            {/* TAB: BESTIARY (GM ONLY) */}
+            {mainTab === "BESTIARY" && isGM && (
+                <GmMonsterDrawer
+                    onCastSpell={async (spellId, tokenId) => {
+                        if (!tokenId) {
+                            OBR.notification.show("Select a monster token before casting.", "WARNING");
+                            return;
+                        }
+                        await setSelectedSpell(spellId, tokenId);
+                        const spellMeta = getSpellMetadata(spellId);
+                        await OBR.player.setMetadata({
+                            [selectedSpellSlotLevelMetadataKey]: {
+                                spellId,
+                                casterId: tokenId,
+                                slotLevel: spellMeta.level,
+                            },
+                        });
+                        await OBR.tool.activateTool(toolID);
+                        OBR.notification.show(`Aiming ${spellId.replace(/_/g, " ")}: select targets on the map.`, "INFO");
+                    }}
+                />
+            )}
                     </div>
                 )}
 
@@ -1830,6 +2194,7 @@ export const ActionDock: React.FC = () => {
                         attunedCount={attunedCount}
                         onClose={() => setDrawerItem(null)}
                         character={syncedDdbChar}
+                        tokenId={caster?.id}
                         featureUses={featureUses}
                         activeBuffs={activeBuffs}
                         spellSlots={spellSlots}
@@ -1843,6 +2208,12 @@ export const ActionDock: React.FC = () => {
                             setSpellDamageTypeOverrides(previous => ({ ...previous, [drawerItem.spell.id]: chosen }));
                         }}
                         usedHitDice={hitDiceUsed}
+                        currentHp={currentHpVal}
+                        maxHp={maxHpVal}
+                        tempHp={tempHpVal}
+                        onSetCurrentHp={setDirectHp}
+                        onSetMaxHp={setDirectMaxHp}
+                        onSetTempHp={setDirectTempHp}
                         onHeal={handleHpHeal}
                         onDamage={handleHpDamage}
                         onRollHitDie={handleRollHitDie}

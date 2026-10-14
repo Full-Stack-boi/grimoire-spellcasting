@@ -103,6 +103,7 @@ body,
     border-bottom: 1px solid var(--ddb-border-subtle);
     transition: background 0.15s ease, border-color 0.15s ease;
     user-select: none;
+    touch-action: none;
     z-index: 10;
 }
 .ddb-resize-handle:hover,

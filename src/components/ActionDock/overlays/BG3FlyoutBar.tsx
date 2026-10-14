@@ -58,6 +58,8 @@ export interface BG3FlyoutSpell {
 export interface BG3FlyoutWeaponData {
     weapon: DDBWeaponAttack;
     effectiveDamage: string;
+    mode?: "melee" | "thrown";
+    onToggleMode?: (mode: "melee" | "thrown") => void;
     resolvedRiders?: import("../../../services/weaponDamageRiders").ResolvedWeaponRiders;
     selectedRiderChoice?: string;
     onSelectRiderChoice?: (choice: string) => void;
@@ -185,11 +187,16 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                 }).join("");
                 ridersText = `${reasons}${diceTexts}`;
             }
+            const isThrown = weaponData.mode === "thrown";
+            const rangeDisplay = isThrown
+                ? `${weaponData.weapon.thrownRange || 20} (${weaponData.weapon.thrownLongRange || 60})`
+                : weaponData.weapon.rangeText;
+            const toHitDisplay = isThrown ? (weaponData.weapon.thrownToHit ?? weaponData.weapon.toHit) : weaponData.weapon.toHit;
             return (
                 <span className="ddb-flyout-header-base">
-                    <span className="ddb-flyout-spell-title">{weaponData.weapon.name}</span>
+                    <span className="ddb-flyout-spell-title">{weaponData.weapon.name}{isThrown ? " (Thrown)" : ""}</span>
                     <span className="ddb-flyout-base-meta">
-                        {" "}• Range: {weaponData.weapon.rangeText} • Hit: +{weaponData.weapon.toHit} • Damage: {weaponData.effectiveDamage} {weaponData.weapon.damageType}{ridersText}
+                        {" "}• Range: {rangeDisplay} • Hit: +{toHitDisplay} • Damage: {weaponData.effectiveDamage} {weaponData.weapon.damageType}{ridersText}
                     </span>
                 </span>
             );
@@ -404,6 +411,30 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
 
                         <div className="ddb-bg3-flyout-tile-divider" />
 
+                        {weaponData.weapon.hasThrown && (
+                            <>
+                                <div className="ddb-bg3-flyout-subchoices-group">
+                                    <button
+                                        type="button"
+                                        className={`ddb-bg3-flyout-tile mode-tile ${weaponData.mode !== "thrown" ? "selected" : ""}`}
+                                        onClick={() => weaponData.onToggleMode?.("melee")}
+                                        title={`Melee Attack (${weaponData.weapon.reachFeet || 5} ft. Reach)`}
+                                    >
+                                        <span>Melee</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`ddb-bg3-flyout-tile mode-tile ${weaponData.mode === "thrown" ? "selected" : ""}`}
+                                        onClick={() => weaponData.onToggleMode?.("thrown")}
+                                        title={`Thrown Attack (${weaponData.weapon.thrownRange || 20}/${weaponData.weapon.thrownLongRange || 60} ft.)`}
+                                    >
+                                        <span>Thrown</span>
+                                    </button>
+                                </div>
+                                <div className="ddb-bg3-flyout-tile-divider" />
+                            </>
+                        )}
+
                         {weaponData.resolvedRiders?.availableRiderChoice && (
                             <>
                                 <div className="ddb-bg3-flyout-subchoices-group">
@@ -445,15 +476,21 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                         )}
 
                         <div className="ddb-bg3-flyout-subchoices-group">
-                            <button
-                                type="button"
-                                className="ddb-bg3-flyout-tile mode-tile"
-                                onClick={() => weaponData.onAttackRoll?.(weaponData.weapon)}
-                                title={`Roll Attack (${weaponData.weapon.toHit >= 0 ? `+${weaponData.weapon.toHit}` : weaponData.weapon.toHit})`}
-                            >
-                                <IconDiceD6 size={12} />
-                                <span>To Hit</span>
-                            </button>
+                            {(() => {
+                                const isThrown = weaponData.mode === "thrown";
+                                const toHitVal = isThrown ? (weaponData.weapon.thrownToHit ?? weaponData.weapon.toHit) : weaponData.weapon.toHit;
+                                return (
+                                    <button
+                                        type="button"
+                                        className="ddb-bg3-flyout-tile mode-tile"
+                                        onClick={() => weaponData.onAttackRoll?.(weaponData.weapon)}
+                                        title={`Roll Attack (${toHitVal >= 0 ? `+${toHitVal}` : toHitVal})`}
+                                    >
+                                        <IconDiceD6 size={12} />
+                                        <span>To Hit</span>
+                                    </button>
+                                );
+                            })()}
                             <button
                                 type="button"
                                 className="ddb-bg3-flyout-tile mode-tile"

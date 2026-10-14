@@ -422,6 +422,18 @@
     transition: all 0.15s ease;
 }
 
+.ddb-condition-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.ddb-condition-option img {
+    flex: 0 0 auto;
+    object-fit: contain;
+}
+
 .ddb-condition-toggle-btn:hover {
     background: rgba(51, 65, 85, 0.9);
 }
