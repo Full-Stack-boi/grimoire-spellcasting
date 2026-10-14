@@ -1,3 +1,9 @@
+html:has(.main-view-root),
+body:has(.main-view-root),
+#root:has(.main-view-root) {
+    background-color: #0d1117 !important;
+}
+
 .main-container {
     display: flex;
     flex-direction: column;

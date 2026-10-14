@@ -7,7 +7,7 @@ import {
   FaDiceD20,
   FaWandMagicSparkles,
 } from "react-icons/fa6";
-import { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { openActionDock } from "../components/ActionDock/ActionDock";
 
 import MovementHandler from "../components/MovementHandler";
@@ -16,6 +16,48 @@ import Settings from "../components/Settings";
 import AnimationsTab from "../components/Animations/AnimationsTab";
 import CharacterChecks from "../components/CharacterChecks/CharacterChecks";
 import { useOBR } from "../platform/obr/react/providers";
+
+class TabErrorBoundary extends React.Component<
+  { children: React.ReactNode; tabName: string },
+  { hasError: boolean; error: unknown }
+> {
+  constructor(props: { children: React.ReactNode; tabName: string }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error(`Error in tab ${this.props.tabName}:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box sx={{ p: 2, bgcolor: "#1f1d24", border: "1px solid #e11d48", borderRadius: 1.5, my: 1 }}>
+          <h3 style={{ margin: "0 0 8px 0", color: "#f87171", fontSize: "0.95rem" }}>
+            Tab error ({this.props.tabName})
+          </h3>
+          <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>
+            {String(this.state.error instanceof Error ? this.state.error.message : this.state.error)}
+          </p>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Retry Tab
+          </Button>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const MENU_OPTIONS = [
   {
@@ -49,6 +91,26 @@ export default function Main() {
   const [selectedTab, setSelectedTab] = useState(0);
   const [isGM, setIsGM] = useState(false);
 
+  // Set opaque background on the document root while this Main view is mounted.
+  // This prevents Chrome's GPU compositor from treating the iframe as a transparent
+  // surface, which would cause transparent WebM animation previews to "punch through"
+  // and show the OBR canvas behind the popover.
+  useLayoutEffect(() => {
+    const root = document.getElementById("root");
+    document.documentElement.style.backgroundColor = "#0d1117";
+    document.body.style.backgroundColor = "#0d1117";
+    if (root) {
+      root.style.backgroundColor = "#0d1117";
+    }
+    return () => {
+      document.documentElement.style.backgroundColor = "";
+      document.body.style.backgroundColor = "";
+      if (root) {
+        root.style.backgroundColor = "";
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!obr.ready || !obr.player?.role) {
       return;
@@ -62,6 +124,7 @@ export default function Main() {
 
   return (
     <Box
+      className="main-view-root"
       sx={{
         height: "100vh",
         maxHeight: "100vh",
@@ -190,7 +253,12 @@ export default function Main() {
             },
           }}
         >
-          {MENU_OPTIONS[selectedTab]?.component}
+          <TabErrorBoundary
+            key={selectedTab}
+            tabName={MENU_OPTIONS[selectedTab]?.label ?? "Tab"}
+          >
+            {MENU_OPTIONS[selectedTab]?.component}
+          </TabErrorBoundary>
         </Box>
       </Box>
 

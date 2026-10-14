@@ -379,7 +379,7 @@ export default function AnimationsTab() {
                         id="animation-spell-search"
                         type="search"
                         value={search}
-                        onChange={(event) => setSearch(event.currentTarget.value)}
+                        onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search by name..."
                     />
                     {filteredSpells.length > 0 ? (
@@ -387,7 +387,7 @@ export default function AnimationsTab() {
                             aria-label="Spell"
                             size={Math.min(Math.max(filteredSpells.length, 2), 7)}
                             value={spellId}
-                            onChange={(event) => setSpellId(event.currentTarget.value)}
+                            onChange={(event) => setSpellId(event.target.value)}
                         >
                             {filteredSpells.map((spell) => (
                                 <option key={spell.id} value={spell.id}>{spell.name}</option>
@@ -409,7 +409,7 @@ export default function AnimationsTab() {
                     <select
                         id="animation-weapon-profile"
                         value={weaponProfile}
-                        onChange={(event) => setWeaponProfile(event.currentTarget.value)}
+                        onChange={(event) => setWeaponProfile(event.target.value)}
                     >
                         {weaponOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -430,9 +430,10 @@ export default function AnimationsTab() {
                                 id={`animation-choice-${slot.sourceId}`}
                                 value={selectedSpellAnimations[slot.sourceId] ?? ""}
                                 onChange={(event) => {
+                                    const nextValue = event.target.value;
                                     setSelectedSpellAnimations((previous) => ({
                                         ...previous,
-                                        [slot.sourceId]: event.currentTarget.value,
+                                        [slot.sourceId]: nextValue,
                                     }));
                                     setPreviewFailed(false);
                                 }}
@@ -452,7 +453,8 @@ export default function AnimationsTab() {
                         id="animation-choice"
                         value={selectedAnimationId}
                         onChange={(event) => {
-                            setSelectedAnimationId(event.currentTarget.value);
+                            const nextValue = event.target.value;
+                            setSelectedAnimationId(nextValue);
                             setPreviewFailed(false);
                         }}
                         disabled={activeOptions.length === 0}
@@ -517,7 +519,7 @@ export default function AnimationsTab() {
                 <select
                     id="animation-save-mode"
                     value={saveMode}
-                    onChange={(event) => setSaveMode(event.currentTarget.value as SaveMode)}
+                    onChange={(event) => setSaveMode(event.target.value as SaveMode)}
                 >
                     {isGM && <option value="room">Room default · everyone</option>}
                     <option value="personal">My default · future uses</option>
