@@ -448,7 +448,22 @@ export function setupDarknessVisionHandler(): () => void {
         debouncedUpdate();
     });
 
-    const unsubPlayer = OBR.player.onChange(() => {
+    let lastPlayerRole: string | undefined = undefined;
+    let lastPlayerId: string | undefined = undefined;
+    let lastSelectionKey: string | undefined = undefined;
+
+    const unsubPlayer = OBR.player.onChange((player) => {
+        const selectionKey = (player.selection || []).join(",");
+        if (
+            player.role === lastPlayerRole &&
+            player.id === lastPlayerId &&
+            selectionKey === lastSelectionKey
+        ) {
+            return;
+        }
+        lastPlayerRole = player.role;
+        lastPlayerId = player.id;
+        lastSelectionKey = selectionKey;
         debouncedUpdate();
     });
 

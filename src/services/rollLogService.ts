@@ -256,41 +256,60 @@ if (typeof window !== "undefined") {
     });
 }
 
-export async function openDDBRollLogPopover(mode: "manual" | "auto" = "manual"): Promise<void> {
+function computeRollLogLayout(viewWidth: number, viewHeight: number, mode: "auto" | "manual" = "manual") {
+    const popoverWidth = 360;
+    const popoverHeight = Math.min(500, Math.max(280, Math.round(viewHeight * 0.55)));
+    // Offset 88px from right edge to completely avoid Owlbear Rodeo's vertical tool rail (~64px-72px)
+    const rightMargin = 88;
+    const popoverRight = Math.max(16, viewWidth - popoverWidth - rightMargin);
+    const popoverTop = Math.max(48, Math.round((viewHeight - popoverHeight) / 2) - 40);
+
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search || "" : "");
+    params.delete("view");
+    params.delete("dockHeight");
+    params.set("mode", mode);
+    const searchStr = params.toString() ? `?${params.toString()}` : "";
+    const popoverUrl = `${origin}/ddb-roll-log${searchStr}`;
+
+    return {
+        popoverUrl,
+        popoverWidth,
+        popoverHeight,
+        popoverRight,
+        popoverTop,
+    };
+}
+
+export async function openDDBRollLogPopover(mode: "auto" | "manual" = "auto"): Promise<void> {
     try {
-        // Non-blocking background refresh of viewport dimensions
-        OBR.viewport.getWidth().then(w => { if (w && w > 200) cachedViewWidth = w; }).catch(() => {});
-        OBR.viewport.getHeight().then(h => { if (h && h > 200) cachedViewHeight = h; }).catch(() => {});
+        if (mode === "auto") {
+            const alreadyOpen = await isPopoverCurrentlyOpen();
+            if (alreadyOpen) {
+                // Popover is already mounted and listening to live roll broadcasts
+                return;
+            }
+        }
+
+        try {
+            const [w, h] = await Promise.all([OBR.viewport.getWidth(), OBR.viewport.getHeight()]);
+            if (w && w > 200) cachedViewWidth = w;
+            if (h && h > 200) cachedViewHeight = h;
+        } catch {}
 
         const viewWidth = cachedViewWidth;
         const viewHeight = cachedViewHeight;
-
-        const popoverWidth = 360;
-        const popoverHeight = Math.min(500, Math.max(280, Math.round(viewHeight * 0.55)));
-        // Offset 88px from right edge to completely avoid Owlbear Rodeo's vertical tool rail (~64px-72px)
-        const rightMargin = 88;
-        const popoverRight = Math.max(16, viewWidth - popoverWidth - rightMargin);
-        const popoverTop = Math.max(48, Math.round((viewHeight - popoverHeight) / 2) - 40);
-
-        const search = typeof window !== "undefined" ? window.location.search || "" : "";
-        const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-        const modeParam = `mode=${mode}`;
-        const sep = search.includes("?") ? "&" : "?";
-        const popoverUrl = `${origin}/ddb-roll-log${search}${sep}${modeParam}`;
-
-        try {
-            await OBR.popover.close(ddbRollLogPopoverId);
-        } catch {}
+        const layout = computeRollLogLayout(viewWidth, viewHeight, mode);
 
         await OBR.popover.open({
             id: ddbRollLogPopoverId,
-            url: popoverUrl,
-            width: popoverWidth,
-            height: popoverHeight,
+            url: layout.popoverUrl,
+            width: layout.popoverWidth,
+            height: layout.popoverHeight,
             anchorReference: "POSITION",
             anchorPosition: {
-                left: popoverRight,
-                top: popoverTop,
+                left: layout.popoverRight,
+                top: layout.popoverTop,
             },
             anchorOrigin: {
                 horizontal: "LEFT",
@@ -306,6 +325,41 @@ export async function openDDBRollLogPopover(mode: "manual" | "auto" = "manual"):
         setPopoverOpenState(true);
     } catch (e) {
         console.error("Failed to open DDB Roll Log Popover", e);
+    }
+}
+
+export async function syncDDBRollLogViewport(viewWidth: number, viewHeight: number): Promise<void> {
+    const isOpen = await isPopoverCurrentlyOpen();
+    if (!isOpen) return;
+
+    cachedViewWidth = viewWidth;
+    cachedViewHeight = viewHeight;
+    const layout = computeRollLogLayout(viewWidth, viewHeight, "manual");
+
+    try {
+        await OBR.popover.open({
+            id: ddbRollLogPopoverId,
+            url: layout.popoverUrl,
+            width: layout.popoverWidth,
+            height: layout.popoverHeight,
+            anchorReference: "POSITION",
+            anchorPosition: {
+                left: layout.popoverRight,
+                top: layout.popoverTop,
+            },
+            anchorOrigin: {
+                horizontal: "LEFT",
+                vertical: "TOP",
+            },
+            transformOrigin: {
+                horizontal: "LEFT",
+                vertical: "TOP",
+            },
+            hidePaper: true,
+            disableClickAway: true,
+        });
+    } catch (e) {
+        console.error("Failed to sync DDB Roll Log Popover viewport", e);
     }
 }
 

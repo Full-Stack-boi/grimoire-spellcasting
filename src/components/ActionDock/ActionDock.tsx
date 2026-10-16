@@ -18,7 +18,7 @@ import {
     IconGrid,
     IconList,
 } from "./shared/Bg3Icons";
-import { focusCameraOnToken, isTokenOwnedByPlayer, getOtherClaimedPlayer, getMyPrimaryCharacterToken, isCharacterToken } from "../../features/player/playerCharacterService";
+import { isTokenOwnedByPlayer, getOtherClaimedPlayer, isCharacterToken } from "../../features/player/playerCharacterService";
 import {
     cacheDDBCharacter,
     ddbSpellToMetadata,
@@ -32,7 +32,9 @@ import type { DDBRollCardData } from "../../types/ddbRollLog";
 import { rollFormula, combineDamageBonus } from "../../utils/dice";
 import type { DamageType } from "../../types/spellFormula";
 import { removeTokenBuff, getComputedBuffModifiers } from "../../services/buffService";
-import { CustomDiceRoller } from "./overlays/CustomDiceRoller";
+const CustomDiceRoller = React.lazy(() =>
+    import("./overlays/CustomDiceRoller").then(m => ({ default: m.CustomDiceRoller }))
+);
 import "./overlays/CustomDiceRoller.css";
 import {
     saveCombatState,
@@ -103,9 +105,15 @@ import { useSpellDamageRoll } from "./hooks/useSpellDamageRoll";
 import { useSpellAttackRoll } from "./hooks/useSpellAttackRoll";
 import { useFeatureActivation } from "./hooks/useFeatureActivation";
 import { useSpellResourceHandlers } from "./hooks/useSpellResourceHandlers";
-import { GmMonsterDrawer } from "../../features/monsters/ui/GmMonsterDrawer";
-import { MonsterStatblockView } from "../../features/monsters/ui/MonsterStatblockView";
-import { HomebrewMonsterModal } from "../../features/monsters/ui/HomebrewMonsterModal";
+const GmMonsterDrawer = React.lazy(() =>
+    import("../../features/monsters/ui/GmMonsterDrawer").then(m => ({ default: m.GmMonsterDrawer }))
+);
+const MonsterStatblockView = React.lazy(() =>
+    import("../../features/monsters/ui/MonsterStatblockView").then(m => ({ default: m.MonsterStatblockView }))
+);
+const HomebrewMonsterModal = React.lazy(() =>
+    import("../../features/monsters/ui/HomebrewMonsterModal").then(m => ({ default: m.HomebrewMonsterModal }))
+);
 import { updateBoundMonsterOnTokens, isCustomMonster } from "../../features/monsters/monsterService";
 import type { MonsterStatblock } from "../../features/monsters/domain/types";
 
@@ -113,9 +121,11 @@ export { getFeatureFlyoutKind };
 export {
     actionDockPopoverId,
     closeActionDock,
+    destroyActionDock,
     DOCK_SAVED_HEIGHT_KEY,
     getSavedDockHeight,
     openActionDock,
+    prewarmActionDock,
     RESOURCE_TRAY_FLOAT_HEIGHT,
     toggleActionDock,
 } from "./domain/popover";
@@ -123,6 +133,48 @@ export type { DetailDrawerItem } from "./domain/types";
 
 export const ActionDock: React.FC = () => {
     const obr = useOBR();
+
+    const [isVisible, setIsVisible] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("embers:action-dock-open") !== "0";
+        } catch {
+            return true;
+        }
+    });
+
+    useEffect(() => {
+        const handleVisibility = (visible: boolean) => {
+            setIsVisible(visible);
+            if (!visible) {
+                (document.activeElement as HTMLElement)?.blur();
+                try {
+                    window.parent?.focus();
+                } catch {}
+            }
+        };
+
+        let channel: BroadcastChannel | null = null;
+        try {
+            channel = new BroadcastChannel("embers-action-dock-state");
+            channel.onmessage = (event) => {
+                if (event.data?.type === "VISIBILITY_CHANGE" && typeof event.data.isOpen === "boolean") {
+                    handleVisibility(event.data.isOpen);
+                }
+            };
+        } catch {}
+
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === "embers:action-dock-open") {
+                handleVisibility(event.newValue !== "0");
+            }
+        };
+        window.addEventListener("storage", handleStorage);
+
+        return () => {
+            channel?.close();
+            window.removeEventListener("storage", handleStorage);
+        };
+    }, []);
 
     const [mainTab, setMainTab] = useState<MainTab>("ACTIONS");
     const [editingMonster, setEditingMonster] = useState<MonsterStatblock | null>(null);
@@ -388,37 +440,6 @@ export const ActionDock: React.FC = () => {
     });
 
     const [castLevel, setCastLevel] = useState<number>(1);
-
-    // Global keyboard shortcut: press 'C' to focus camera on active character token
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (
-                e.target instanceof HTMLInputElement ||
-                e.target instanceof HTMLTextAreaElement ||
-                (e.target as HTMLElement)?.isContentEditable
-            ) {
-                return;
-            }
-            if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.altKey && !e.metaKey) {
-                e.preventDefault();
-                if (obr.player?.id) {
-                    getMyPrimaryCharacterToken(obr.player.id).then(primary => {
-                        if (primary) {
-                            focusCameraOnToken(primary.id);
-                        } else if (caster?.id) {
-                            focusCameraOnToken(caster.id);
-                        }
-                    }).catch(() => {
-                        if (caster?.id) focusCameraOnToken(caster.id);
-                    });
-                } else if (caster?.id) {
-                    focusCameraOnToken(caster.id);
-                }
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [caster?.id, obr.player?.id]);
 
     const characterFeatures = useMemo(
         () => syncedDdbChar ? getCharacterFeatures(syncedDdbChar) : [],
@@ -1620,7 +1641,7 @@ export const ActionDock: React.FC = () => {
         />
     );
     return (
-        <div className="ddb-dock-outer-wrapper">
+        <div className="ddb-dock-outer-wrapper" style={{ display: isVisible ? undefined : "none" }}>
             {/* D&D Beyond Floating Custom Dice Launcher (on the grass in the red circle area) */}
             <button
                 type="button"
@@ -1634,10 +1655,12 @@ export const ActionDock: React.FC = () => {
 
             {/* D&D Beyond Custom Dice Roller Tray */}
             {isDiceRollerOpen && (
-                <CustomDiceRoller
-                    onClose={() => setIsDiceRollerOpen(false)}
-                    casterName={casterName}
-                />
+                <React.Suspense fallback={null}>
+                    <CustomDiceRoller
+                        onClose={() => setIsDiceRollerOpen(false)}
+                        casterName={casterName}
+                    />
+                </React.Suspense>
             )}
 
             {isResourceTrayOpen && panelHeight !== null && (
@@ -1933,46 +1956,48 @@ export const ActionDock: React.FC = () => {
                         )}
                         {boundMonster && mainTab === "ACTIONS" ? (
                             <div className="ddb-bg3-grid-pane" style={{ overflowY: "auto", height: "100%", padding: 0 }}>
-                                <MonsterStatblockView
-                                    monster={boundMonster}
-                                    token={caster?.item}
-                                    filter={actionsFilter}
-                                    search={actionSearch}
-                                    onEdit={isGM && boundMonster && isCustomMonster(boundMonster) ? (m) => setEditingMonster(m) : undefined}
-                                    onAimAction={(act) => {
-                                        const weaponId = `monster_weapon_${act.id}`;
-                                        const weapon = weaponsList.find((candidate) => candidate.id === weaponId);
-                                        if (!weapon) {
-                                            OBR.notification.show(
-                                                `Could not find ${act.name}'s monster-specific attack data. Aim was not started.`,
-                                                "ERROR",
-                                            );
-                                            return;
-                                        }
-                                        void handleSelectWeapon(weapon).catch((error) => {
-                                            console.error("Failed to start monster attack aim:", error);
-                                            OBR.notification.show(
-                                                "Could not start aiming this monster attack.",
-                                                "ERROR",
-                                            );
-                                        });
-                                    }}
-                                    onAimSaveAction={(act, casterTokenId) => {
-                                        void startMonsterAoeAction(
-                                            act,
-                                            boundMonster.name,
-                                            casterTokenId,
-                                        ).catch((error) => {
-                                            console.error("Failed to start monster area action:", error);
-                                            OBR.notification.show(
-                                                "Could not start aiming this monster area action.",
-                                                "ERROR",
-                                            );
-                                        });
-                                    }}
-                                    onCastSpell={(spellId) => handleCastClick(spellId)}
-                                    showBindControls={false}
-                                />
+                                <React.Suspense fallback={<div className="ddb-bg3-empty-state">Loading statblock...</div>}>
+                                    <MonsterStatblockView
+                                        monster={boundMonster}
+                                        token={caster?.item}
+                                        filter={actionsFilter}
+                                        search={actionSearch}
+                                        onEdit={isGM && boundMonster && isCustomMonster(boundMonster) ? (m) => setEditingMonster(m) : undefined}
+                                        onAimAction={(act) => {
+                                            const weaponId = `monster_weapon_${act.id}`;
+                                            const weapon = weaponsList.find((candidate) => candidate.id === weaponId);
+                                            if (!weapon) {
+                                                OBR.notification.show(
+                                                    `Could not find ${act.name}'s monster-specific attack data. Aim was not started.`,
+                                                    "ERROR",
+                                                );
+                                                return;
+                                            }
+                                            void handleSelectWeapon(weapon).catch((error) => {
+                                                console.error("Failed to start monster attack aim:", error);
+                                                OBR.notification.show(
+                                                    "Could not start aiming this monster attack.",
+                                                    "ERROR",
+                                                );
+                                            });
+                                        }}
+                                        onAimSaveAction={(act, casterTokenId) => {
+                                            void startMonsterAoeAction(
+                                                act,
+                                                boundMonster.name,
+                                                casterTokenId,
+                                            ).catch((error) => {
+                                                console.error("Failed to start monster area action:", error);
+                                                OBR.notification.show(
+                                                    "Could not start aiming this monster area action.",
+                                                    "ERROR",
+                                                );
+                                            });
+                                        }}
+                                        onCastSpell={(spellId) => handleCastClick(spellId)}
+                                        showBindControls={false}
+                                    />
+                                </React.Suspense>
                             </div>
                         ) : viewMode === "grid" && (mainTab === "ACTIONS" || mainTab === "SPELLS") ? (
                             <div className="ddb-bg3-grid-pane">
@@ -2169,25 +2194,27 @@ export const ActionDock: React.FC = () => {
 
             {/* TAB: BESTIARY (GM ONLY) */}
             {mainTab === "BESTIARY" && isGM && (
-                <GmMonsterDrawer
-                    onCastSpell={async (spellId, tokenId) => {
-                        if (!tokenId) {
-                            OBR.notification.show("Select a monster token before casting.", "WARNING");
-                            return;
-                        }
-                        await setSelectedSpell(spellId, tokenId);
-                        const spellMeta = getSpellMetadata(spellId);
-                        await OBR.player.setMetadata({
-                            [selectedSpellSlotLevelMetadataKey]: {
-                                spellId,
-                                casterId: tokenId,
-                                slotLevel: spellMeta.level,
-                            },
-                        });
-                        await OBR.tool.activateTool(toolID);
-                        OBR.notification.show(`Aiming ${spellId.replace(/_/g, " ")}: select targets on the map.`, "INFO");
-                    }}
-                />
+                <React.Suspense fallback={<div className="ddb-bg3-empty-state">Loading Bestiary...</div>}>
+                    <GmMonsterDrawer
+                        onCastSpell={async (spellId, tokenId) => {
+                            if (!tokenId) {
+                                OBR.notification.show("Select a monster token before casting.", "WARNING");
+                                return;
+                            }
+                            await setSelectedSpell(spellId, tokenId);
+                            const spellMeta = getSpellMetadata(spellId);
+                            await OBR.player.setMetadata({
+                                [selectedSpellSlotLevelMetadataKey]: {
+                                    spellId,
+                                    casterId: tokenId,
+                                    slotLevel: spellMeta.level,
+                                },
+                            });
+                            await OBR.tool.activateTool(toolID);
+                            OBR.notification.show(`Aiming ${spellId.replace(/_/g, " ")}: select targets on the map.`, "INFO");
+                        }}
+                    />
+                </React.Suspense>
             )}
                     </div>
                 )}
@@ -2271,14 +2298,16 @@ export const ActionDock: React.FC = () => {
 
             </div> {/* end ddb-action-sheet-container */}
             {editingMonster && (
-                <HomebrewMonsterModal
-                    initialMonster={editingMonster}
-                    onClose={() => setEditingMonster(null)}
-                    onSave={async (savedMonster) => {
-                        await updateBoundMonsterOnTokens(savedMonster);
-                        setEditingMonster(null);
-                    }}
-                />
+                <React.Suspense fallback={null}>
+                    <HomebrewMonsterModal
+                        initialMonster={editingMonster}
+                        onClose={() => setEditingMonster(null)}
+                        onSave={async (savedMonster) => {
+                            await updateBoundMonsterOnTokens(savedMonster);
+                            setEditingMonster(null);
+                        }}
+                    />
+                </React.Suspense>
             )}
         </div>
     );

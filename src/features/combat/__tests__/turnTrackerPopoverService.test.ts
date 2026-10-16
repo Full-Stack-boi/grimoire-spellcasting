@@ -215,4 +215,27 @@ describe("turnTrackerPopoverService", () => {
 
     expect(sdk.popover.open).not.toHaveBeenCalled();
   });
+
+  it("syncTopTurnTrackerViewport re-opens tracker with updated dimensions only when already open", async () => {
+    const { syncTopTurnTrackerViewport } = await import("../turnTrackerPopoverService");
+    const sdk = (await import("@owlbear-rodeo/sdk")).default;
+    vi.clearAllMocks();
+
+    // When closed (width undefined), should not reopen
+    vi.mocked(sdk.popover.getWidth).mockResolvedValue(undefined);
+    await syncTopTurnTrackerViewport(1920, 1080);
+    expect(sdk.popover.open).not.toHaveBeenCalled();
+
+    // When open (width > 0), should call open with updated dimensions
+    vi.mocked(sdk.popover.getWidth).mockResolvedValue(400);
+    vi.mocked(sdk.viewport.getWidth).mockResolvedValue(1920);
+    vi.mocked(sdk.viewport.getHeight).mockResolvedValue(1080);
+    await syncTopTurnTrackerViewport(1920, 1080);
+    expect(sdk.popover.open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: turnTrackerPopoverId,
+        url: expect.stringContaining("view=turn-tracker"),
+      })
+    );
+  });
 });

@@ -2294,12 +2294,17 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     };
 }
 
+const characterMemoryCache = new Map<number, { raw: string; parsed: DDBParsedCharacter }>();
+
 /**
  * Saves character to local storage cache for offline reliability.
  */
 export function cacheDDBCharacter(char: DDBParsedCharacter): void {
     try {
-        localStorage.setItem(`${DDB_CACHE_STORAGE_PREFIX}${char.id}`, JSON.stringify(char));
+        const sanitized = sanitizeNonCasterSlots(char);
+        const raw = JSON.stringify(sanitized);
+        localStorage.setItem(`${DDB_CACHE_STORAGE_PREFIX}${char.id}`, raw);
+        characterMemoryCache.set(char.id, { raw, parsed: sanitized });
     } catch {
         // LocalStorage quota might be exceeded
     }
@@ -2326,9 +2331,17 @@ function sanitizeNonCasterSlots(char: DDBParsedCharacter): DDBParsedCharacter {
 export function getCachedDDBCharacter(characterId: number): DDBParsedCharacter | null {
     try {
         const raw = localStorage.getItem(`${DDB_CACHE_STORAGE_PREFIX}${characterId}`);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as DDBParsedCharacter;
-        return sanitizeNonCasterSlots(parsed);
+        if (!raw) {
+            characterMemoryCache.delete(characterId);
+            return null;
+        }
+        const cached = characterMemoryCache.get(characterId);
+        if (cached && cached.raw === raw) {
+            return cached.parsed;
+        }
+        const parsed = sanitizeNonCasterSlots(JSON.parse(raw) as DDBParsedCharacter);
+        characterMemoryCache.set(characterId, { raw, parsed });
+        return parsed;
     } catch {
         return null;
     }
@@ -2344,11 +2357,23 @@ export function getAllCachedDDBCharacters(): DDBParsedCharacter[] {
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith(DDB_CACHE_STORAGE_PREFIX)) {
+                const charIdStr = key.slice(DDB_CACHE_STORAGE_PREFIX.length);
+                const charId = parseInt(charIdStr, 10);
                 const raw = localStorage.getItem(key);
                 if (raw) {
                     try {
-                        const parsed = JSON.parse(raw) as DDBParsedCharacter;
-                        if (parsed && parsed.id) list.push(sanitizeNonCasterSlots(parsed));
+                        if (!isNaN(charId)) {
+                            const cached = characterMemoryCache.get(charId);
+                            if (cached && cached.raw === raw) {
+                                list.push(cached.parsed);
+                                continue;
+                            }
+                        }
+                        const parsed = sanitizeNonCasterSlots(JSON.parse(raw) as DDBParsedCharacter);
+                        if (parsed && parsed.id) {
+                            characterMemoryCache.set(parsed.id, { raw, parsed });
+                            list.push(parsed);
+                        }
                     } catch {
                         // ignore malformed JSON
                     }

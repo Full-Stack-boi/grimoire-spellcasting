@@ -107,42 +107,44 @@ export function BaseOBRProvider({ children }: { children: React.ReactNode }) {
     // Initialize values after setup
     useEffect(() => {
         if (ready) {
-            const initPromises = [
-                OBR.party.getPlayers().then(setParty),
+            Promise.all([
+                OBR.party.getPlayers().catch(() => []),
                 Promise.all([
-                    OBR.player.getId(),
-                    OBR.player.getConnectionId(),
-                    OBR.player.getRole(),
-                    OBR.player.getSelection(),
-                    OBR.player.getName(),
-                    OBR.player.getColor(),
-                    OBR.player.getSyncView(),
-                    OBR.player.getMetadata(),
-                ]).then(player => setPlayer({
-                    id: player[0],
-                    connectionId: player[1],
-                    role: player[2],
-                    selection: player[3],
-                    name: player[4],
-                    color: player[5],
-                    syncView: player[6],
-                    metadata: player[7]
-                })),
-                OBR.room.getPermissions().then(setRoomPermissions),
-                OBR.room.getMetadata().then(_setRoomMetadata),
-                OBR.scene.isReady().then(setSceneReady),
-            ]
-            Promise.all(initPromises).catch(e => log_error("Unknown error:", e));
+                    OBR.player.getId().catch(() => ""),
+                    OBR.player.getConnectionId().catch(() => ""),
+                    OBR.player.getRole().catch(() => "PLAYER" as const),
+                    OBR.player.getSelection().catch(() => []),
+                    OBR.player.getName().catch(() => ""),
+                    OBR.player.getColor().catch(() => ""),
+                    OBR.player.getSyncView().catch(() => false),
+                    OBR.player.getMetadata().catch(() => ({})),
+                ]),
+                OBR.room.getPermissions().catch(() => []),
+                OBR.room.getMetadata().catch(() => ({})),
+                OBR.scene.isReady().catch(() => false),
+            ]).then(([players, playerFields, permissions, roomMeta, isSceneReady]) => {
+                setParty(players);
+                setPlayer({
+                    id: playerFields[0],
+                    connectionId: playerFields[1],
+                    role: playerFields[2],
+                    selection: playerFields[3],
+                    name: playerFields[4],
+                    color: playerFields[5],
+                    syncView: playerFields[6],
+                    metadata: playerFields[7]
+                });
+                setRoomPermissions(permissions);
+                _setRoomMetadata(roomMeta);
+                setSceneReady(isSceneReady);
+            }).catch(e => log_error("BaseOBRProvider init error:", e));
         }
     }, [ready]);
     useEffect(() => {
         if (ready && sceneReady) {
-            const initPromises = [
-                OBR.scene.getMetadata().then(_setSceneMetadata),
-            ];
-            Promise.all(initPromises).catch(e => log_error("Unknown error:", e))
+            OBR.scene.getMetadata().then(_setSceneMetadata).catch(e => log_error("Scene metadata error:", e));
         }
-    }, [ready, sceneReady])
+    }, [ready, sceneReady]);
 
     const setRoomMetadata = useCallback((metadata: Partial<Metadata>) => {
         OBR.room.setMetadata(metadata);

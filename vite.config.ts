@@ -209,6 +209,19 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         background: resolve(__dirname, "background.html"),
       },
+      output: {
+        manualChunks(id) {
+          if (id.includes("monsters2024") || id.includes("monstersLegacy") || id.includes("srdMonsters")) {
+            return "srd-monsters-data";
+          }
+          if (id.includes("effect_record.json")) {
+            return "effect-record-data";
+          }
+          if (id.includes("node_modules/@mui") || id.includes("node_modules/@emotion")) {
+            return "mui-vendor";
+          }
+        },
+      },
     },
   },
 });

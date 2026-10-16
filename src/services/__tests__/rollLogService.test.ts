@@ -8,6 +8,7 @@ import {
     openDDBRollLogPopover,
     closeDDBRollLogPopover,
     toggleDDBRollLogPopover,
+    syncDDBRollLogViewport,
     updateRollCardResolution,
     subscribeToCardUpdates,
 } from "../rollLogService";
@@ -131,6 +132,22 @@ describe("rollLogService", () => {
         await closeDDBRollLogPopover();
         expect(OBR.popover.close).toHaveBeenCalled();
         expect(isPopoverCurrentlyOpen()).toBe(false);
+    });
+
+    it("syncDDBRollLogViewport repositions popover only when currently open", async () => {
+        vi.clearAllMocks();
+        setPopoverOpenState(false);
+        await syncDDBRollLogViewport(1920, 1080);
+        expect(OBR.popover.open).not.toHaveBeenCalled();
+
+        setPopoverOpenState(true);
+        await syncDDBRollLogViewport(1920, 1080);
+        expect(OBR.popover.open).toHaveBeenCalledWith(
+            expect.objectContaining({
+                width: 360,
+                url: expect.stringContaining("/ddb-roll-log"),
+            })
+        );
     });
 
     it("correctly stores and retrieves grouped multi-beam roll card data", () => {

@@ -1,17 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, CssBaseline, ThemeProvider } from "@mui/material";
 import { Route, Routes } from "react-router";
 import OBR from "@owlbear-rodeo/sdk";
 import { darkTheme, lightTheme } from "../config/theme";
 import { BaseOBRProvider } from "../platform/obr/react/providers/BaseOBRProvider";
-import ActionDock from "../components/ActionDock/ActionDock";
-import DDBRollLogPopover from "../views/DDBRollLogPopover";
-import DDBSyncModal from "../views/DDBSyncModal";
-import Main from "../views/Main";
-import SpellDetailModal from "../views/SpellDetailModal";
-import SpellSelectionPopover from "../views/SpellSelectionPopover";
-import BG3TopTurnTracker from "../views/BG3TopTurnTracker";
+import { useGlobalShortcuts } from "../platform/obr/useGlobalShortcuts";
 import { log_error } from "../logging";
+
+const ActionDock = React.lazy(() => import("../components/ActionDock/ActionDock"));
+const DDBRollLogPopover = React.lazy(() => import("../views/DDBRollLogPopover"));
+const DDBSyncModal = React.lazy(() => import("../views/DDBSyncModal"));
+const Main = React.lazy(() => import("../views/Main"));
+const SpellDetailModal = React.lazy(() => import("../views/SpellDetailModal"));
+const SpellSelectionPopover = React.lazy(() => import("../views/SpellSelectionPopover"));
+const BG3TopTurnTracker = React.lazy(() => import("../views/BG3TopTurnTracker"));
 
 class AppRouteErrorBoundary extends React.Component<
     { children: React.ReactNode },
@@ -83,6 +85,8 @@ export default function ExtensionApp() {
     const [ready, setReady] = useState(false);
     const [themeMode, setThemeMode] = useState<"DARK" | "LIGHT">("DARK");
 
+    useGlobalShortcuts();
+
     useEffect(() => {
         if (!ready) return;
         try {
@@ -96,12 +100,52 @@ export default function ExtensionApp() {
 
     useEffect(() => OBR.onReady(() => setReady(true)), []);
 
-    const routes = useMemo(() => {
+    const isRollLog =
+        window.location.pathname.includes("ddb-roll-log") ||
+        window.location.search.includes("ddb-roll-log") ||
+        window.location.hash.includes("ddb-roll-log");
+    if (isRollLog) {
+        return (
+            <React.Suspense fallback={null}>
+                <DDBRollLogPopover />
+            </React.Suspense>
+        );
+    }
+
+    const isTurnTracker =
+        window.location.pathname.includes("turn-tracker") ||
+        window.location.search.includes("turn-tracker") ||
+        window.location.hash.includes("turn-tracker");
+    if (isTurnTracker) {
+        return (
+            <React.Suspense fallback={null}>
+                <BG3TopTurnTracker />
+            </React.Suspense>
+        );
+    }
+
+    const isActionDock =
+        window.location.pathname.includes("action-dock") ||
+        window.location.search.includes("action-dock") ||
+        window.location.hash.includes("action-dock");
+    if (isActionDock) {
         return (
             <BaseOBRProvider>
-                <ThemeProvider theme={themeMode === "DARK" ? darkTheme : lightTheme}>
-                    <CssBaseline />
-                    <Box sx={{ height: "100vh", bgcolor: "transparent" }}>
+                <ActionDockErrorBoundary>
+                    <React.Suspense fallback={null}>
+                        <ActionDock />
+                    </React.Suspense>
+                </ActionDockErrorBoundary>
+            </BaseOBRProvider>
+        );
+    }
+
+    return (
+        <BaseOBRProvider>
+            <ThemeProvider theme={themeMode === "DARK" ? darkTheme : lightTheme}>
+                <CssBaseline />
+                <Box sx={{ height: "100vh", bgcolor: "transparent" }}>
+                    <React.Suspense fallback={null}>
                         <Routes>
                             <Route index element={<AppRouteErrorBoundary><Main /></AppRouteErrorBoundary>} />
                             <Route path="spell-selection-popover" element={<SpellSelectionPopover />} />
@@ -111,27 +155,9 @@ export default function ExtensionApp() {
                             <Route path="ddb-roll-log" element={<DDBRollLogPopover />} />
                             <Route path="turn-tracker" element={<BG3TopTurnTracker />} />
                         </Routes>
-                    </Box>
-                </ThemeProvider>
-            </BaseOBRProvider>
-        );
-    }, [themeMode]);
-
-    const isRollLog =
-        window.location.pathname.includes("ddb-roll-log") ||
-        window.location.search.includes("ddb-roll-log") ||
-        window.location.hash.includes("ddb-roll-log");
-    if (isRollLog) {
-        return <DDBRollLogPopover />;
-    }
-
-    const isTurnTracker =
-        window.location.pathname.includes("turn-tracker") ||
-        window.location.search.includes("turn-tracker") ||
-        window.location.hash.includes("turn-tracker");
-    if (isTurnTracker) {
-        return <BG3TopTurnTracker />;
-    }
-
-    return routes;
+                    </React.Suspense>
+                </Box>
+            </ThemeProvider>
+        </BaseOBRProvider>
+    );
 }

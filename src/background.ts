@@ -13,13 +13,24 @@ import {
   DDB_ROLL_CHANNEL,
   openDDBRollLogPopover,
   saveStoredRollHistory,
+  syncDDBRollLogViewport,
 } from "./services/rollLogService";
 import { checkAndFireMovementTriggers } from "./services/conditionalTriggerService";
 import { setupDarknessVisionHandler } from "./features/targeting/infrastructure/obr/darknessVisionHandler";
 import { setupTurnIndicatorSync } from "./features/combat/overlays/turnIndicatorRenderer";
 import { setupTokenVitalsSync } from "./features/combat/overlays/tokenVitalsRenderer";
 import { subscribeToEncounter } from "./features/combat/initiativeService";
-import { syncTopTurnTrackerPopover, closeTopTurnTrackerPopover } from "./features/combat/turnTrackerPopoverService";
+import {
+  syncTopTurnTrackerPopover,
+  syncTopTurnTrackerViewport,
+  closeTopTurnTrackerPopover,
+} from "./features/combat/turnTrackerPopoverService";
+import {
+  syncActionDockViewport,
+  prewarmActionDock,
+  destroyActionDock,
+  updateCachedViewportSize,
+} from "./components/ActionDock/domain/popover";
 
 function loadSpellListFromLocalStorage() {
   // Update scene metadata
@@ -69,6 +80,10 @@ function setupScene() {
   const unsubscribeVitals = setupTokenVitalsSync();
   const unsubscribePopoverSync = subscribeToEncounter(syncTopTurnTrackerPopover);
   loadSpellListFromLocalStorage();
+
+  const prewarmTimer = window.setTimeout(() => {
+    void prewarmActionDock().catch(() => {});
+  }, 1000);
 
   let interval: number | null = null;
   let lastRole: string, lastId: string;
@@ -153,6 +168,8 @@ function setupScene() {
   });
 
   return () => {
+    window.clearTimeout(prewarmTimer);
+    void destroyActionDock().catch(() => {});
     if (interval !== null) clearInterval(interval);
     unsubscribePlayer();
     unsubscribeTool?.();
@@ -166,6 +183,64 @@ function setupScene() {
   };
 }
 
+function setupViewportResizeSync(): () => void {
+  let lastWidth = 0;
+  let lastHeight = 0;
+  let resizeTimeout: number | null = null;
+
+  const checkViewport = async () => {
+    try {
+      const [w, h] = await Promise.all([
+        OBR.viewport.getWidth(),
+        OBR.viewport.getHeight(),
+      ]);
+      if (!w || !h || w <= 0 || h <= 0) return;
+
+      if (lastWidth === 0 && lastHeight === 0) {
+        lastWidth = w;
+        lastHeight = h;
+        updateCachedViewportSize(w, h);
+        return;
+      }
+
+      if (Math.abs(w - lastWidth) >= 4 || Math.abs(h - lastHeight) >= 4) {
+        lastWidth = w;
+        lastHeight = h;
+        updateCachedViewportSize(w, h);
+
+        if (resizeTimeout !== null) {
+          window.clearTimeout(resizeTimeout);
+        }
+
+        resizeTimeout = window.setTimeout(async () => {
+          resizeTimeout = null;
+          await Promise.all([
+            syncActionDockViewport(w, h).catch(() => {}),
+            syncDDBRollLogViewport(w, h).catch(() => {}),
+            syncTopTurnTrackerViewport(w, h).catch(() => {}),
+          ]);
+        }, 100);
+      }
+    } catch {}
+  };
+
+  const intervalId = window.setInterval(checkViewport, 350);
+  void checkViewport();
+
+  const handleWindowResize = () => {
+    void checkViewport();
+  };
+  window.addEventListener("resize", handleWindowResize);
+
+  return () => {
+    window.clearInterval(intervalId);
+    window.removeEventListener("resize", handleWindowResize);
+    if (resizeTimeout !== null) {
+      window.clearTimeout(resizeTimeout);
+    }
+  };
+}
+
 function setup() {
   if (window.interactionRecord) {
     window.interactionRecord.clear();
@@ -174,6 +249,7 @@ function setup() {
   }
 
   setupMessageListener();
+  setupViewportResizeSync();
 
   OBR.broadcast.onMessage(DDB_ROLL_CHANNEL, async (event) => {
     const payload =

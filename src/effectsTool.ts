@@ -54,6 +54,10 @@ import {
 } from "./components/ActionDock/ActionDock";
 import { openSpellDetailModal } from "./views/SpellDetailModal";
 import {
+  focusCameraOnToken,
+  getMyPrimaryCharacterToken,
+} from "./features/player/playerCharacterService";
+import {
   DARKNESS_ZONE_METADATA_KEY,
   EFFECT_METADATA_KEY,
   SPELL_METADATA_KEY,
@@ -158,6 +162,13 @@ export const actionDockToolActionID = `${APP_KEY}/action-dock-tool-action`;
 export const gameLogToolActionID = `${APP_KEY}/game-log-tool-action`;
 export const spellInfoToolActionID = `${APP_KEY}/spell-info-tool-action`;
 export const clearTargetSelectionToolActionID = `${APP_KEY}/clear-target-selection-tool-action`;
+export const focusCameraToolActionID = `${APP_KEY}/focus-camera-tool-action`;
+export const SHORTCUT_ACTIVE_TOOLS = [
+  toolID,
+  "rodeo.owlbear.tool/move",
+  "rodeo.owlbear.tool/pointer",
+  "rodeo.owlbear.tool/measure",
+];
 export const targetHighlightMetadataKey = `${APP_KEY}/target-highlight`;
 export const previousToolMetadataKey = `${APP_KEY}/previous-tool`;
 export const playerSelectedTargetsMetadataKey = `${APP_KEY}/selected-targets`;
@@ -499,9 +510,8 @@ export async function stopAiming(): Promise<void> {
   invalidateAimingEnvironmentCache();
   clearAimingOverlay();
   clearAoePreview();
-  await clearAllTargets();
-  await setSelectedSpell("");
-  await OBR.player.setMetadata({
+
+  const resetMetadata = {
     [toolMetadataSelectedSpell]: undefined,
     [toolMetadataSelectedCaster]: undefined,
     [toolMetadataSelectedWeapon]: undefined,
@@ -511,22 +521,23 @@ export async function stopAiming(): Promise<void> {
     [toolMetadataWeaponRange]: undefined,
     [toolMetadataMonsterAoeAction]: undefined,
     [playerSelectedTargetsMetadataKey]: [],
-  });
-  await OBR.tool.setMetadata(toolID, {
-    [toolMetadataSelectedSpell]: undefined,
-    [toolMetadataSelectedCaster]: undefined,
-    [toolMetadataSelectedWeapon]: undefined,
-    [SELECTED_WEAPON_VARIANT_KEY]: undefined,
-    [toolMetadataAttackCount]: undefined,
-    [selectedRiderChoiceMetadataKey]: undefined,
-    [toolMetadataWeaponRange]: undefined,
-    [toolMetadataMonsterAoeAction]: undefined,
-  });
+  };
+
+  const targets = await getSortedTargets();
+  const deleteTargetsPromise = targets.length > 0
+    ? OBR.scene.local.deleteItems(targets.map((t) => t.id)).catch(() => {})
+    : Promise.resolve();
+
+  await Promise.all([
+    deleteTargetsPromise,
+    OBR.player.setMetadata(resetMetadata).catch(() => {}),
+    OBR.tool.setMetadata(toolID, resetMetadata).catch(() => {}),
+  ]);
+
   try {
-    const metadata = await OBR.player.getMetadata();
-    const previousTool = metadata[previousToolMetadataKey] as
-      | string
-      | undefined;
+    const previousTool =
+      (cachedPlayerMetadata?.data?.[previousToolMetadataKey] as string | undefined) ||
+      "rodeo.owlbear.tool/move";
     if (previousTool && previousTool !== toolID) {
       await OBR.tool.activateTool(previousTool);
     } else {
@@ -609,6 +620,9 @@ export async function setSelectedSpell(
   weaponRange?: number,
   weaponVariant?: string,
 ): Promise<void> {
+  if (typeof document !== "undefined") {
+    (document.activeElement as HTMLElement)?.blur();
+  }
   invalidateAimingEnvironmentCache();
   activeOverlayMode = "none";
   await Promise.all([
@@ -638,6 +652,9 @@ export async function startMonsterAoeAction(
   monsterName: string,
   casterTokenId: string,
 ): Promise<void> {
+  if (typeof document !== "undefined") {
+    (document.activeElement as HTMLElement)?.blur();
+  }
   const mechanics = parseMonsterSaveMechanics(action);
   if (!mechanics.areaOfEffect || !mechanics.hasSavingThrow) {
     throw new Error(`Cannot target ${action.name}: save area metadata is unavailable.`);
@@ -747,7 +764,7 @@ export function setupEffectsTool(
       setupTargetToolModes(playerRole, playerID);
     },
   );
-  return OBR.tool.onToolChange((tool) => {
+  const toolChangeUnsub = OBR.tool.onToolChange((tool) => {
     if (
       tool == toolID &&
       getSettingsValue(LOCAL_STORAGE_KEYS.KEEP_SELECTED_TARGETS)
@@ -776,6 +793,24 @@ export function setupEffectsTool(
       });
     }
   });
+
+  const unsubGrid = OBR.scene.grid.onChange(() => {
+    cachedGridInfo = null;
+  });
+  const unsubItems = OBR.scene.items.onChange((items) => {
+    cachedSceneItems = { data: items, timestamp: Date.now() };
+  });
+  const unsubPlayer = OBR.player.onChange((player) => {
+    cachedPlayerMetadata = { data: player.metadata, timestamp: Date.now() };
+    cachedActiveCaster = null;
+  });
+
+  return () => {
+    toolChangeUnsub();
+    unsubGrid();
+    unsubItems();
+    unsubPlayer();
+  };
 }
 
 async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
@@ -856,14 +891,18 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
         icon: `${window.location.origin}/pick-spell.svg`,
         label: "Select Spell (.)",
         filter: {
-          activeTools: [toolID],
+          activeTools: SHORTCUT_ACTIVE_TOOLS,
         },
       },
     ],
     shortcut: ".",
     async onClick() {
       // Open popup to select a spell
-      const search = window.location.search || "";
+      const searchParams = new URLSearchParams(window.location.search || "");
+      searchParams.delete("view");
+      searchParams.delete("mode");
+      searchParams.delete("dockHeight");
+      const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
       const [viewportWidth, viewportHeight] = await Promise.all([
         OBR.viewport.getWidth(),
         OBR.viewport.getHeight(),
@@ -893,11 +932,11 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
           icon: `${window.location.origin}/embers.svg`,
           label: "Action Bar (B)",
           filter: {
-            activeTools: [toolID],
+            activeTools: SHORTCUT_ACTIVE_TOOLS,
           },
         },
       ],
-      shortcut: "b",
+      shortcut: "B",
       onClick() {
         toggleActionDock();
       },
@@ -915,17 +954,54 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
           icon: `${window.location.origin}/log.svg`,
           label: "Game Log (L)",
           filter: {
-            activeTools: [toolID],
+            activeTools: SHORTCUT_ACTIVE_TOOLS,
           },
         },
       ],
-      shortcut: "l",
+      shortcut: "L",
       onClick() {
         toggleDDBRollLogPopover();
       },
     });
   } catch (e) {
     console.warn("Failed to create gameLog tool action:", e);
+  }
+
+  // Focus Camera on Token action (C)
+  try {
+    await OBR.tool.createAction({
+      id: focusCameraToolActionID,
+      icons: [
+        {
+          icon: `${window.location.origin}/embers.svg`,
+          label: "Focus Camera (C)",
+          filter: {
+            activeTools: SHORTCUT_ACTIVE_TOOLS,
+          },
+        },
+      ],
+      shortcut: "C",
+      async onClick() {
+        try {
+          const playerId = await OBR.player.getId();
+          if (playerId) {
+            const primary = await getMyPrimaryCharacterToken(playerId);
+            if (primary) {
+              await focusCameraOnToken(primary.id);
+            } else {
+              OBR.notification.show(
+                "No primary character token found. Right-click your token and select 'Set as My Character'.",
+                "INFO",
+              );
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to focus camera via tool action:", e);
+        }
+      },
+    });
+  } catch (e) {
+    console.warn("Failed to create focusCamera tool action:", e);
   }
 
   // Spell Info Card action
@@ -936,7 +1012,7 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
         icon: `${window.location.origin}/pick-spell.svg`,
         label: "Spell Info (I)",
         filter: {
-          activeTools: [toolID],
+          activeTools: SHORTCUT_ACTIVE_TOOLS,
         },
       },
     ],
@@ -969,7 +1045,7 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
         icon: `${window.location.origin}/remove-selection.svg`,
         label: "Clear Target Selection",
         filter: {
-          activeTools: [toolID],
+          activeTools: SHORTCUT_ACTIVE_TOOLS,
         },
       },
     ],
@@ -1025,7 +1101,7 @@ async function processAimingMove(
 ) {
   const now = Date.now();
   let metadata: Record<string, unknown>;
-  if (cachedPlayerMetadata && now - cachedPlayerMetadata.timestamp < 200) {
+  if (cachedPlayerMetadata) {
     metadata = cachedPlayerMetadata.data;
   } else {
     metadata = (await OBR.player.getMetadata()) ?? {};
@@ -1046,11 +1122,18 @@ async function processAimingMove(
       });
       if (activeCaster && mechanics.areaOfEffect) {
         let grid: GridInfo;
-        if (cachedGridInfo && now - cachedGridInfo.timestamp < 1000) {
+        if (cachedGridInfo) {
           grid = cachedGridInfo.data;
         } else {
           grid = await getSceneGridInfo();
           cachedGridInfo = { data: grid, timestamp: now };
+        }
+        let sceneItems: Item[];
+        if (cachedSceneItems) {
+          sceneItems = cachedSceneItems.data;
+        } else {
+          sceneItems = await OBR.scene.items.getItems();
+          cachedSceneItems = { data: sceneItems, timestamp: now };
         }
         activeOverlayMode = "aoe";
         await renderAoePreview({
@@ -1064,6 +1147,7 @@ async function processAimingMove(
           },
           grid,
           casterId: activeCaster.id,
+          sceneItems,
         });
         return;
       }
@@ -1077,11 +1161,7 @@ async function processAimingMove(
 
   const casterKey = `${playerRole}_${playerID}`;
   let activeCaster: Awaited<ReturnType<typeof resolveActiveCaster>>;
-  if (
-    cachedActiveCaster &&
-    cachedActiveCaster.key === casterKey &&
-    now - cachedActiveCaster.timestamp < 400
-  ) {
+  if (cachedActiveCaster && cachedActiveCaster.key === casterKey) {
     activeCaster = cachedActiveCaster.data;
   } else {
     activeCaster = await resolveActiveCaster(playerRole, playerID);
@@ -1097,7 +1177,7 @@ async function processAimingMove(
   }
 
   let grid: GridInfo;
-  if (cachedGridInfo && now - cachedGridInfo.timestamp < 1000) {
+  if (cachedGridInfo) {
     grid = cachedGridInfo.data;
   } else {
     grid = await getSceneGridInfo();
@@ -1124,6 +1204,14 @@ async function processAimingMove(
         ? event.target!.position
         : event.pointerPosition;
 
+    let sceneItems: Item[];
+    if (cachedSceneItems) {
+      sceneItems = cachedSceneItems.data;
+    } else {
+      sceneItems = await OBR.scene.items.getItems();
+      cachedSceneItems = { data: sceneItems, timestamp: now };
+    }
+
     await renderAoePreview({
       template: {
         shape: aoe.shape,
@@ -1133,6 +1221,7 @@ async function processAimingMove(
       },
       grid,
       casterId: activeCaster.id,
+      sceneItems,
     });
   } else {
     if (activeOverlayMode === "aoe") {
@@ -1160,7 +1249,7 @@ async function processAimingMove(
 
     // Check Line of Sight against any darkness zones
     let sceneItems: Item[];
-    if (cachedSceneItems && now - cachedSceneItems.timestamp < 300) {
+    if (cachedSceneItems) {
       sceneItems = cachedSceneItems.data;
     } else {
       sceneItems = await OBR.scene.items.getItems();
@@ -3756,7 +3845,44 @@ async function setupTargetToolModes(
     },
     onKeyDown(_context, event) {
       if (event.code === "Escape") {
-        stopAiming();
+        void stopAiming();
+      } else if (event.code === "KeyB") {
+        void toggleActionDock();
+      } else if (event.code === "KeyL") {
+        void toggleDDBRollLogPopover();
+      } else if (event.code === "KeyC") {
+        if (event.shiftKey) {
+          void toggleActionDock();
+        } else {
+          OBR.player.getId().then((playerId) => {
+            if (playerId) {
+              getMyPrimaryCharacterToken(playerId).then((primary) => {
+                if (primary) {
+                  void focusCameraOnToken(primary.id);
+                }
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+      } else if (event.code === "Period") {
+        OBR.popover.getHeight(spellPopoverId).then((h) => {
+          if (typeof h === "number" && h > 0) {
+            void OBR.popover.close(spellPopoverId);
+            return;
+          }
+          Promise.all([OBR.viewport.getWidth(), OBR.viewport.getHeight()]).then(([vw, vh]) => {
+            const dims = calculateResponsivePopoverDimensions(vw || 1440, vh || 900, 760, 440);
+            void OBR.popover.open({
+              id: spellPopoverId,
+              width: dims.width,
+              height: dims.height,
+              url: `${window.location.origin}/spell-selection-popover${window.location.search || ""}`,
+              hidePaper: true,
+            });
+          }).catch(() => {});
+        }).catch(() => {});
+      } else if (event.code === "KeyX") {
+        void clearAllTargets();
       } else if (event.code === "KeyI") {
         OBR.player.getMetadata().then((metadata) => {
           const selectedSpell = metadata?.[toolMetadataSelectedSpell] as

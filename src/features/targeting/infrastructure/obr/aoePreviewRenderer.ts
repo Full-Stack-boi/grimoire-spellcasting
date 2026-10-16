@@ -22,6 +22,7 @@ export interface AoePreviewRenderOptions {
     casterId?: string;
     themeColor?: string; // default orange (#f97316)
     strokeColor?: string;
+    sceneItems?: Item[];
 }
 
 export interface AoePreviewRenderResult {
@@ -231,11 +232,15 @@ function buildAoEGeometricOverlay(template: AoETemplate, grid: GridInfo): Item[]
 }
 
 let activeAoeToken = 0;
-let knownAoeItems = new Map<string, string>(); // id -> item.type
+const knownAoeItems = new Map<string, string>(); // id -> item.type
+let lastAoeStateKey = "";
+let lastAoeResult: AoePreviewRenderResult = { affectedCellCount: 0, affectedTokenIds: [] };
 
 export function resetAoePreviewState(): void {
     activeAoeToken = 0;
     knownAoeItems.clear();
+    lastAoeStateKey = "";
+    lastAoeResult = { affectedCellCount: 0, affectedTokenIds: [] };
 }
 
 /**
@@ -246,11 +251,12 @@ export function resetAoePreviewState(): void {
 export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<AoePreviewRenderResult> {
     const currentToken = ++activeAoeToken;
     const { template, grid, casterId, themeColor = "#f97316", strokeColor = "#ea580c" } = state;
-    const affectedCells = getAffectedGridCells(template, grid);
 
-    // Find affected tokens on CHARACTER layer (excluding caster)
-    const sceneItems = await OBR.scene.items.getItems();
+    // Use passed cached scene items if available to avoid an RPC on every pointer tick
+    const sceneItems = state.sceneItems || (await OBR.scene.items.getItems());
     const characterTokens = sceneItems.filter(item => item.layer === "CHARACTER" && item.visible);
+
+    const affectedCells = getAffectedGridCells(template, grid);
     const affectedTokenIds: string[] = [];
 
     for (const token of characterTokens) {
@@ -260,6 +266,16 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
         if (isTokenInAffectedCells(token.position, affectedCells)) {
             affectedTokenIds.push(token.id);
         }
+    }
+
+    // Spatial deadband: if template shape, quantized cursor/origin, affected cells, and tokens haven't changed, return cached result
+    const cellHash = affectedCells.map(c => `${c.x}_${c.y}`).join(",");
+    const tokenHash = affectedTokenIds.join(",");
+    const cursorHash = `${Math.round(template.cursor.x)}_${Math.round(template.cursor.y)}`;
+    const aoeStateKey = `${template.shape}_${template.sizeFeet}_${cursorHash}_${cellHash}_${tokenHash}`;
+
+    if (aoeStateKey === lastAoeStateKey && knownAoeItems.size > 0) {
+        return lastAoeResult;
     }
 
     // 1. Build grid cell highlight shapes
@@ -372,13 +388,14 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
         if (currentToken !== activeAoeToken) return { affectedCellCount: affectedCells.length, affectedTokenIds };
     }
 
-    // Update existing items
+    // Update existing items with O(1) map lookup
     if (itemsToUpdate.length > 0) {
+        const updateMap = new Map(itemsToUpdate.map(u => [u.id, u]));
         await OBR.scene.local.updateItems(
             itemsToUpdate.map(i => i.id),
             items => {
                 for (let i = 0; i < items.length; i++) {
-                    const newItem = itemsToUpdate.find(u => u.id === items[i].id);
+                    const newItem = updateMap.get(items[i].id);
                     if (newItem) {
                         Object.assign(items[i], newItem);
                     }
@@ -387,10 +404,13 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
         );
     }
 
-    return {
+    lastAoeStateKey = aoeStateKey;
+    lastAoeResult = {
         affectedCellCount: affectedCells.length,
         affectedTokenIds
     };
+
+    return lastAoeResult;
 }
 
 /**

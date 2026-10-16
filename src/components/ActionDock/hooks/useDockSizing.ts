@@ -19,14 +19,28 @@ export function useDockSizing() {
         const savedHeight = getSavedDockHeight();
         if (savedHeight) return savedHeight;
         const requestedHeight = Number(new URLSearchParams(window.location.search).get("dockHeight"));
-        return Number.isFinite(requestedHeight) && requestedHeight >= 200 && requestedHeight <= 900
-            ? requestedHeight
-            : null;
+        if (Number.isFinite(requestedHeight) && requestedHeight >= 200 && requestedHeight <= 900) {
+            return requestedHeight;
+        }
+        if (typeof window !== "undefined" && window.innerHeight > 0) {
+            return Math.max(140, window.innerHeight - RESOURCE_TRAY_FLOAT_HEIGHT);
+        }
+        return null;
     });
     const [isDraggingHeight, setIsDraggingHeight] = useState(false);
 
-    useEffect(() => () => {
-        resizeSessionCleanupRef.current?.();
+    useEffect(() => {
+        const handleResize = () => {
+            const savedHeight = getSavedDockHeight();
+            if (!savedHeight && typeof window !== "undefined" && window.innerHeight > 0) {
+                setPanelHeight(Math.max(140, window.innerHeight - RESOURCE_TRAY_FLOAT_HEIGHT));
+            }
+        };
+        window.addEventListener("resize", handleResize);
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            resizeSessionCleanupRef.current?.();
+        };
     }, []);
 
     const savePanelHeight = (height: number) => {

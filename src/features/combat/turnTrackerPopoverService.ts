@@ -146,6 +146,8 @@ export async function openTopTurnTrackerPopover(
   const origin =
     typeof window !== "undefined" ? window.location.origin : "http://localhost";
   const searchParams = new URLSearchParams(search);
+  searchParams.delete("dockHeight");
+  searchParams.delete("mode");
   searchParams.set("view", "turn-tracker");
   // Load via index.html so it never 404s on static hosting, Vercel SPA and localhost
   const popoverUrl = `${origin}/index.html?${searchParams.toString()}`;
@@ -284,4 +286,31 @@ export async function syncTopTurnTrackerPopover(
       await openTopTurnTrackerPopover(encounter.combatants.length);
     }
   }
+}
+
+/**
+ * Re-anchors and resizes the top turn tracker on screen viewport resize (if open).
+ */
+export async function syncTopTurnTrackerViewport(
+  viewWidth: number,
+  viewHeight: number,
+): Promise<void> {
+  const OBR = await getOBR();
+  if (!OBR.isReady) return;
+  let isOpen = isTurnTrackerOpen;
+  try {
+    const w = await OBR.popover.getWidth(turnTrackerPopoverId);
+    if (typeof w === "number" && w > 0) {
+      isOpen = true;
+    } else if (w === undefined) {
+      isOpen = false;
+    }
+  } catch {
+    isOpen = false;
+  }
+  if (!isOpen) return;
+
+  cachedViewWidth = viewWidth;
+  cachedViewHeight = viewHeight;
+  await openTopTurnTrackerPopover();
 }
