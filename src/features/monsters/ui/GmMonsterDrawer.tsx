@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import OBR, { Item, isImage } from "@owlbear-rodeo/sdk";
-import { FaTrash } from "react-icons/fa6";
+import { FaTrash, FaPen, FaLink, FaFileCode } from "react-icons/fa6";
 import "./GmMonsterDrawer.css";
 import type {
   MonsterAction,
@@ -16,6 +16,7 @@ import {
   saveCustomMonster,
   getCustomMonsters,
   deleteCustomMonster,
+  updateBoundMonsterOnTokens,
 } from "../monsterService";
 import {
   fetchDdbMonsterByUrl,
@@ -99,6 +100,7 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
   // Modal States
   const [showImportModal, setShowImportModal] = useState(false);
   const [showHomebrewModal, setShowHomebrewModal] = useState(false);
+  const [editingMonster, setEditingMonster] = useState<MonsterStatblock | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [importTab, setImportTab] = useState<"link" | "text">("link");
   const [importUrl, setImportUrl] = useState("");
@@ -402,7 +404,10 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
           <button
             type="button"
             className="gm-btn-import"
-            onClick={() => setShowHomebrewModal(true)}
+            onClick={() => {
+              setEditingMonster(null);
+              setShowHomebrewModal(true);
+            }}
             style={{
               background: "linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)",
               borderColor: "#ef4444",
@@ -450,6 +455,21 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
                       >
                         {m.isLegacy || m.edition === "2014" ? "LEGACY" : "2024"}
                       </span>
+                      {customMonsterIds.has(m.id) && (
+                        <button
+                          type="button"
+                          className="gm-monster-edit-btn"
+                          aria-label={`Edit ${m.name}`}
+                          title={`Edit ${m.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingMonster(m);
+                            setShowHomebrewModal(true);
+                          }}
+                        >
+                          <FaPen aria-hidden="true" />
+                        </button>
+                      )}
                       {customMonsterIds.has(m.id) && (
                         <button
                           type="button"
@@ -510,6 +530,14 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
                 }
               }}
               onExport={() => setShowExportModal(true)}
+              onEdit={
+                selectedMonster && customMonsterIds.has(selectedMonster.id)
+                  ? (m) => {
+                      setEditingMonster(m);
+                      setShowHomebrewModal(true);
+                    }
+                  : undefined
+              }
               showBindControls={true}
             />
           ) : (
@@ -543,14 +571,14 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
                 className={`gm-modal-tab-btn ${importTab === "link" ? "active" : ""}`}
                 onClick={() => setImportTab("link")}
               >
-                🔗 Paste D&D Beyond Link (Recommended)
+                <FaLink size={12} /> Paste D&D Beyond Link (Recommended)
               </button>
               <button
                 type="button"
                 className={`gm-modal-tab-btn ${importTab === "text" ? "active" : ""}`}
                 onClick={() => setImportTab("text")}
               >
-                📝 Paste HTML / Text / JSON
+                <FaFileCode size={12} /> Paste HTML / Text / JSON
               </button>
             </div>
 
@@ -747,14 +775,20 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
         />
       )}
 
-      {/* ---------------- HOMEBREW CREATOR MODAL ---------------- */}
+      {/* ---------------- HOMEBREW CREATOR / EDITOR MODAL ---------------- */}
       {showHomebrewModal && (
         <HomebrewMonsterModal
-          onClose={() => setShowHomebrewModal(false)}
-          onSave={(newMonster) => {
+          initialMonster={editingMonster}
+          onClose={() => {
+            setShowHomebrewModal(false);
+            setEditingMonster(null);
+          }}
+          onSave={async (savedMonster) => {
             const updated = getAllMonsters();
             setMonsters(updated);
-            setSelectedMonster(newMonster);
+            setSelectedMonster(savedMonster);
+            await updateBoundMonsterOnTokens(savedMonster);
+            setEditingMonster(null);
           }}
         />
       )}

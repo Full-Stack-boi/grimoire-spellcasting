@@ -89,4 +89,10 @@ describe("GmMonsterDrawer", () => {
     expect(html).not.toContain('aria-label="Remove Goblin from Bestiary"');
     expect(html).not.toContain('role="alertdialog"');
   });
+
+  it("renders edit button only for user-added monsters in the bestiary", () => {
+    const html = renderToStaticMarkup(<GmMonsterDrawer />);
+    expect(html).toContain('aria-label="Edit Imported Goblin"');
+    expect(html).not.toContain('aria-label="Edit Goblin"');
+  });
 });

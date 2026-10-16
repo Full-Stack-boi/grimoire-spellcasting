@@ -356,3 +356,164 @@
 .gm-hb-save-btn:hover {
   background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
 }
+
+/* Proficiency bonus custom input */
+.gm-hb-prof-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gm-hb-auto-btn {
+  background: #374151;
+  border: 1px solid #4b5563;
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gm-hb-auto-btn:hover {
+  background: #1e3a8a;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.gm-hb-prof-input.custom-override {
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+/* Saving Throw Proficiencies */
+.gm-hb-saves-container {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gm-hb-saves-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gm-hb-saves-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e5e7eb;
+  letter-spacing: 0.3px;
+}
+
+.gm-hb-saves-hint {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.gm-hb-saves-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .gm-hb-saves-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.gm-hb-save-box {
+  background: #0f1219;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.gm-hb-save-box.proficient {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.gm-hb-save-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.gm-hb-save-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.gm-hb-save-check-label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #f59e0b;
+}
+
+.gm-hb-save-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #d1d5db;
+}
+
+.gm-hb-save-box.proficient .gm-hb-save-label {
+  color: #fbbf24;
+}
+
+.gm-hb-save-prof-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  padding: 0 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.gm-hb-save-val-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.gm-hb-save-mod-title {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.gm-hb-save-input {
+  width: 44px;
+  padding: 2px 4px;
+  text-align: center;
+  background: #181b22;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gm-hb-save-mod-readonly {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 2px 6px;
+}
+

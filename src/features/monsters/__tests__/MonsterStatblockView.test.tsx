@@ -419,5 +419,26 @@ describe("MonsterStatblockView", () => {
       expect(html).toContain("+2");
       expect(html).toContain("+0");
     });
+
+    it("renders edit button in header when onEdit prop is provided", () => {
+      const handleEdit = vi.fn();
+      const html = renderToStaticMarkup(
+        <MonsterStatblockView monster={mockMonster} onEdit={handleEdit} />
+      );
+
+      expect(html).toContain("gm-btn-edit");
+      expect(html).toContain("Edit");
+      expect(html).not.toContain("✏");
+      expect(html).toContain(`title="Edit ${mockMonster.name} statblock"`);
+    });
+
+    it("does not render edit button when onEdit prop is omitted", () => {
+      const html = renderToStaticMarkup(
+        <MonsterStatblockView monster={mockMonster} />
+      );
+
+      expect(html).not.toContain("gm-btn-edit");
+      expect(html).not.toContain("✏");
+    });
   });
 });

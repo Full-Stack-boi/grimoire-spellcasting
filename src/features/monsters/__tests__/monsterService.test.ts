@@ -57,7 +57,10 @@ import {
   getBoundMonsterFromToken,
   bindMonsterToToken,
   unbindMonsterFromToken,
+  updateBoundMonsterOnTokens,
   rollMonsterAction,
+  isDefaultMonster,
+  isCustomMonster,
   BOUND_MONSTER_METADATA_KEY,
 } from "../monsterService";
 import type { MonsterStatblock } from "../domain/types";
@@ -210,6 +213,42 @@ describe("monsterService & Catalog", () => {
       setItemSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     });
+
+    it("identifies default and custom monsters correctly", () => {
+      expect(isDefaultMonster("goblin_legacy")).toBe(true);
+      expect(isCustomMonster("goblin_legacy")).toBe(false);
+
+      expect(isDefaultMonster("custom_123")).toBe(false);
+      expect(isCustomMonster("custom_123")).toBe(true);
+    });
+
+    it("prevents overwriting default SRD monsters in saveCustomMonster", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const fakeSrdMonster: MonsterStatblock = {
+        id: "goblin_legacy",
+        name: "Modified Goblin",
+        edition: "2014",
+        size: "Small",
+        type: "Humanoid",
+        alignment: "Neutral",
+        armorClass: 99,
+        hitPoints: { average: 999, formula: "99d10" },
+        speed: "30 ft.",
+        stats: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+        challengeRating: "1/4",
+        proficiencyBonus: 2,
+        senses: "Darkvision 60 ft.",
+        languages: "Common, Goblin",
+        actions: [],
+      };
+
+      saveCustomMonster(fakeSrdMonster);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'Cannot overwrite default monster "Modified Goblin" (goblin_legacy)'
+      );
+      expect(getCustomMonsters().some((m) => m.id === "goblin_legacy")).toBe(false);
+      consoleWarnSpy.mockRestore();
+    });
   });
 
   describe("Token Metadata & Binding", () => {
@@ -274,6 +313,54 @@ describe("monsterService & Catalog", () => {
       const success = await unbindMonsterFromToken("token-test-1");
       expect(success).toBe(true);
       expect(updateItemsSpy).toHaveBeenCalledWith(["token-test-1"], expect.any(Function));
+    });
+
+    it("should update metadata and vitals on matching bound scene tokens when monster is edited", async () => {
+      const OBR = (await import("@owlbear-rodeo/sdk")).default;
+      const monster = getAllMonsters()[0];
+      const matchingToken: any = {
+        id: "token-matched",
+        name: "Test Monster",
+        metadata: {
+          [BOUND_MONSTER_METADATA_KEY]: { id: monster.id, name: monster.name, armorClass: monster.armorClass },
+        },
+      };
+      const nonMatchingToken: any = {
+        id: "token-other",
+        name: "Other Monster",
+        metadata: {
+          [BOUND_MONSTER_METADATA_KEY]: { id: "other_id", name: "Other", armorClass: 10 },
+        },
+      };
+
+      vi.spyOn(OBR.scene.items, "getItems").mockResolvedValue([matchingToken, nonMatchingToken] as any);
+      const updateItemsSpy = vi.spyOn(OBR.scene.items, "updateItems").mockImplementation(async (_ids, cb: any) => {
+        cb([matchingToken]);
+      });
+      const getTokenVitalsSpy = vi.spyOn(tokenVitalsService, "getTokenVitals").mockResolvedValue({
+        hpMax: 20,
+        hpCurrent: 15,
+        armorClass: 12,
+      } as any);
+      const setTokenVitalsSpy = vi.spyOn(tokenVitalsService, "setTokenVitals").mockResolvedValue({} as any);
+
+      const updatedMonster: MonsterStatblock = {
+        ...monster,
+        armorClass: 16,
+        damageResistances: ["Fire"],
+      };
+
+      await updateBoundMonsterOnTokens(updatedMonster);
+
+      expect(updateItemsSpy).toHaveBeenCalledWith(["token-matched"], expect.any(Function));
+      expect(matchingToken.metadata[BOUND_MONSTER_METADATA_KEY]).toEqual(updatedMonster);
+      expect(setTokenVitalsSpy).toHaveBeenCalledWith("token-matched", expect.objectContaining({
+        armorClass: 16,
+        resistances: ["Fire"],
+      }));
+
+      getTokenVitalsSpy.mockRestore();
+      setTokenVitalsSpy.mockRestore();
     });
   });
 

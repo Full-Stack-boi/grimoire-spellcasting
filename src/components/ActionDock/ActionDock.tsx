@@ -105,6 +105,9 @@ import { useFeatureActivation } from "./hooks/useFeatureActivation";
 import { useSpellResourceHandlers } from "./hooks/useSpellResourceHandlers";
 import { GmMonsterDrawer } from "../../features/monsters/ui/GmMonsterDrawer";
 import { MonsterStatblockView } from "../../features/monsters/ui/MonsterStatblockView";
+import { HomebrewMonsterModal } from "../../features/monsters/ui/HomebrewMonsterModal";
+import { updateBoundMonsterOnTokens, isCustomMonster } from "../../features/monsters/monsterService";
+import type { MonsterStatblock } from "../../features/monsters/domain/types";
 
 export { getFeatureFlyoutKind };
 export {
@@ -122,6 +125,7 @@ export const ActionDock: React.FC = () => {
     const obr = useOBR();
 
     const [mainTab, setMainTab] = useState<MainTab>("ACTIONS");
+    const [editingMonster, setEditingMonster] = useState<MonsterStatblock | null>(null);
     const [isResourceTrayOpen, setIsResourceTrayOpen] = useState<boolean>(() => {
         try {
             const saved = localStorage.getItem("embers:action-dock-resources-open");
@@ -1934,6 +1938,7 @@ export const ActionDock: React.FC = () => {
                                     token={caster?.item}
                                     filter={actionsFilter}
                                     search={actionSearch}
+                                    onEdit={isGM && boundMonster && isCustomMonster(boundMonster) ? (m) => setEditingMonster(m) : undefined}
                                     onAimAction={(act) => {
                                         const weaponId = `monster_weapon_${act.id}`;
                                         const weapon = weaponsList.find((candidate) => candidate.id === weaponId);
@@ -2265,6 +2270,16 @@ export const ActionDock: React.FC = () => {
     </div> {/* end ddb-dock-2col-layout */}
 
             </div> {/* end ddb-action-sheet-container */}
+            {editingMonster && (
+                <HomebrewMonsterModal
+                    initialMonster={editingMonster}
+                    onClose={() => setEditingMonster(null)}
+                    onSave={async (savedMonster) => {
+                        await updateBoundMonsterOnTokens(savedMonster);
+                        setEditingMonster(null);
+                    }}
+                />
+            )}
         </div>
     );
 };

@@ -26,6 +26,7 @@ import { rollAttack, rollFormula } from "../../../utils/dice";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
 import { MonsterExportModal } from "./MonsterExportModal";
+import { FaPen } from "react-icons/fa6";
 import { checkMonsterAttackRange } from "../domain/monsterAttackRange";
 import { hasResolvableSaveDamage, parseMonsterSaveMechanics } from "../domain/monsterSaveMechanics";
 import { combineD20RollModes, resolveConditionRules } from "../../combat/domain/conditionRules";
@@ -45,6 +46,7 @@ export interface MonsterStatblockViewProps {
   onRollInitiative?: () => void;
   onRollHp?: () => void;
   onExport?: () => void;
+  onEdit?: (monster: MonsterStatblock) => void;
   showBindControls?: boolean;
 }
 
@@ -63,6 +65,7 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
   onRollInitiative,
   onRollHp,
   onExport,
+  onEdit,
   showBindControls = true,
 }) => {
   const [rollMode, setRollMode] = useState<"normal" | "advantage" | "disadvantage">("normal");
@@ -654,14 +657,26 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
             </span>
           </div>
 
-          <button
-            type="button"
-            className="gm-btn-export"
-            onClick={onExport ? onExport : () => setShowExportModal(true)}
-            title="Export Monster as Grimoire JSON or D&D Beyond Markdown"
-          >
-            ↗ Export (JSON / DDB)
-          </button>
+          <div className="gm-statblock-header-actions">
+            {onEdit && (
+              <button
+                type="button"
+                className="gm-btn-edit"
+                onClick={() => onEdit(monster)}
+                title={`Edit ${monster.name} statblock`}
+              >
+                <FaPen size={11} /> Edit
+              </button>
+            )}
+            <button
+              type="button"
+              className="gm-btn-export"
+              onClick={onExport ? onExport : () => setShowExportModal(true)}
+              title="Export Monster as Grimoire JSON or D&D Beyond Markdown"
+            >
+              ↗ Export (JSON / DDB)
+            </button>
+          </div>
         </div>
 
         <div className="gm-statblock-subtitle">

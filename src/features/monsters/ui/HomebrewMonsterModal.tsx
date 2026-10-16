@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./HomebrewMonsterModal.css";
 import type { MonsterStatblock, MonsterAction, MonsterType } from "../domain/types";
-import { saveCustomMonster } from "../monsterService";
+import { saveCustomMonster, isDefaultMonster } from "../monsterService";
 import { formatModifier } from "../monsterExportService";
 
 const MONSTER_TYPES: MonsterType[] = [
@@ -28,7 +28,7 @@ const CR_OPTIONS = [
   "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "30"
 ];
 
-function calculateProficiencyBonus(cr: string): number {
+export function calculateProficiencyBonus(cr: string): number {
   const numericCr = parseFloat(cr) || 0;
   if (numericCr <= 4) return 2;
   if (numericCr <= 8) return 3;
@@ -38,6 +38,43 @@ function calculateProficiencyBonus(cr: string): number {
   if (numericCr <= 24) return 7;
   if (numericCr <= 28) return 8;
   return 9;
+}
+
+export type StatKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
+
+export const STAT_KEYS: { key: StatKey; label: string }[] = [
+  { key: "str", label: "STR" },
+  { key: "dex", label: "DEX" },
+  { key: "con", label: "CON" },
+  { key: "int", label: "INT" },
+  { key: "wis", label: "WIS" },
+  { key: "cha", label: "CHA" },
+];
+
+export function formatSkills(skills?: Record<string, number>): string {
+  if (!skills) return "";
+  return Object.entries(skills)
+    .map(([name, bonus]) => `${name} ${bonus >= 0 ? `+${bonus}` : bonus}`)
+    .join(", ");
+}
+
+export function parseSkills(str: string): Record<string, number> | undefined {
+  if (!str.trim()) return undefined;
+  const result: Record<string, number> = {};
+  const parts = str.split(",");
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^([a-zA-Z\s]+?)\s*[:=]?\s*([+-]?\d+)$/);
+    if (match) {
+      const skillName = match[1].trim();
+      const bonus = parseInt(match[2], 10);
+      result[skillName.toLowerCase()] = bonus;
+    } else {
+      result[trimmed.toLowerCase()] = 0;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 interface HomebrewMonsterModalProps {
@@ -60,6 +97,18 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
   const [alignment, setAlignment] = useState(initialMonster?.alignment || "Neutral Evil");
   const [cr, setCr] = useState(initialMonster?.challengeRating || "1");
 
+  // Proficiency Bonus (Auto-derived from CR with manual override)
+  const [customProficiencyBonus, setCustomProficiencyBonus] = useState<number | null>(() => {
+    if (
+      initialMonster?.proficiencyBonus !== undefined &&
+      initialMonster.proficiencyBonus !== calculateProficiencyBonus(initialMonster.challengeRating || "1")
+    ) {
+      return initialMonster.proficiencyBonus;
+    }
+    return null;
+  });
+  const proficiencyBonus = customProficiencyBonus ?? calculateProficiencyBonus(cr);
+
   // Vitals
   const [armorClass, setArmorClass] = useState<number>(initialMonster?.armorClass ?? 13);
   const [armorDesc, setArmorDesc] = useState(initialMonster?.armorDesc || "Natural Armor");
@@ -74,6 +123,34 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
   const [int, setInt] = useState<number>(initialMonster?.stats.int ?? 10);
   const [wis, setWis] = useState<number>(initialMonster?.stats.wis ?? 12);
   const [cha, setCha] = useState<number>(initialMonster?.stats.cha ?? 8);
+
+  // Saving Throw Proficiencies
+  const [savingThrowSettings, setSavingThrowSettings] = useState<
+    Record<StatKey, { proficient: boolean; overrideBonus?: number }>
+  >(() => {
+    const initial: Record<StatKey, { proficient: boolean; overrideBonus?: number }> = {
+      str: { proficient: false },
+      dex: { proficient: false },
+      con: { proficient: false },
+      int: { proficient: false },
+      wis: { proficient: false },
+      cha: { proficient: false },
+    };
+    if (initialMonster?.savingThrows) {
+      for (const { key } of STAT_KEYS) {
+        if (initialMonster.savingThrows[key] !== undefined) {
+          initial[key] = {
+            proficient: true,
+            overrideBonus: initialMonster.savingThrows[key],
+          };
+        }
+      }
+    }
+    return initial;
+  });
+
+  // Skills
+  const [skills, setSkills] = useState(formatSkills(initialMonster?.skills));
 
   // Senses & Defenses
   const [senses, setSenses] = useState(initialMonster?.senses || "Darkvision 60 ft., Passive Perception 11");
@@ -331,8 +408,10 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
       setValidationError("Monster name is required.");
       return;
     }
-
-    const profBonus = calculateProficiencyBonus(cr);
+    if (initialMonster && isDefaultMonster(initialMonster)) {
+      setValidationError("Default SRD monsters cannot be modified.");
+      return;
+    }
 
     const parseList = (str: string) =>
       str
@@ -342,10 +421,42 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
             .filter(Boolean)
         : [];
 
+    const savingThrows: Record<string, number> = {};
+    for (const { key } of STAT_KEYS) {
+      const setting = savingThrowSettings[key];
+      if (setting?.proficient) {
+        const score =
+          key === "str"
+            ? str
+            : key === "dex"
+            ? dex
+            : key === "con"
+            ? con
+            : key === "int"
+            ? int
+            : key === "wis"
+            ? wis
+            : cha;
+        const abilityMod = Math.floor((score - 10) / 2);
+        savingThrows[key] = setting.overrideBonus ?? (abilityMod + proficiencyBonus);
+      }
+    }
+
+    const mergedActions: MonsterAction[] = actions
+      .filter((a) => a.name.trim())
+      .map((a) => {
+        const existing = initialMonster?.actions?.find((ea) => ea.id === a.id);
+        if (!existing) return a;
+        return {
+          ...existing,
+          ...a,
+        };
+      });
+
     const newMonster: MonsterStatblock = {
       id: initialMonster?.id || `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name.trim(),
-      source: "Custom Homebrew",
+      source: initialMonster?.source || "Custom Homebrew",
       edition,
       isLegacy: edition === "2014",
       size,
@@ -360,6 +471,8 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
       },
       speed: speed.trim() || "30 ft.",
       stats: { str, dex, con, int, wis, cha },
+      savingThrows: Object.keys(savingThrows).length > 0 ? savingThrows : undefined,
+      skills: parseSkills(skills),
       damageResistances: parseList(resistances),
       damageImmunities: parseList(immunities),
       damageVulnerabilities: parseList(vulnerabilities),
@@ -367,9 +480,9 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
       senses: senses.trim(),
       languages: languages.trim(),
       challengeRating: cr,
-      proficiencyBonus: profBonus,
+      proficiencyBonus,
       traits: traits.filter((t) => t.name.trim()),
-      actions: actions.filter((a) => a.name.trim()),
+      actions: mergedActions,
       bonusActions: bonusActions.filter((b) => b.name.trim()),
       reactions: reactions.filter((r) => r.name.trim()),
       legendaryActions: legendaryActions.filter((l) => l.name.trim()),
@@ -387,9 +500,11 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
         <div className="gm-hb-header">
           <div className="gm-hb-title-group">
             <h3 className="gm-hb-title">
-              {initialMonster ? `Edit: ${initialMonster.name}` : "Create Homebrew Monster"}
+              {initialMonster ? `Edit Monster: ${initialMonster.name}` : "Create Homebrew Monster"}
             </h3>
-            <span className="gm-hb-badge">Homebrew Builder</span>
+            <span className="gm-hb-badge">
+              {initialMonster ? "Statblock Editor" : "Homebrew Builder"}
+            </span>
           </div>
           <button type="button" className="gm-hb-close-btn" onClick={onClose}>
             ✕
@@ -486,12 +601,29 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
               </div>
 
               <div className="gm-hb-field">
-                <label>Prof. Bonus</label>
+                <label className="gm-hb-prof-label">
+                  <span>Prof. Bonus</span>
+                  {customProficiencyBonus !== null && (
+                    <button
+                      type="button"
+                      className="gm-hb-auto-btn"
+                      title="Reset to CR default"
+                      onClick={() => setCustomProficiencyBonus(null)}
+                    >
+                      Auto
+                    </button>
+                  )}
+                </label>
                 <input
-                  type="text"
-                  readOnly
-                  value={`+${calculateProficiencyBonus(cr)}`}
-                  className="readonly-input"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={proficiencyBonus}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setCustomProficiencyBonus(isNaN(val) ? 2 : val);
+                  }}
+                  className={`gm-hb-prof-input ${customProficiencyBonus !== null ? "custom-override" : ""}`}
                 />
               </div>
             </div>
@@ -551,9 +683,9 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Ability Scores */}
+          {/* Section 3: Ability Scores & Saving Throws */}
           <div className="gm-hb-section">
-            <div className="gm-hb-section-title">3. Ability Scores</div>
+            <div className="gm-hb-section-title">3. Ability Scores & Saving Throws</div>
             <div className="gm-hb-stats-row">
               {[
                 { label: "STR", val: str, set: setStr },
@@ -575,11 +707,93 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
                 </div>
               ))}
             </div>
+
+            {/* Saving Throw Proficiencies Grid */}
+            <div className="gm-hb-saves-container">
+              <div className="gm-hb-saves-header">
+                <span className="gm-hb-saves-title">Saving Throw Proficiencies</span>
+                <span className="gm-hb-saves-hint">
+                  Check to make proficient (adds Prof Bonus {proficiencyBonus >= 0 ? `+${proficiencyBonus}` : proficiencyBonus}). Or enter a custom save bonus.
+                </span>
+              </div>
+              <div className="gm-hb-saves-grid">
+                {STAT_KEYS.map(({ key, label }) => {
+                  const score =
+                    key === "str"
+                      ? str
+                      : key === "dex"
+                      ? dex
+                      : key === "con"
+                      ? con
+                      : key === "int"
+                      ? int
+                      : key === "wis"
+                      ? wis
+                      : cha;
+                  const abilityMod = Math.floor((score - 10) / 2);
+                  const isProf = savingThrowSettings[key]?.proficient ?? false;
+                  const defaultBonus = abilityMod + proficiencyBonus;
+                  const currentBonus = isProf
+                    ? (savingThrowSettings[key]?.overrideBonus ?? defaultBonus)
+                    : abilityMod;
+
+                  return (
+                    <div key={key} className={`gm-hb-save-box ${isProf ? "proficient" : ""}`}>
+                      <div className="gm-hb-save-top">
+                        <label className="gm-hb-save-check-label">
+                          <input
+                            type="checkbox"
+                            checked={isProf}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setSavingThrowSettings((prev) => ({
+                                ...prev,
+                                [key]: {
+                                  proficient: checked,
+                                  overrideBonus: undefined,
+                                },
+                              }));
+                            }}
+                          />
+                          <span className="gm-hb-save-label">{label} Save</span>
+                        </label>
+                        {isProf && <span className="gm-hb-save-prof-badge">Prof</span>}
+                      </div>
+
+                      <div className="gm-hb-save-val-row">
+                        <span className="gm-hb-save-mod-title">Save Mod:</span>
+                        {isProf ? (
+                          <input
+                            type="number"
+                            className="gm-hb-save-input"
+                            value={currentBonus}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              setSavingThrowSettings((prev) => ({
+                                ...prev,
+                                [key]: {
+                                  proficient: true,
+                                  overrideBonus: isNaN(val) ? defaultBonus : val,
+                                },
+                              }));
+                            }}
+                          />
+                        ) : (
+                          <span className="gm-hb-save-mod-readonly">
+                            {abilityMod >= 0 ? `+${abilityMod}` : abilityMod}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          {/* Section 4: Senses & Defenses */}
+          {/* Section 4: Senses, Languages & Defenses */}
           <div className="gm-hb-section">
-            <div className="gm-hb-section-title">4. Senses, Languages & Defenses</div>
+            <div className="gm-hb-section-title">4. Senses, Languages, Skills & Defenses</div>
             <div className="gm-hb-row">
               <div className="gm-hb-field flex-1">
                 <label>Senses</label>
@@ -598,6 +812,16 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
                   placeholder="Common, Goblin, Draconic"
                   value={languages}
                   onChange={(e) => setLanguages(e.target.value)}
+                />
+              </div>
+
+              <div className="gm-hb-field flex-1">
+                <label>Skills</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Stealth +6, Perception +4, Athletics +5"
+                  value={skills}
+                  onChange={(e) => setSkills(e.target.value)}
                 />
               </div>
             </div>
@@ -906,7 +1130,7 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
             Cancel
           </button>
           <button type="button" className="gm-hb-save-btn" onClick={handleSave}>
-            ✓ Save Homebrew Monster
+            {initialMonster ? "✓ Save Changes" : "✓ Create Monster"}
           </button>
         </div>
       </div>

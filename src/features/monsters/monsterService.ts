@@ -41,10 +41,31 @@ export function getCustomMonsters(): MonsterStatblock[] {
   }
 }
 
+const SRD_MONSTER_IDS = new Set(SRD_MONSTERS.map((s) => s.id));
+
+/**
+ * Returns true if the monster is a built-in default SRD monster.
+ */
+export function isDefaultMonster(monsterOrId: MonsterStatblock | string): boolean {
+  const id = typeof monsterOrId === "string" ? monsterOrId : monsterOrId.id;
+  return SRD_MONSTER_IDS.has(id);
+}
+
+/**
+ * Returns true if the monster was created or imported by the user.
+ */
+export function isCustomMonster(monsterOrId: MonsterStatblock | string): boolean {
+  return !isDefaultMonster(monsterOrId);
+}
+
 /**
  * Save a custom monster to localStorage.
  */
 export function saveCustomMonster(monster: MonsterStatblock): void {
+  if (isDefaultMonster(monster)) {
+    console.warn(`Cannot overwrite default monster "${monster.name}" (${monster.id})`);
+    return;
+  }
   try {
     const list = getCustomMonsters().filter((m) => m.id !== monster.id);
     list.unshift(monster);
@@ -450,6 +471,80 @@ export async function unbindMonsterFromToken(tokenId: string): Promise<boolean> 
   } catch (err) {
     console.error("Failed to unbind monster from token:", err);
     return false;
+  }
+}
+
+/**
+ * Update any active scene tokens bound to this monster when the statblock is edited.
+ * - Updates token's BOUND_MONSTER_METADATA_KEY with the latest statblock data
+ * - Updates token's vitals (AC, resistances, immunities, vulnerabilities)
+ * - Updates combatant in active encounter if present
+ */
+export async function updateBoundMonsterOnTokens(
+  updatedMonster: MonsterStatblock
+): Promise<void> {
+  const OBR = await getOBR();
+  if (!OBR.isReady) return;
+
+  try {
+    const sceneItems = await OBR.scene.items.getItems();
+    const matchingItemIds: string[] = [];
+
+    for (const item of sceneItems) {
+      const bound = getBoundMonsterFromToken(item);
+      if (bound && bound.id === updatedMonster.id) {
+        matchingItemIds.push(item.id);
+      }
+    }
+
+    if (matchingItemIds.length === 0) return;
+
+    // 1. Update bound-monster metadata on all matching tokens
+    await OBR.scene.items.updateItems(matchingItemIds, (items) => {
+      for (const item of items) {
+        item.metadata[BOUND_MONSTER_METADATA_KEY] = updatedMonster;
+      }
+    });
+
+    // 2. Update vitals for each token
+    for (const id of matchingItemIds) {
+      try {
+        const vitals = await getTokenVitals(id);
+        if (vitals) {
+          await setTokenVitals(id, {
+            ...vitals,
+            armorClass: updatedMonster.armorClass,
+            resistances: [...(updatedMonster.damageResistances || [])],
+            immunities: [...(updatedMonster.damageImmunities || [])],
+            vulnerabilities: [...(updatedMonster.damageVulnerabilities || [])],
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to update vitals for token ${id}:`, err);
+      }
+    }
+
+    // 3. Update combatants in active encounter if present
+    try {
+      const encounter = await getActiveEncounter();
+      if (encounter) {
+        for (const id of matchingItemIds) {
+          const combatant = encounter.combatants.find((c) => c.id === id);
+          if (combatant) {
+            await updateCombatant(id, {
+              ac: updatedMonster.armorClass,
+              resistances: [...(updatedMonster.damageResistances || [])],
+              immunities: [...(updatedMonster.damageImmunities || [])],
+              vulnerabilities: [...(updatedMonster.damageVulnerabilities || [])],
+            });
+          }
+        }
+      }
+    } catch {
+      // Encounter tracking not active
+    }
+  } catch (err) {
+    console.error("Failed to update bound monster on scene tokens:", err);
   }
 }
 
