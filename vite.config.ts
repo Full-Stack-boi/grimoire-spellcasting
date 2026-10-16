@@ -5,10 +5,10 @@ import react from "@vitejs/plugin-react";
 import { readFileSync, readdirSync } from "fs";
 import { basename, extname, resolve } from "path";
 import puppeteer from "puppeteer-core";
-import { buildCombatBadgeSvg } from "./src/features/combat/domain/conditionBadgeAssets";
+import { buildCombatBadgeSvg } from "./src/features/combat/domain/conditionBadgeAssets.ts";
 
 function combatBadgeAssetsPlugin(): Plugin {
-  const iconRoot = resolve(__dirname, "src/assets/third-party/tw-dnd-icons");
+  const iconRoot = resolve(import.meta.dirname, "src/assets/third-party/tw-dnd-icons");
   const svgSources = new Map<string, string>();
 
   const addDirectoryAssets = (directory: string, rename: (fileName: string) => string = (name) => name) => {
@@ -225,7 +225,7 @@ function browserBridgePlugin(): Plugin {
 export default defineConfig({
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src"),
+      "@": resolve(import.meta.dirname, "src"),
     },
   },
   css: {
@@ -266,8 +266,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, "index.html"),
-        background: resolve(__dirname, "background.html"),
+        main: resolve(import.meta.dirname, "index.html"),
+        background: resolve(import.meta.dirname, "background.html"),
       },
       output: {
         manualChunks(id) {

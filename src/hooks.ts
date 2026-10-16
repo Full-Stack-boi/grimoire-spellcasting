@@ -7,8 +7,16 @@ export function useThrottled<F extends (...args: unknown[]) => R, R>(
   delay: number,
   type: ThrottleTypes = "both",
 ) {
-  const timeoutRef = useRef<number>();
-  const timestampRef = useRef<number>();
+  const timeoutRef = useRef<number | undefined>(undefined);
+  const timestampRef = useRef<number | undefined>(undefined);
+
+  const cleanup = useCallback(() => {
+    timestampRef.current = undefined;
+    if (timeoutRef.current !== undefined) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = undefined;
+    }
+  }, []);
 
   const throttledFunc = useCallback(
     (...args: Parameters<F>) => {
@@ -30,16 +38,8 @@ export function useThrottled<F extends (...args: unknown[]) => R, R>(
       }
       timestampRef.current = now;
     },
-    [fn, delay, type],
+    [fn, delay, type, cleanup],
   );
-
-  const cleanup = () => {
-    timestampRef.current = undefined;
-    if (timeoutRef.current !== undefined) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = undefined;
-    }
-  };
 
   useEffect(() => {
     return cleanup;
