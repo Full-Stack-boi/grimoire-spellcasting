@@ -9,6 +9,7 @@ import {
     getCachedDDBCharacter,
     ddbSpellToMetadata,
     stripHtml,
+    cleanDDBMarkup,
     DDB_RESET_TYPE_MAP,
     fetchDDBCharacter,
     hasPotentCantrip,
@@ -444,6 +445,34 @@ describe("ddbService", () => {
         it("strips HTML tags and entities properly", () => {
             const raw = "<p>Creatures take <strong>2d6</strong> fire damage &mdash; &lsquo;test&rsquo; &nbsp; &ldquo;quoted&rdquo;</p>";
             expect(stripHtml(raw)).toBe("Creatures take 2d6 fire damage — 'test'   \"quoted\"");
+        });
+
+        it("resolves DDB shortcode markup tags to human-readable display text via cleanDDBMarkup", () => {
+            // Action tag with semicolon (Target;Display)
+            expect(cleanDDBMarkup("Move without provoking [action]Opportunity Attack;Opportunity Attacks[/action]."))
+                .toBe("Move without provoking Opportunity Attacks.");
+
+            // User example: Monk Deflect Attacks with [rules] tag
+            const monkText = "a creature you can see within 60 feet of yourself that isn’t behind [rules]Total Cover[/rules] if the attack was a ranged attack.";
+            expect(cleanDDBMarkup(monkText))
+                .toBe("a creature you can see within 60 feet of yourself that isn’t behind Total Cover if the attack was a ranged attack.");
+
+            // Skill and condition tags
+            expect(cleanDDBMarkup("Check [skill]Stealth[/skill] while [condition]Poisoned;poisoned[/condition]."))
+                .toBe("Check Stealth while poisoned.");
+
+            // Feature tag with attribute
+            expect(cleanDDBMarkup("Gain [warlockfeat:blade-pact]Pact of the Blade[/warlockfeat:blade-pact]."))
+                .toBe("Gain Pact of the Blade.");
+
+            // Preserves bracketed non-markup labels like [Pool: 30 HP] or [+2 damage]
+            expect(cleanDDBMarkup("[Pool: 30 HP] [1d8] Lay on Hands"))
+                .toBe("[Pool: 30 HP] [1d8] Lay on Hands");
+        });
+
+        it("cleans DDB markup inside stripHtml as well", () => {
+            const raw = "<p>Whenever you activate your Second Wind, you can move without provoking [action]Opportunity Attack;Opportunity Attacks[/action].</p>";
+            expect(stripHtml(raw)).toBe("Whenever you activate your Second Wind, you can move without provoking Opportunity Attacks.");
         });
     });
 
@@ -1440,6 +1469,85 @@ describe("ddbService", () => {
             expect(dagger).toBeDefined();
             expect(dagger?.toHit).toBe(7);
             expect(dagger?.damage).toBe("1d4+4");
+        });
+
+        it("never parses Bardic Inspiration or non-damaging features into weapons, and keeps range clean", () => {
+            const rawBard = {
+                id: 998877,
+                name: "Elminster Bard",
+                classes: [
+                    {
+                        level: 5,
+                        definition: { name: "Bard" },
+                        subclassDefinition: { name: "College of Lore" }
+                    }
+                ],
+                stats: [
+                    { id: 1, value: 10 },
+                    { id: 2, value: 14 },
+                    { id: 3, value: 14 },
+                    { id: 4, value: 12 },
+                    { id: 5, value: 10 },
+                    { id: 6, value: 18 } // CHA +4
+                ],
+                modifiers: { race: [], class: [], background: [], item: [], feat: [] },
+                actions: {
+                    class: [
+                        {
+                            id: 101,
+                            name: "Bardic Inspiration",
+                            displayAsAttack: true, // DDB legacy or user toggle
+                            dice: { diceCount: 1, diceType: 8, diceString: "1d8" },
+                            range: { range: 60, longRange: null },
+                            activation: { activationType: 3, activationTime: 1 },
+                            snippet: "You can inspire others through stirring words or music.",
+                            limitedUse: { maxUses: 4, numberUsed: 0, resetType: 1 }
+                        },
+                        {
+                            id: 102,
+                            name: "Cutting Words",
+                            displayAsAttack: true,
+                            dice: { diceCount: 1, diceType: 8, diceString: "1d8" },
+                            range: { range: null, longRange: null },
+                            activation: { activationType: 4, activationTime: 1 }
+                        },
+                        {
+                            id: 103,
+                            name: "Parasitic Weapon (Piercing)",
+                            displayAsAttack: true,
+                            damageTypeId: 2, // Piercing
+                            dice: { diceCount: 1, diceType: 12, diceString: "1d12" },
+                            range: { range: 15, longRange: null }
+                        }
+                    ],
+                    race: [],
+                    feat: []
+                }
+            };
+
+            const parsed = parseDDBCharacterData(rawBard);
+
+            // Bardic Inspiration and Cutting Words must NOT be in weapons!
+            const bardicWeapon = parsed.weapons?.find(w => w.name.toLowerCase().includes("bardic inspiration"));
+            expect(bardicWeapon).toBeUndefined();
+
+            const cuttingWordsWeapon = parsed.weapons?.find(w => w.name.toLowerCase().includes("cutting words"));
+            expect(cuttingWordsWeapon).toBeUndefined();
+
+            // Real action attacks (Parasitic Weapon) MUST be in weapons with valid range
+            const parasiticWeapon = parsed.weapons?.find(w => w.name.toLowerCase().includes("parasitic weapon"));
+            expect(parasiticWeapon).toBeDefined();
+            expect(parasiticWeapon?.damage).toBe("1d12");
+            expect(parasiticWeapon?.damageType).toBe("Piercing");
+            expect(parasiticWeapon?.rangeText).toBe("15 ft. Reach");
+            expect(parasiticWeapon?.rangeText).not.toContain("[object");
+
+            // Bardic Inspiration MUST be present in actions (features)
+            const bardicAction = parsed.actions?.find(a => a.name === "Bardic Inspiration");
+            expect(bardicAction).toBeDefined();
+            expect(bardicAction?.activationType).toBe("bonus");
+            expect(bardicAction?.dice).toBe("1d8");
+            expect(bardicAction?.rangeText).not.toContain("[object");
         });
     });
 });

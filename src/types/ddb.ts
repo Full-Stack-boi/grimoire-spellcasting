@@ -80,6 +80,7 @@ export interface DDBWeaponAttack {
   magicDamageBonus?: number;
   isProficient?: boolean;
   damageType: string;
+  alternativeDamageTypes?: string[];
   properties: string[];
   cantripRiders?: string[];
 }
@@ -107,6 +108,9 @@ export interface DDBFeatureAction {
   rawDescription?: string;
   sourceBook?: string;
   rangeText?: string;
+  dice?: string;
+  damageType?: string;
+  displayAsAttack?: boolean;
   limitedUse?: {
     max: number;
     used: number;
@@ -198,6 +202,8 @@ export interface DDBParsedCharacter {
     string,
     import("../services/ddbService").ClassLevelFeatures
   >;
+  /** Selected class/race/feat options (e.g. Eldritch Invocations, Battle Master Maneuvers, Metamagic) */
+  options?: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string }>;
   /** Raw character modifiers from D&D Beyond */
   characterModifiers?: any[];
   lastSynced: string;

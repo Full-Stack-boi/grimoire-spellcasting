@@ -2,6 +2,7 @@ import React from "react";
 import { SORCERER_CLASS_FORMULAS } from "../../../assets/manual-formulas/index";
 import { canConvertSlotToSorceryPoints, getAvailableSorceryPoints } from "../../../features/characterFeatures/domain/sorceryPointRules";
 import type { ActiveBuff } from "../../../services/buffService";
+import { cleanDDBMarkup } from "../../../services/ddbService";
 import type { DDBParsedCharacter } from "../../../types/ddb";
 import type { DetailDrawerItem, SpellSlotConfig } from "../domain/types";
 
@@ -93,9 +94,9 @@ export const FeatureDetailContent: React.FC<FeatureDetailContentProps> = ({
             )}
 
             {item.rawDescription ? (
-                <div className="ddb-rich-desc" dangerouslySetInnerHTML={{ __html: item.rawDescription }} />
+                <div className="ddb-rich-desc" dangerouslySetInnerHTML={{ __html: cleanDDBMarkup(item.rawDescription) }} />
             ) : (
-                <p className="ddb-drawer-para">{item.description}</p>
+                <p className="ddb-drawer-para">{cleanDDBMarkup(item.description)}</p>
             )}
 
             {item.limitedUse && item.limitedUse.max > 0 && !isInnateSorcery && (

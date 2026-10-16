@@ -81,12 +81,14 @@ const ABILITY_ID_MAP: Record<number, "str" | "dex" | "con" | "int" | "wis" | "ch
 
 /**
  * Resolves the numeric value of a D&D Beyond modifier.
- * Evaluates `value`, fallback `fixedValue`, and resolves ability score modifiers when `statId` is present (1=STR..6=CHA).
+ * Evaluates `value`, fallback `fixedValue`, resolves ability score modifiers when `statId` is present (1=STR..6=CHA),
+ * and handles DDB `bonusTypes` (1 = Proficiency Bonus, 2 = Half Proficiency Bonus).
  */
 export function resolveDDBModifierValue(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     m: any,
-    abilityModifiers: Record<string, number>
+    abilityModifiers: Record<string, number>,
+    proficiencyBonus?: number
 ): number {
     if (!m || m.isGranted === false) return 0;
     let val = 0;
@@ -99,7 +101,111 @@ export function resolveDDBModifierValue(
         const statKey = ABILITY_ID_MAP[m.statId];
         val += abilityModifiers[statKey] ?? 0;
     }
+    if (Array.isArray(m.bonusTypes) && proficiencyBonus != null) {
+        if (m.bonusTypes.includes(1)) {
+            val += proficiencyBonus;
+        } else if (m.bonusTypes.includes(2)) {
+            val += Math.floor(proficiencyBonus / 2);
+        }
+    }
     return val;
+}
+
+/**
+ * Determines if an item-granted modifier should be actively applied to character stats.
+ * In D&D Beyond:
+ * - Potions, Scrolls, and consumables represent temporary effects when consumed, not passive buffs while stored in inventory.
+ * - Items requiring attunement must be attuned (isAttuned === true).
+ * - Wearable / wieldable equipment (Armor, Shield, Weapons, Wondrous items) must be equipped (equipped === true).
+ */
+export function isItemModifierActive(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    m: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    inventory: any[] = []
+): boolean {
+    if (!m || m.isGranted === false) return false;
+    if (!m.componentId) return true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const item = inventory.find((i: any) =>
+        i.definition?.id === m.componentId ||
+        i.id === m.componentId ||
+        (i.definition?.grantedModifiers || []).some((gm: any) => gm.id === m.id)
+    );
+    if (!item) return true;
+    const filterType = (item.definition?.filterType || "").toLowerCase();
+    if (filterType === "potion" || filterType === "scroll" || item.definition?.isConsumable) {
+        return false;
+    }
+    const canAttune = Boolean(item.definition?.canAttune || item.canAttune || item.definition?.requiresAttunement);
+    if (canAttune && !item.isAttuned) {
+        return false;
+    }
+    return Boolean(item.equipped);
+}
+
+/**
+ * Resolves DDB template mustache placeholders (e.g. {{proficiency#signed}}, {{5*proficiency}}, {{13+modifier:con#unsigned}})
+ * into evaluated numbers or formatted strings.
+ */
+export function resolveDDBSnippet(
+    template: string,
+    context: {
+        level: number;
+        proficiencyBonus: number;
+        modifiers: Record<string, number>;
+        scaleValue?: string;
+    }
+): string {
+    if (!template) return "";
+    return template.replace(/\{\{([^}]+)\}\}/g, (_, rawExpr) => {
+        let clean = rawExpr.trim();
+        const isSigned = clean.includes("#signed");
+        const isUnsigned = clean.includes("#unsigned");
+        const isRoundDown = clean.includes("#rounddown");
+        const isRoundUp = clean.includes("@roundup");
+
+        let minVal: number | null = null;
+        const minMatch = clean.match(/@min:(-?\d+)/);
+        if (minMatch) minVal = parseInt(minMatch[1], 10);
+
+        clean = clean
+            .replace(/#[a-z0-9_]+/gi, "")
+            .replace(/@min:-?\d+/gi, "")
+            .replace(/@[a-z0-9_]+/gi, "")
+            .trim();
+
+        // Replace common tokens
+        clean = clean.replace(/proficiency/gi, String(context.proficiencyBonus));
+        clean = clean.replace(/(?:classlevel|characterlevel)/gi, String(context.level));
+        clean = clean.replace(/modifier:(str|dex|con|int|wis|cha)/gi, (_: string, abl: string) => {
+            return String(context.modifiers[abl.toLowerCase()] ?? 0);
+        });
+        clean = clean.replace(/scalevalue/gi, context.scaleValue || "");
+        clean = clean.replace(/savedc:(str|dex|con|int|wis|cha)/gi, (_: string, abl: string) => {
+            return String(8 + context.proficiencyBonus + (context.modifiers[abl.toLowerCase()] ?? 0));
+        });
+
+        // Safely evaluate simple arithmetic if only numbers, operators, and parens remain
+        if (/^[0-9+\-*\/.\s()]+$/.test(clean)) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-implied-eval
+                const fn = new Function(`return (${clean})`);
+                let res = fn();
+                if (typeof res === "number" && !isNaN(res)) {
+                    if (isRoundDown) res = Math.floor(res);
+                    if (isRoundUp) res = Math.ceil(res);
+                    if (minVal !== null) res = Math.max(minVal, res);
+                    if (isSigned) return res >= 0 ? `+${res}` : String(res);
+                    if (isUnsigned) return String(Math.abs(res));
+                    return String(res);
+                }
+            } catch {
+                // fallback to token replacement
+            }
+        }
+        return clean;
+    });
 }
 
 /**
@@ -276,11 +382,33 @@ export function isClassPreparedCaster(className?: string): boolean {
 }
 
 /**
- * Strips HTML tags and decodes common HTML entities from D&D Beyond description text.
+ * Resolves D&D Beyond bracket tags (e.g. `[action]Opportunity Attack;Opportunity Attacks[/action]`,
+ * `[rules]Total Cover[/rules]`, `[skill]Stealth[/skill]`, `[condition]Poisoned[/condition]`)
+ * into clean, human-readable display text.
+ */
+export function cleanDDBMarkup(text?: string): string {
+    if (!text) return "";
+    let res = text.replace(/\[([a-z0-9_-]+)(?::[a-z0-9_-]+)?\]([\s\S]*?)\[\/\1(?::[a-z0-9_-]+)?\]/gi, (_, _tag, content) => {
+        if (content.includes(";")) {
+            const parts = content.split(";");
+            return parts.slice(1).join(";").trim() || parts[0]?.trim() || "";
+        }
+        return content.trim();
+    });
+    // Remove any remaining stray closing tags or unclosed known DDB tags, preserving bracketed dice/numbers like [1d8]
+    res = res.replace(/\[\/[a-z0-9_-]+(?::[a-z0-9_-]+)?\]/gi, "");
+    res = res.replace(/\[(action|spell|item|monster|sense|skill|condition|rules?|feat|classfeat|subclassfeat|warlockfeat|magic-?item|vehicle|armor|weapon|tooltip|filter)(?::[a-z0-9_-]+)?\]/gi, "");
+    return res;
+}
+
+/**
+ * Strips HTML tags and decodes common HTML entities from D&D Beyond description text,
+ * and resolves D&D Beyond bracket tags to human-readable text.
  */
 export function stripHtml(html?: string): string {
     if (!html) return "";
-    return html
+    const cleaned = cleanDDBMarkup(html);
+    return cleaned
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/p>/gi, "\n\n")
         .replace(/<p>/gi, "")
@@ -585,11 +713,118 @@ export function ddbSpellToMetadata(spell: DDBParsedSpell): SpellMetadata {
  * Converts a raw or parsed DDB inventory item into a full playable DDBWeaponAttack action.
  * Can be used when equipping items dynamically from the inventory tab or drawer.
  */
+const SIMPLE_WEAPON_NAMES = [
+    "club", "dagger", "greatclub", "handaxe", "javelin", "light hammer",
+    "mace", "quarterstaff", "sickle", "spear", "yklwa",
+    "light crossbow", "dart", "shortbow", "sling"
+];
+
+const MARTIAL_WEAPON_NAMES = [
+    "battleaxe", "flail", "glaive", "greataxe", "greatsword", "halberd",
+    "lance", "longsword", "maul", "morningstar", "pike", "rapier",
+    "scimitar", "shortsword", "trident", "war pick", "warhammer", "whip",
+    "blowgun", "heavy crossbow", "hand crossbow", "longbow", "net",
+    "pistol", "musket", "blackpowder pistol", "hunting rifle", "automatic rifle",
+    "revolver", "shotgun", "rifle"
+];
+
+export function isCharacterProficientWithWeapon(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    def: any,
+    weaponName: string,
+    weaponProficiencies?: Set<string> | string[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    charModifiers?: any[],
+    isMonk?: boolean
+): boolean {
+    const profs = new Set<string>();
+    if (weaponProficiencies) {
+        weaponProficiencies.forEach(p => profs.add(p.toLowerCase().trim()));
+    }
+    if (charModifiers && Array.isArray(charModifiers)) {
+        charModifiers.forEach(m => {
+            if (!m || m.isGranted === false) return;
+            const sub = (m.subType || "").toLowerCase().trim();
+            const friendly = (m.friendlySubtypeName || "").toLowerCase().trim();
+            if (m.type === "proficiency" || m.type === "weapon-mastery") {
+                profs.add(sub);
+                profs.add(friendly);
+            }
+        });
+    }
+
+    if (profs.size === 0) {
+        // If no proficiency metadata was provided at all, fallback to true to prevent breaking callers with partial mocks
+        return true;
+    }
+
+    const hasSimple = profs.has("simple-weapons") || profs.has("simple weapons") || profs.has("simple");
+    const hasMartial = profs.has("martial-weapons") || profs.has("martial weapons") || profs.has("martial");
+    const hasFirearms = profs.has("firearms") || profs.has("firearm-weapons") || profs.has("firearm weapons") || profs.has("firearm");
+
+    const categoryId = typeof def?.categoryId === "number" ? def.categoryId : undefined;
+    const defType = (def?.type || "").toLowerCase().trim();
+    const nameLower = (weaponName || def?.name || "").toLowerCase().trim();
+
+    // 1. Simple Weapons
+    if (hasSimple && (categoryId === 1 || SIMPLE_WEAPON_NAMES.some(w => defType.includes(w) || nameLower.includes(w)))) {
+        return true;
+    }
+
+    // 2. Martial Weapons
+    if (hasMartial && (categoryId === 2 || MARTIAL_WEAPON_NAMES.some(w => defType.includes(w) || nameLower.includes(w)))) {
+        return true;
+    }
+
+    // 3. Firearms
+    if ((hasFirearms || hasMartial) && (categoryId === 3 || nameLower.includes("rifle") || nameLower.includes("pistol") || nameLower.includes("musket"))) {
+        return true;
+    }
+
+    // 4. Specific weapon proficiency (e.g. Rogue Hand Crossbow/Rapier, Elf Longsword/Shortbow, Weapon Mastery)
+    const normType = defType.replace(/[^a-z0-9]/g, "");
+    const normName = nameLower.replace(/[^a-z0-9]/g, "");
+
+    for (const prof of profs) {
+        const normProf = prof.replace(/[^a-z0-9]/g, "");
+        if (!normProf || normProf === "weapons" || normProf === "weapon") continue;
+        if (
+            normProf === normType ||
+            normProf === normName ||
+            normType.includes(normProf) ||
+            normName.includes(normProf) ||
+            normProf.includes(normType) ||
+            normProf.includes(normName)
+        ) {
+            return true;
+        }
+    }
+
+    // 5. Monk weapons (Monk is proficient with Simple weapons and any Martial melee weapon that is Light)
+    if (isMonk) {
+        const properties: string[] = (def?.properties || []).map((p: any) => (typeof p === "string" ? p : p.name || p));
+        const isLight = properties.some(p => typeof p === "string" && p.toLowerCase() === "light");
+        const isMelee = def?.attackType !== 2;
+        if (categoryId === 1 || (isMelee && isLight) || defType.includes("shortsword")) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export function buildWeaponAttackFromInventoryItem(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     inv: any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    char: { modifiers?: any; proficiencyBonus?: number; level?: number; characterModifiers?: any[] },
+    char: {
+        modifiers?: any;
+        proficiencyBonus?: number;
+        level?: number;
+        characterModifiers?: any[];
+        weaponProficiencies?: Set<string> | string[];
+        isMonk?: boolean;
+    },
     knownWeaponCantrips: Array<{ name: string; damage: string; damageType?: string }> = []
 ): DDBWeaponAttack | null {
     if (!inv) return null;
@@ -652,7 +887,7 @@ export function buildWeaponAttackFromInventoryItem(
     charMods.forEach((m: any) => {
         if (!m || m.isGranted === false) return;
         const sub = (m.subType || "").toLowerCase();
-        const val = resolveDDBModifierValue(m, modifiers);
+        const val = resolveDDBModifierValue(m, modifiers, char.proficiencyBonus);
         if (val === 0) return;
 
         if (m.type === "bonus") {
@@ -678,7 +913,21 @@ export function buildWeaponAttackFromInventoryItem(
         }
     });
 
-    const isProficient = inv.isProficient !== false;
+    let isProficient = false;
+    if (inv.isProficient === true) {
+        isProficient = true;
+    } else if (inv.isProficient === false) {
+        isProficient = false;
+    } else {
+        isProficient = isCharacterProficientWithWeapon(
+            def,
+            weaponName,
+            char.weaponProficiencies,
+            char.characterModifiers,
+            char.isMonk
+        );
+    }
+
     const profBonus = isProficient ? (char.proficiencyBonus ?? 2) : 0;
     const charAtkBonus = isRanged ? charRangedAtkBonus : charMeleeAtkBonus;
     const toHit = profBonus + abilityMod + magicBonus + charAtkBonus;
@@ -857,13 +1106,14 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         ...(data.modifiers?.race || []),
         ...(data.modifiers?.class || []),
         ...(data.modifiers?.background || []),
-        ...(data.modifiers?.item || []),
+        ...(data.modifiers?.item || []).filter((m: any) => isItemModifierActive(m, data.inventory)),
         ...(data.modifiers?.feat || [])
     ];
     modSources.forEach(src => {
         const list = data.modifiers?.[src];
         if (Array.isArray(list)) {
             list.forEach((m: any) => {
+                if (src === "item" && !isItemModifierActive(m, data.inventory)) return;
                 if (m.type === "bonus") {
                     const key = ABILITY_SUBTYPES[m.subType] || (m.statId ? ABILITY_ID_MAP[m.statId] : undefined);
                     if (!key || typeof m.value !== "number") return;
@@ -907,6 +1157,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     // Apply set-score items (e.g. Gauntlets of Ogre Power, Amulet of Health)
     if (Array.isArray(data.modifiers?.item)) {
         data.modifiers.item.forEach((m: any) => {
+            if (!isItemModifierActive(m, data.inventory)) return;
             if (m.type === "set") {
                 const key = ABILITY_SUBTYPES[m.subType];
                 if (key && typeof m.value === "number" && m.value > stats[key]) {
@@ -935,9 +1186,11 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         const list = data.modifiers?.[src];
         if (Array.isArray(list)) {
             list.forEach((m: any) => {
-                if (m.type === "bonus" && m.isGranted !== false) {
+                if (m.isGranted === false) return;
+                if (src === "item" && !isItemModifierActive(m, data.inventory)) return;
+                if (m.type === "bonus") {
                     const sub = (m.subType || "").toLowerCase();
-                    const val = resolveDDBModifierValue(m, modifiers);
+                    const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
                     if (sub === "spell-save-dc") {
                         globalDcBonus += val;
                     } else if (sub === "spell-attacks") {
@@ -969,9 +1222,11 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                 const list = data.modifiers?.[src];
                 if (Array.isArray(list)) {
                     list.forEach((m: any) => {
-                        if (m.type === "bonus" && m.isGranted !== false) {
+                        if (m.isGranted === false) return;
+                        if (src === "item" && !isItemModifierActive(m, data.inventory)) return;
+                        if (m.type === "bonus") {
                             const sub = (m.subType || "").toLowerCase();
-                            const val = resolveDDBModifierValue(m, modifiers);
+                            const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
                             if (sub === `${lowerName}-spell-save-dc`) {
                                 classDcBonus += val;
                             } else if (sub === `${lowerName}-spell-attacks`) {
@@ -1298,7 +1553,13 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     const allModifiers: any[] = [];
     allModSources.forEach(src => {
         const list = (data.modifiers as any)?.[src];
-        if (Array.isArray(list)) allModifiers.push(...list);
+        if (Array.isArray(list)) {
+            if (src === "item") {
+                allModifiers.push(...list.filter((m: any) => isItemModifierActive(m, data.inventory)));
+            } else {
+                allModifiers.push(...list);
+            }
+        }
     });
 
     // Parse Equipped Weapons & Attacks
@@ -1336,11 +1597,37 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         }
     });
 
+    // Extract weapon proficiencies from all modifiers
+    const weaponProficiencies = new Set<string>();
+    allModifiers.forEach((m: any) => {
+        if (!m || m.isGranted === false) return;
+        const sub = (m.subType || "").toLowerCase().trim();
+        const friendly = (m.friendlySubtypeName || "").toLowerCase().trim();
+        if (m.type === "proficiency" || m.type === "weapon-mastery") {
+            weaponProficiencies.add(sub);
+            weaponProficiencies.add(friendly);
+        }
+    });
+
+    const isMonkPreCheck = classes.some((c: any) => c.name?.toLowerCase() === "monk") ||
+        allModifiers.some((m: any) => m.type === "monk-weapon");
+
     if (Array.isArray(data.inventory)) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data.inventory.forEach((inv: any) => {
             if (!inv.equipped) return;
-            const w = buildWeaponAttackFromInventoryItem(inv, { modifiers, proficiencyBonus, level: totalLevel, characterModifiers: allModifiers }, knownWeaponCantrips);
+            const w = buildWeaponAttackFromInventoryItem(
+                inv,
+                {
+                    modifiers,
+                    proficiencyBonus,
+                    level: totalLevel,
+                    characterModifiers: allModifiers,
+                    weaponProficiencies,
+                    isMonk: isMonkPreCheck
+                },
+                knownWeaponCantrips
+            );
             if (w) weapons.push(w);
         });
     }
@@ -1372,7 +1659,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     allModifiers.forEach((m: any) => {
         if (!m || m.isGranted === false) return;
         const sub = (m.subType || "").toLowerCase();
-        const val = resolveDDBModifierValue(m, modifiers);
+        const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
         if (val === 0) return;
         if (m.type === "bonus" && (sub === "unarmed-attacks" || sub === "unarmed")) {
             unarmedAtkBonus += val;
@@ -1389,6 +1676,13 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
             ? `${unarmedBaseDmg}${unarmedTotalDmgBonus}`
             : unarmedBaseDmg;
 
+    const monkLevel = classes.find(c => c.name.toLowerCase() === "monk")?.level ?? 0;
+    const hasEmpoweredStrikes = monkLevel >= 6;
+    const unarmedProps = ["Melee Attack"];
+    if (hasEmpoweredStrikes) {
+        unarmedProps.push("Empowered Strikes");
+    }
+
     weapons.push({
         id: "weapon_unarmed_strike",
         name: "Unarmed Strike",
@@ -1399,7 +1693,8 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         toHit: proficiencyBonus + unarmedAbilityMod + unarmedAtkBonus,
         damage: unarmedDmgTotal,
         damageType: "Bludgeoning",
-        properties: ["Melee Attack"]
+        alternativeDamageTypes: hasEmpoweredStrikes ? ["Force", "Bludgeoning"] : undefined,
+        properties: unarmedProps
     });
 
     // Detect Two-Weapon Fighting fighting style from character modifiers or feats
@@ -1409,8 +1704,8 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         (f: any) => f.definition?.name?.toLowerCase().includes("two-weapon fighting")
     );
 
-    // Detect Two-Weapon Fighting eligibility (2+ equipped Light weapons)
-    const equippedLightWeapons = weapons.filter(w => w.isLight && w.name !== "Unarmed Strike");
+    // Detect Two-Weapon Fighting eligibility (2+ equipped Light melee weapons)
+    const equippedLightWeapons = weapons.filter(w => w.isLight && w.type === "melee" && w.name !== "Unarmed Strike");
     const hasTwoWeaponFighting = equippedLightWeapons.length >= 2;
     let offhandWeapon: DDBWeaponAttack | undefined = undefined;
 
@@ -1465,6 +1760,169 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         };
     }
 
+    // Parse action-based attacks (e.g. Parasitic Weapon, special natural weapons, custom attacks)
+    const DDB_ACTION_DAMAGE_TYPE_MAP: Record<number, string> = {
+        1: "Bludgeoning",
+        2: "Piercing",
+        3: "Slashing",
+        4: "Necrotic",
+        5: "Acid",
+        6: "Cold",
+        7: "Fire",
+        8: "Lightning",
+        9: "Poison",
+        10: "Psychic",
+        11: "Radiant",
+        12: "Force",
+        13: "Thunder"
+    };
+
+    const actionAttackSources = [
+        ...(data.actions?.class || []),
+        ...(data.actions?.race || []),
+        ...(data.actions?.feat || []),
+        ...(data.customActions || [])
+    ];
+
+    const NON_ATTACK_ACTION_KEYWORDS = [
+        "unarmed strike", // already handled separately
+        "sneak attack",   // handled separately
+        "inspiration",    // Bardic Inspiration, Combat Inspiration, etc.
+        "cutting words",
+        "second wind",
+        "action surge",
+        "song of rest",
+        "countercharm",
+        "wholeness of body",
+        "lay on hands",
+        "healing light",
+        "healing hands",
+        "channel divinity",
+        "turn undead",
+        "wild shape",
+        "font of magic",
+        "sorcery points",
+        "metamagic",
+        "pact magic",
+        "arcane recovery",
+        "natural recovery",
+        "deflect missiles",
+        "patient defense",
+        "step of the wind",
+        "fury of the small",
+        "uncanny dodge",
+        "evasion",
+        "reliable talent",
+        "stroke of luck",
+        "peerless skill",
+        "magical cunning",
+        "circle spell",
+        "symbiotic reinforcement",
+        "liquified body",
+        "birth parasite",
+        "parasitic ooze",
+    ];
+
+    actionAttackSources.forEach((a: any) => {
+        if (!a || !a.name) return;
+        const lowerName = a.name.toLowerCase();
+        if (NON_ATTACK_ACTION_KEYWORDS.some(k => lowerName.includes(k))) return;
+
+        if (a.displayAsAttack) {
+            const descText = (a.snippet || a.description || "").toLowerCase();
+            if (
+                (descText.includes("regain") && descText.includes("hit points")) ||
+                descText.includes("temporary hit points") ||
+                descText.includes("inspiration die") ||
+                descText.includes("add the die to") ||
+                descText.includes("bonus to an ability check")
+            ) {
+                return;
+            }
+
+            const damageType = (a.damageTypeId ? DDB_ACTION_DAMAGE_TYPE_MAP[a.damageTypeId] : undefined)
+                || (lowerName.includes("piercing") ? "Piercing"
+                    : lowerName.includes("slashing") ? "Slashing"
+                    : lowerName.includes("bludgeoning") ? "Bludgeoning"
+                    : lowerName.includes("force") ? "Force"
+                    : lowerName.includes("necrotic") ? "Necrotic"
+                    : lowerName.includes("radiant") ? "Radiant"
+                    : lowerName.includes("fire") ? "Fire"
+                    : lowerName.includes("cold") ? "Cold"
+                    : lowerName.includes("acid") ? "Acid"
+                    : lowerName.includes("poison") ? "Poison"
+                    : lowerName.includes("lightning") ? "Lightning"
+                    : lowerName.includes("thunder") ? "Thunder"
+                    : lowerName.includes("psychic") ? "Psychic"
+                    : undefined);
+
+            // An attack action MUST specify an explicit damage type and dice.
+            // Features with dice for healing, inspiration, or utility without damage types are never weapon attacks.
+            if (!damageType) return;
+            const hasDice = Boolean(a.dice?.diceString || (a.diceCount && a.diceType));
+            if (!hasDice) return;
+
+            const abilityKey = a.abilityModifierStatId ? ABILITY_ID_MAP[a.abilityModifierStatId] : (a.statId ? ABILITY_ID_MAP[a.statId] : undefined);
+            const abilityMod = abilityKey ? (modifiers[abilityKey] ?? 0) : 0;
+            const isProf = a.isProficient ?? true;
+            const toHitBonus = typeof a.toHitBonus === "number" ? a.toHitBonus : 0;
+            const toHit = typeof a.fixedToHit === "number"
+                ? a.fixedToHit
+                : (abilityMod + (isProf ? proficiencyBonus : 0) + toHitBonus);
+
+            let dmgDice = a.dice?.diceString || (a.diceCount && a.diceType ? `${a.diceCount}d${a.diceType}` : "1d8");
+            let finalDmg = dmgDice;
+            if (!dmgDice.includes("+") && !dmgDice.includes("-")) {
+                const addMod = a.damageBonus != null ? a.damageBonus : 0;
+                if (addMod > 0) finalDmg = `${dmgDice}+${addMod}`;
+                else if (addMod < 0) finalDmg = `${dmgDice}${addMod}`;
+            }
+
+            let reachOrRange = 5;
+            if (typeof a.range === "number" && a.range > 0) {
+                reachOrRange = a.range;
+            } else if (a.range && typeof a.range === "object") {
+                if (typeof a.range.range === "number" && a.range.range > 0) {
+                    reachOrRange = a.range.range;
+                } else if (typeof a.range.rangeValue === "number" && a.range.rangeValue > 0) {
+                    reachOrRange = a.range.rangeValue;
+                }
+            } else if (typeof a.rangeFeet === "number" && a.rangeFeet > 0) {
+                reachOrRange = a.rangeFeet;
+            }
+
+            let longRange: number | undefined;
+            if (a.range && typeof a.range === "object" && typeof a.range.longRange === "number" && a.range.longRange > reachOrRange) {
+                longRange = a.range.longRange;
+            } else if (typeof a.longRangeFeet === "number" && a.longRangeFeet > reachOrRange) {
+                longRange = a.longRangeFeet;
+            }
+
+            const isRanged = a.rangeId === 2 || Boolean(longRange && longRange > reachOrRange);
+            const rangeText = isRanged
+                ? `${reachOrRange} ft.${longRange ? ` / ${longRange} ft.` : ""}`
+                : `${reachOrRange} ft. Reach`;
+            const actionId = `action_atk_${a.id || lowerName.replace(/[^a-z0-9]+/g, "_")}`;
+
+            if (!weapons.some(w => w.id === actionId || w.name.toLowerCase() === lowerName)) {
+                weapons.push({
+                    id: actionId,
+                    name: a.name,
+                    type: isRanged ? "ranged" : "melee",
+                    rangeText,
+                    rangeFeet: reachOrRange,
+                    reachFeet: isRanged ? undefined : reachOrRange,
+                    longRangeFeet: longRange,
+                    toHit,
+                    damage: finalDmg,
+                    damageType,
+                    isProficient: isProf,
+                    properties: [isRanged ? "Ranged Attack" : "Melee Attack", "Action Attack"]
+                });
+            }
+        }
+    });
+
     // Parse Feature Actions
     const featureActions: DDBFeatureAction[] = [];
     const actionCategories = ["class", "race", "feat"];
@@ -1479,6 +1937,13 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         f.definition?.name?.toLowerCase().includes("circle casting") ||
         f.definition?.name?.toLowerCase().includes("circle magic")
     );
+
+    const snippetCtx = {
+        level: totalLevel,
+        proficiencyBonus,
+        modifiers,
+        scaleValue: monkFeatures?.martialArtsDie
+    };
 
     actionCategories.forEach(cat => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1509,9 +1974,13 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
 
                 let limitedUse: DDBFeatureAction["limitedUse"] = undefined;
                 if (a.limitedUse) {
-                    const max = a.limitedUse.useProficiencyBonus
-                        ? proficiencyBonus
-                        : (a.limitedUse.maxUses || 0);
+                    let max = a.limitedUse.maxUses || 0;
+                    if (a.limitedUse.useProficiencyBonus) {
+                        max = proficiencyBonus;
+                    } else if (a.limitedUse.statModifierUsesId && ABILITY_ID_MAP[a.limitedUse.statModifierUsesId]) {
+                        const statKey = ABILITY_ID_MAP[a.limitedUse.statModifierUsesId];
+                        max = Math.max(1, modifiers[statKey] ?? 1);
+                    }
                     const used = a.limitedUse.numberUsed || 0;
                     const resetFromMap = typeof a.limitedUse.resetType === "string"
                         ? a.limitedUse.resetType
@@ -1551,6 +2020,8 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
 
                 const rangeVal = a.range?.range || a.range?.rangeValue;
                 const rangeText = rangeVal ? `${rangeVal} ft.` : "-- ft. Reach";
+                const resolvedSnippet = resolveDDBSnippet(a.snippet || a.description || "", snippetCtx);
+                const resolvedDesc = resolveDDBSnippet(a.description || a.snippet || "", snippetCtx);
 
                 featureActions.push({
                     id: `action_${cat}_${a.id || a.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
@@ -1558,9 +2029,12 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                     name: a.name,
                     source: cat as "class" | "race" | "feat",
                     activationType: activation,
-                    description: stripHtml(a.snippet || a.description || ""),
-                    rawDescription: a.description || a.snippet || "",
+                    description: stripHtml(resolvedSnippet || resolvedDesc),
+                    rawDescription: cleanDDBMarkup(resolvedDesc || resolvedSnippet),
                     rangeText,
+                    dice: a.dice?.diceString || (a.diceCount && a.diceType ? `${a.diceCount}d${a.diceType}` : undefined),
+                    displayAsAttack: Boolean(a.displayAsAttack),
+                    damageType: a.damageTypeId ? DDB_ACTION_DAMAGE_TYPE_MAP[a.damageTypeId] : undefined,
                     limitedUse
                 });
             });
@@ -1613,7 +2087,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                     source: "class",
                     activationType: activation,
                     description: descText,
-                    rawDescription: def.description || def.snippet || "",
+                    rawDescription: cleanDDBMarkup(def.description || def.snippet || ""),
                     rangeText: "--",
                     limitedUse: undefined
                 });
@@ -1678,7 +2152,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     allModifiers.forEach((m: any) => {
         if (m.type === "bonus" && m.isGranted !== false) {
             const sub = (m.subType || "").toLowerCase();
-            const val = resolveDDBModifierValue(m, modifiers);
+            const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
             if (sub === "hit-points-per-level") {
                 modifierHp += val * totalLevel;
             } else if (sub === "hit-points") {
@@ -1717,7 +2191,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     let initBonus = 0;
     allModifiers.forEach((m: any) => {
         if (m.type === "bonus" && m.subType === "initiative" && m.isGranted !== false) {
-            initBonus += resolveDDBModifierValue(m, modifiers);
+            initBonus += resolveDDBModifierValue(m, modifiers, proficiencyBonus);
         }
     });
     const initiative = dexMod + initBonus;
@@ -1811,6 +2285,12 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     let acDex = addDex ? modifiers.dex : 0;
     if (maxDex !== undefined) acDex = Math.min(acDex, maxDex);
 
+    // If character is unarmored and has an ignore unarmored DEX modifier (e.g. Altered feat Natural Armor: CON), do not add DEX
+    const ignoreUnarmoredDex = allModifiers.some((m: any) => m.type === "ignore" && m.subType === "unarmored-dex-ac-bonus");
+    if (!equippedArmor && ignoreUnarmoredDex) {
+        acDex = 0;
+    }
+
     // 5. Collect every AC-modifying entry from DDB modifiers (no class name checks!)
     //
     //  DDB uses these subTypes for AC:
@@ -1854,8 +2334,23 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                         label: m.friendlySubtypeName || m.friendlyTypeName || "Unarmored Bonus",
                         value: m.value
                     });
-                } else if (m.type === "set" && typeof m.value === "number") {
-                    setAcFloor = Math.max(setAcFloor, m.value);
+                } else if (m.type === "set") {
+                    // Check if statId is attached to this set modifier (e.g. Altered feat Natural Armor: 10 + 3 + CON)
+                    if (m.statId && ABILITY_ID_MAP[m.statId]) {
+                        const abilityKey = ABILITY_ID_MAP[m.statId as number];
+                        if (abilityKey) {
+                            const baseFormula = typeof m.value === "number" ? (m.value < 10 ? 10 + m.value : m.value) : 10;
+                            const statBonus = modifiers[abilityKey] ?? 0;
+                            const totalUnarmored = baseFormula + statBonus;
+                            if (totalUnarmored > (baseAc + extraAbilityBonus)) {
+                                baseAc = baseFormula;
+                                extraAbilityBonus = statBonus;
+                                extraAbilityBonusName = ABILITY_NAME_MAP[abilityKey] || abilityKey.toUpperCase();
+                            }
+                        }
+                    } else if (typeof m.value === "number") {
+                        setAcFloor = Math.max(setAcFloor, m.value);
+                    }
                 } else if ((m.type === "set" || m.type === "bonus") && m.statId) {
                     const abilityKey = ABILITY_ID_MAP[m.statId as number];
                     // Monk Unarmored Defense (Wisdom) does not apply with a shield (PHB rules)
@@ -1874,7 +2369,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
             }
         });
 
-        // Apply set floor: if any modifier sets a fixed AC base, use it if higher than 10
+        // Apply set floor: if any modifier sets a fixed AC base, use it if higher than current baseAc
         if (setAcFloor > baseAc) {
             baseAc = setAcFloor;
             extraAbilityBonus = 0; // Natural Armor / Mage Armor doesn't stack with Unarmored Defense
@@ -2000,7 +2495,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
             else if (abl.startsWith("wis")) savingThrowProficiencies.add("wis");
             else if (abl.startsWith("cha")) savingThrowProficiencies.add("cha");
         } else if (m.type === "bonus") {
-            const val = resolveDDBModifierValue(m, modifiers);
+            const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
             if (val !== 0) {
                 if (sub === "saving-throws") {
                     globalSaveBonus += val;
@@ -2060,7 +2555,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         } else if (m.type === "expertise" && sub) {
             skillExpertises.add(sub);
         } else if (m.type === "bonus" && m.isGranted !== false) {
-            const val = resolveDDBModifierValue(m, modifiers);
+            const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
             if (val !== 0) {
                 if (sub === "ability-checks") {
                     globalAbilityCheckBonus += val;
@@ -2120,7 +2615,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         if (!m || m.isGranted === false) return;
         const sub = (m.subType || "").toLowerCase();
         if (m.type === "bonus") {
-            const val = resolveDDBModifierValue(m, modifiers);
+            const val = resolveDDBModifierValue(m, modifiers, proficiencyBonus);
             if (val !== 0) {
                 if (sub === "passive-perception") passivePerceptionBonus += val;
                 else if (sub === "passive-investigation") passiveInvestigationBonus += val;
@@ -2213,9 +2708,9 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
     const bgDef = data.background?.definition || {};
     const parsedBackground: DDBBackgroundInfo = {
         name: bgDef.name || "Adventurer",
-        description: stripHtml(bgDef.description || bgDef.shortDescription || ""),
+        description: stripHtml(resolveDDBSnippet(bgDef.description || bgDef.shortDescription || "", snippetCtx)),
         featureName: bgDef.featureName || undefined,
-        featureDescription: stripHtml(bgDef.featureDescription || ""),
+        featureDescription: stripHtml(resolveDDBSnippet(bgDef.featureDescription || "", snippetCtx)),
         traits: {
             personalityTraits: data.traits?.personalityTraits || undefined,
             ideals: data.traits?.ideals || undefined,
@@ -2236,9 +2731,28 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         ? data.feats.map((f: any) => ({
             id: Number(f.id ?? 0),
             name: String(f.definition?.name ?? f.name ?? ""),
-            description: stripHtml(f.definition?.description ?? f.description ?? "")
+            description: stripHtml(resolveDDBSnippet(f.definition?.description ?? f.description ?? "", snippetCtx))
         })).filter((f: any) => f.name.length > 0)
         : undefined;
+
+    const parsedOptions: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string }> = [];
+    ["class", "race", "feat"].forEach(src => {
+        const list = (data.options as any)?.[src];
+        if (Array.isArray(list)) {
+            list.forEach((opt: any) => {
+                const def = opt.definition || {};
+                if (def.name) {
+                    parsedOptions.push({
+                        id: def.id ?? opt.componentId ?? 0,
+                        name: def.name,
+                        description: stripHtml(resolveDDBSnippet(def.description || def.snippet || "", snippetCtx)),
+                        snippet: stripHtml(resolveDDBSnippet(def.snippet || def.description || "", snippetCtx)),
+                        source: src
+                    });
+                }
+            });
+        }
+    });
 
     return {
         id,
@@ -2264,6 +2778,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         hasTwoWeaponFighting,
         hasTWFFightingStyle,
         offhandWeapon,
+        martialArtsDie: monkFeatures?.martialArtsDie,
         hp,
         hitDice,
         armorClass,
@@ -2288,6 +2803,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         backgroundInfo: parsedBackground,
         notesInfo: parsedNotes,
         feats: parsedFeats,
+        options: parsedOptions,
         classFeatures: Object.fromEntries(classLevelFeatureMap),
         characterModifiers: allModifiers,
         lastSynced: new Date().toISOString()
