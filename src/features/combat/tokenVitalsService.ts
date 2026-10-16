@@ -499,6 +499,7 @@ export async function applyDamage(
   effectiveDamage: number;
   defenseNote?: string;
   concentrationSave?: PendingConcentrationSave | null;
+  targetDefeated?: boolean;
 } | null> {
   const current = await getTokenVitals(tokenId);
   if (!current) return null;
@@ -524,6 +525,9 @@ export async function applyDamage(
 
   const effectiveAmount = defenseRes.effectiveDamage;
   const resolution = calculateDamageResolution(current, effectiveAmount);
+  const wasAlive = (current.hpCurrent ?? 0) > 0;
+  const isNowDefeated = wasAlive && resolution.nextVitals.hpCurrent === 0;
+
   const pendingSave = effectiveAmount > 0 && current.concentration
     ? createPendingConcentrationSave(current.concentration, effectiveAmount)
     : null;
@@ -555,6 +559,7 @@ export async function applyDamage(
     effectiveDamage: effectiveAmount,
     defenseNote: defenseRes.note,
     concentrationSave: pendingSave,
+    targetDefeated: isNowDefeated,
   };
 }
 

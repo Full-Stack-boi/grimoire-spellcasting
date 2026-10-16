@@ -143,6 +143,7 @@ import {
   checkAndFireActionTriggers,
 } from "./services/conditionalTriggerService";
 import { resolveSpellConditionalTrigger } from "./services/spellTriggerResolver";
+import { dispatchCombatFeatureTrigger } from "./features/combat/domain/combatFeatureHooks";
 import type { DDBParsedCharacter, DDBParsedSpell } from "./types/ddb";
 import type { SpellFormula } from "./types/spellFormula";
 import type { MonsterAction } from "./features/monsters/domain/types";
@@ -2275,9 +2276,32 @@ async function setupTargetToolModes(
                       const applyRes = await applyDamage(targetTokenId, totalDamage, weapon.damageType);
                       weaponDmgCard.appliedDamageAmount = applyRes?.effectiveDamage ?? totalDamage;
                       weaponDmgCard.resolutionNote = applyRes?.defenseNote;
+                      if (applyRes?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId,
+                          targetName,
+                          weapon,
+                          damageTotal: totalDamage,
+                        }).catch(console.error);
+                      }
                     }
                     ddbCards.push(weaponDmgCard);
                     dmgReport = ` | Damage: ${totalDamage}`;
+
+                    if (roll.isCrit && ddbChar) {
+                      dispatchCombatFeatureTrigger("on_critical_hit", {
+                        character: ddbChar,
+                        casterTokenId: activeCaster?.id,
+                        targetTokenId,
+                        targetName,
+                        weapon,
+                        damageDiceRoll: totalDamage,
+                        damageTotal: totalDamage,
+                        isCritical: true,
+                      }).catch(console.error);
+                    }
 
                     if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                       const hexDice = roll.isCrit ? "2d6" : "1d6";
@@ -2290,6 +2314,8 @@ async function setupTargetToolModes(
                       const hexCard: DDBRollCardData = {
                         id: `${Date.now()}-${i}-hex-dmg`,
                         casterName,
+                        casterId: activeCaster?.id,
+                        characterId: ddbChar?.id,
                         targetName,
                         targetId: targetTokenId,
                         targetAc,
@@ -2314,6 +2340,15 @@ async function setupTargetToolModes(
                         const hexApplyRes = await applyDamage(targetTokenId, hexDmg.total, "Necrotic");
                         hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDmg.total;
                         hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                        if (hexApplyRes?.targetDefeated && ddbChar) {
+                          dispatchCombatFeatureTrigger("on_target_defeated", {
+                            character: ddbChar,
+                            casterTokenId: activeCaster?.id,
+                            targetTokenId,
+                            targetName,
+                            damageTotal: hexDmg.total,
+                          }).catch(console.error);
+                        }
                       }
                       ddbCards.push(hexCard);
                       hexNotice = ` | Hex: +${hexDmg.total} Necrotic`;
@@ -2326,6 +2361,8 @@ async function setupTargetToolModes(
                     const grazeCard: DDBRollCardData = {
                       id: `${Date.now()}-${i}-graze-dmg`,
                       casterName,
+                      casterId: activeCaster?.id,
+                      characterId: ddbChar?.id,
                       targetName,
                       targetId: targetTokenId,
                       targetAc,
@@ -2345,6 +2382,16 @@ async function setupTargetToolModes(
                       const grazeApplyRes = await applyDamage(targetTokenId, abilityMod, weapon.damageType);
                       grazeCard.appliedDamageAmount = grazeApplyRes?.effectiveDamage ?? abilityMod;
                       grazeCard.resolutionNote = grazeApplyRes?.defenseNote;
+                      if (grazeApplyRes?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId,
+                          targetName,
+                          weapon,
+                          damageTotal: abilityMod,
+                        }).catch(console.error);
+                      }
                     }
                     ddbCards.push(grazeCard);
                     dmgReport = ` | Graze: ${abilityMod} ${weapon.damageType}`;
@@ -2686,15 +2733,44 @@ async function setupTargetToolModes(
                     pendingDamage: totalDamage,
                     damageType: weaponDamageType,
                     damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
+                    casterId: activeCaster?.id,
+                    characterId: ddbChar?.id,
                     timestamp: Date.now() + 1,
                   };
+                  let frigidRes: Awaited<ReturnType<typeof applyDamage>> | null = null;
                   if (damageMode === "auto" && targetTokenId) {
-                    const frigidRes = await applyDamage(targetTokenId, totalDamage, weaponDamageType);
+                    frigidRes = await applyDamage(targetTokenId, totalDamage, weaponDamageType);
                     frigidCard.appliedDamageAmount = frigidRes?.effectiveDamage ?? totalDamage;
                     frigidCard.resolutionNote = frigidRes?.defenseNote;
+                    if (frigidRes?.targetDefeated && ddbChar) {
+                      dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character: ddbChar,
+                        casterTokenId: activeCaster?.id,
+                        targetTokenId,
+                        targetName,
+                        weapon,
+                        spell: ddbSpell,
+                        damageTotal: totalDamage,
+                      }).catch(console.error);
+                    }
                   }
                   ddbCards.push(frigidCard);
 
+                  if (attack.isCrit && ddbChar) {
+                    dispatchCombatFeatureTrigger("on_critical_hit", {
+                      character: ddbChar,
+                      casterTokenId: activeCaster?.id,
+                      targetTokenId,
+                      targetName,
+                      weapon,
+                      spell: ddbSpell,
+                      damageDiceRoll: totalDamage,
+                      damageTotal: totalDamage,
+                      isCritical: true,
+                    }).catch(console.error);
+                  }
+
+                  let hexApplyRes: Awaited<ReturnType<typeof applyDamage>> | null = null;
                   if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
                     const hexDice = attack.isCrit ? "2d6" : "1d6";
                     const hexDamage = rollDamageDDB(
@@ -2706,6 +2782,8 @@ async function setupTargetToolModes(
                     const hexCard: DDBRollCardData = {
                       id: `${Date.now()}-frigid-hex`,
                       casterName,
+                      casterId: activeCaster?.id,
+                      characterId: ddbChar?.id,
                       targetName,
                       targetId: targetTokenId,
                       targetAc,
@@ -2725,13 +2803,23 @@ async function setupTargetToolModes(
                       timestamp: Date.now() + 2,
                     };
                     if (damageMode === "auto" && targetTokenId) {
-                      const hexApplyRes = await applyDamage(targetTokenId, hexDamage.total, "Necrotic");
+                      hexApplyRes = await applyDamage(targetTokenId, hexDamage.total, "Necrotic");
                       hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDamage.total;
                       hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                      if (hexApplyRes?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId,
+                          targetName,
+                          damageTotal: hexDamage.total,
+                        }).catch(console.error);
+                      }
                     }
                     ddbCards.push(hexCard);
                   }
 
+                  const isTargetDefeated = Boolean(frigidRes?.targetDefeated || hexApplyRes?.targetDefeated);
                   const triggerInfo = resolveSpellConditionalTrigger(
                     spellName,
                     spellFormula.effectNotes?.join(" ") ||
@@ -2743,7 +2831,8 @@ async function setupTargetToolModes(
                   if (
                     triggerInfo &&
                     triggerInfo.hasTrigger &&
-                    event.target?.id
+                    event.target?.id &&
+                    !isTargetDefeated
                   ) {
                     const triggerId = `trig_${Date.now()}_${event.target.id}`;
                     await addConditionalTrigger({
@@ -3065,12 +3154,32 @@ async function setupTargetToolModes(
                       const eff = res?.effectiveDamage ?? alloc.totalDamage;
                       totalEffectiveDmg += eff;
                       autoNotes.push(`${alloc.targetName}: -${eff} HP${res?.defenseNote ? ` (${res.defenseNote})` : ""}`);
+                      if (res?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId: tId,
+                          targetName: alloc.targetName,
+                          spell: ddbSpell,
+                          damageTotal: eff,
+                        }).catch(console.error);
+                      }
                     }
                   } else if (uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId) {
                     const fallbackTid = (uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId)!;
                     const res = await applyDamage(fallbackTid, totalNumericDmg, damageType);
                     totalEffectiveDmg = res?.effectiveDamage ?? totalNumericDmg;
                     if (res?.defenseNote) autoNotes.push(res.defenseNote);
+                    if (res?.targetDefeated && ddbChar) {
+                      dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character: ddbChar,
+                        casterTokenId: activeCaster?.id,
+                        targetTokenId: fallbackTid,
+                        targetName: targetLabel,
+                        spell: ddbSpell,
+                        damageTotal: totalEffectiveDmg,
+                      }).catch(console.error);
+                    }
                   }
 
                   // Mark each hitting subRoll as applied
@@ -3084,6 +3193,8 @@ async function setupTargetToolModes(
                 const groupedCard: DDBRollCardData = {
                   id: `${Date.now()}-multi-${spellName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
                   casterName,
+                  casterId: activeCaster?.id,
+                  characterId: ddbChar?.id,
                   targetName: targetLabel,
                   targetId: uniqueTokenIds.length === 1 ? uniqueTokenIds[0] : targetTokenId,
                   actionName: spellName.toUpperCase(),
@@ -3242,14 +3353,39 @@ async function setupTargetToolModes(
                       pendingDamage: dmg.total,
                       damageType,
                       damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
+                      casterId: activeCaster?.id,
+                      characterId: ddbChar?.id,
                       timestamp: Date.now(),
                     };
                     if (damageMode === "auto" && targetTokenId) {
                       const applyRes = await applyDamage(targetTokenId, dmg.total, damageType);
                       spellDmgCard.appliedDamageAmount = applyRes?.effectiveDamage ?? dmg.total;
                       spellDmgCard.resolutionNote = applyRes?.defenseNote;
+                      if (applyRes?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId,
+                          targetName,
+                          spell: ddbSpell,
+                          damageTotal: dmg.total,
+                        }).catch(console.error);
+                      }
                     }
                     ddbCards.push(spellDmgCard);
+
+                    if (roll.isCrit && ddbChar) {
+                      dispatchCombatFeatureTrigger("on_critical_hit", {
+                        character: ddbChar,
+                        casterTokenId: activeCaster?.id,
+                        targetTokenId,
+                        targetName,
+                        spell: ddbSpell,
+                        damageDiceRoll: dmg.total,
+                        damageTotal: dmg.total,
+                        isCritical: true,
+                      }).catch(console.error);
+                    }
                   }
 
                   if (isHexActive && isTargetHexed(combatState, targetTokenId)) {
@@ -3263,6 +3399,8 @@ async function setupTargetToolModes(
                     const hexCard: DDBRollCardData = {
                       id: `${Date.now()}-hex-dmg`,
                       casterName,
+                      casterId: activeCaster?.id,
+                      characterId: ddbChar?.id,
                       targetName,
                       targetId: targetTokenId,
                       targetAc,
@@ -3285,6 +3423,15 @@ async function setupTargetToolModes(
                       const hexApplyRes = await applyDamage(targetTokenId, hexDmg.total, "Necrotic");
                       hexCard.appliedDamageAmount = hexApplyRes?.effectiveDamage ?? hexDmg.total;
                       hexCard.resolutionNote = hexApplyRes?.defenseNote;
+                      if (hexApplyRes?.targetDefeated && ddbChar) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                          character: ddbChar,
+                          casterTokenId: activeCaster?.id,
+                          targetTokenId,
+                          targetName,
+                          damageTotal: hexDmg.total,
+                        }).catch(console.error);
+                      }
                     }
                     ddbCards.push(hexCard);
                   }
@@ -3498,6 +3645,8 @@ async function setupTargetToolModes(
                     const generalCard: DDBRollCardData = {
                       id: `${Date.now()}-spell`,
                       casterName,
+                      casterId: activeCaster?.id,
+                      characterId: ddbChar?.id,
                       targetName,
                       targetId: event.target?.id,
                       actionName: spellName.toUpperCase(),
@@ -3537,6 +3686,16 @@ async function setupTargetToolModes(
                         const res = await applyDamage(event.target.id, dmg.total, damageType);
                         generalCard.appliedDamageAmount = res?.effectiveDamage ?? dmg.total;
                         generalCard.resolutionNote = res?.defenseNote;
+                        if (res?.targetDefeated && ddbChar) {
+                          dispatchCombatFeatureTrigger("on_target_defeated", {
+                            character: ddbChar,
+                            casterTokenId: activeCaster?.id,
+                            targetTokenId: event.target.id,
+                            targetName,
+                            spell: ddbSpell,
+                            damageTotal: dmg.total,
+                          }).catch(console.error);
+                        }
                       }
                     }
                     broadcastDDBRoll([generalCard]);

@@ -13,6 +13,7 @@ import { resolveAttackHit } from "../../../features/combat/domain/attackResoluti
 import { calculateDisplayedSpeed } from "../../../features/combat/domain/temporaryCombatEffects";
 import { isRangedAttackAction, resolveRollMode, checkCloseCombatThreat } from "../../../features/combat/domain/attackRangeRules";
 import { getActiveEncounter } from "../../../features/combat/initiativeService";
+import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
 
 interface UseSpellAttackRollOptions {
     casterId?: string;
@@ -198,6 +199,16 @@ export function useSpellAttackRoll({
                     damageResolutionStatus = "applied";
                     appliedDamageAmount = effectiveTotal;
                     resolutionNote = defNote;
+                    if (applyRes?.targetDefeated && character) {
+                        dispatchCombatFeatureTrigger("on_target_defeated", {
+                            character,
+                            casterTokenId: casterId,
+                            targetTokenId: targetId,
+                            targetName,
+                            spell: ddbSpell,
+                            damageTotal: effectiveTotal,
+                        }).catch(console.error);
+                    }
                 }
 
                 const groupedCard: DDBRollCardData = {
@@ -270,6 +281,16 @@ export function useSpellAttackRoll({
                         appliedAmount = applyRes?.effectiveDamage ?? dmg.total;
                         resolutionNote = applyRes?.defenseNote;
                         damageStatus = "applied";
+                        if (applyRes?.targetDefeated && character) {
+                            dispatchCombatFeatureTrigger("on_target_defeated", {
+                                character,
+                                casterTokenId: casterId,
+                                targetTokenId: targetId,
+                                targetName,
+                                spell: ddbSpell,
+                                damageTotal: appliedAmount ?? dmg.total,
+                            }).catch(console.error);
+                        }
                     }
                     const dieFaces = Number(ddbSpell.damage.match(/d(\d+)/i)?.[1] ?? 8);
                     const formulaDisplay = roll.isCrit ? doubleDiceFormula(ddbSpell.damage) : ddbSpell.damage;

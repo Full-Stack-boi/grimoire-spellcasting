@@ -10,6 +10,10 @@ import type { SpellSlotConfig, DetailDrawerItem } from "../domain/types";
 interface UseSpellResourceHandlersOptions {
     character: DDBParsedCharacter | null;
     drawerItem: DetailDrawerItem | null;
+    setDrawerItem?: Dispatch<SetStateAction<DetailDrawerItem>>;
+    currentHp?: number;
+    maxHp?: number;
+    tempHp?: number;
     featureUses: Record<string, number>;
     setFeatureUses: Dispatch<SetStateAction<Record<string, number>>>;
     spellSlots: Record<number, SpellSlotConfig>;
@@ -30,6 +34,10 @@ interface UseSpellResourceHandlersOptions {
 export function useSpellResourceHandlers({
     character,
     drawerItem,
+    setDrawerItem,
+    currentHp,
+    maxHp,
+    tempHp,
     featureUses,
     setFeatureUses,
     spellSlots,
@@ -152,22 +160,43 @@ export function useSpellResourceHandlers({
                 for (const feat of features) {
                     const rt = (feat.limitedUse?.resetType || "").toLowerCase();
                     const name = feat.name.toLowerCase();
-                    const isShortRest = rt.includes("short") ||
-                        name.includes("action surge") ||
-                        name.includes("second wind") ||
-                        name.includes("focus point") ||
-                        name.includes("ki") ||
-                        name.includes("channel divinity") ||
-                        name.includes("wild shape") ||
-                        name.includes("font of inspiration");
-                    if (isShortRest) {
-                        delete next[feat.id];
+                    if (name.includes("second wind")) {
+                        // 2024 Fighter: Regain 1 expended use on a Short Rest
+                        const currentUsed = next[feat.id] ?? (feat.limitedUse?.used ?? 0);
+                        if (currentUsed > 0) {
+                            const newUsed = currentUsed - 1;
+                            if (newUsed === 0) {
+                                delete next[feat.id];
+                            } else {
+                                next[feat.id] = newUsed;
+                            }
+                        }
+                    } else {
+                        const isShortRest = rt.includes("short") ||
+                            name.includes("action surge") ||
+                            name.includes("focus point") ||
+                            name.includes("ki") ||
+                            name.includes("channel divinity") ||
+                            name.includes("wild shape") ||
+                            name.includes("font of inspiration");
+                        if (isShortRest) {
+                            delete next[feat.id];
+                        }
                     }
                 }
             }
             return next;
         });
-        OBR.notification.show("Short Rest completed: Actions, Pact Slots, and Short Rest abilities restored! (Spend Hit Dice from HP details)", "SUCCESS");
+
+        // Auto-prompt Hit Dice drawer on Short Rest so player can choose Hit Dice to roll
+        if (setDrawerItem) {
+            const cur = currentHp ?? (character?.hp?.current ?? 10);
+            const mx = maxHp ?? (character?.hp?.max ?? 10);
+            const tmp = tempHp ?? (character?.hp?.temp ?? 0);
+            setDrawerItem({ type: "hp", current: cur, max: mx, temp: tmp });
+        }
+
+        OBR.notification.show("Short Rest completed: Actions, Pact Slots, and Short Rest abilities restored! Choose Hit Dice to heal.", "SUCCESS");
     };
 
     const handleLongRest = () => {

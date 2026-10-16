@@ -5,6 +5,7 @@ import { rollDamageDDB } from "../utils/dice";
 import { broadcastDDBRoll } from "./rollLogService";
 import { applyDamage } from "../features/combat/tokenVitalsService";
 import { getDamageApplicationMode } from "../features/combat/damageModeService";
+import { dispatchCombatFeatureTrigger } from "../features/combat/domain/combatFeatureHooks";
 
 export const CONDITIONAL_TRIGGERS_METADATA_KEY = `${APP_KEY}/conditional-triggers`;
 
@@ -160,11 +161,20 @@ export async function fireConditionalTrigger(triggerId: string): Promise<DDBRoll
             appliedDamageAmount = applyRes?.effectiveDamage ?? dmg.total;
             resolutionNote = applyRes?.defenseNote;
             damageResolutionStatus = "applied";
+            if (applyRes?.targetDefeated) {
+                dispatchCombatFeatureTrigger("on_target_defeated", {
+                    casterTokenId: trigger.casterId,
+                    targetTokenId: trigger.targetId,
+                    targetName: trigger.targetName,
+                    damageTotal: appliedDamageAmount ?? dmg.total,
+                }).catch(console.error);
+            }
         }
 
         const card: DDBRollCardData = {
             id: `${Date.now()}-trigger-${trigger.id}`,
             casterName: trigger.casterName || "Character",
+            casterId: trigger.casterId,
             targetName: trigger.targetName || "Target",
             targetId: trigger.targetId,
             actionName: `${trigger.spellName.toUpperCase()} (TRIGGER)`,

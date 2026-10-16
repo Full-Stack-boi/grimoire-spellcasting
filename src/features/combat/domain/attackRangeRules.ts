@@ -110,7 +110,7 @@ function collectFeatureNames(source: unknown, depth = 0): string[] {
 
 /**
  * Checks if the character possesses feats/features that waive Close Combat Disadvantage
- * on ranged attacks (e.g. Crossbow Expert, Gunner, Close-Quarters Shooter, Pistolero).
+ * on ranged attacks (e.g. Crossbow Expert, Gunner, Sharpshooter, Close-Quarters Shooter, Pistolero).
  */
 export function hasCloseCombatDisadvantageBypass(character?: DDBParsedCharacter | null): boolean {
   if (!character) return false;
@@ -119,6 +119,7 @@ export function hasCloseCombatDisadvantageBypass(character?: DDBParsedCharacter 
     const loose = character as unknown as Record<string, unknown>;
     const catalog = [
       ...collectFeatureNames(character.actions?.map((a) => a.name)),
+      ...collectFeatureNames(loose.options),
       ...collectFeatureNames(loose.features),
       ...collectFeatureNames(loose.feats),
       ...collectFeatureNames(loose.classFeatures),
@@ -127,12 +128,39 @@ export function hasCloseCombatDisadvantageBypass(character?: DDBParsedCharacter 
     return catalog.some((raw) => {
       const name = raw.toLowerCase();
       return (
+        name.includes("sharpshooter") ||
         name.includes("crossbow expert") ||
         name.includes("gunner") ||
         name.includes("close-quarters shooter") ||
         name.includes("close quarters shooter") ||
         name.includes("pistolero")
       );
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks if the character possesses feats/features that waive Long Range Disadvantage
+ * on ranged attacks (e.g. Sharpshooter, Spell Sniper).
+ */
+export function hasLongRangeDisadvantageBypass(character?: DDBParsedCharacter | null): boolean {
+  if (!character) return false;
+
+  try {
+    const loose = character as unknown as Record<string, unknown>;
+    const catalog = [
+      ...collectFeatureNames(character.actions?.map((a) => a.name)),
+      ...collectFeatureNames(loose.options),
+      ...collectFeatureNames(loose.features),
+      ...collectFeatureNames(loose.feats),
+      ...collectFeatureNames(loose.classFeatures),
+    ];
+
+    return catalog.some((raw) => {
+      const name = raw.toLowerCase();
+      return name.includes("sharpshooter") || name.includes("spell sniper");
     });
   } catch {
     return false;

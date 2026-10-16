@@ -101,6 +101,57 @@ describe("useSpellResourceHandlers rest actions", () => {
         expect(featureUses["feat-indomitable"]).toBe(1);
     });
 
+    it("handleShortRest automatically opens Hit Dice drawer and regains 1 expended use of Second Wind", () => {
+        const setDrawerItem = vi.fn();
+        let featureUses = {
+            "feat-second-wind": 3,
+        };
+        const setFeatureUses = vi.fn((updater) => {
+            featureUses = typeof updater === "function" ? updater(featureUses) : updater;
+        });
+
+        const charWithHp = {
+            ...mockCharacter,
+            hp: { current: 18, max: 44, temp: 0 },
+        };
+
+        const handlers = useSpellResourceHandlers({
+            character: charWithHp,
+            drawerItem: null,
+            setDrawerItem,
+            currentHp: 18,
+            maxHp: 44,
+            tempHp: 0,
+            featureUses,
+            setFeatureUses,
+            spellSlots: {},
+            setSpellSlots: vi.fn(),
+            pactSlots: { max: 0, used: 0 },
+            setPactSlots: vi.fn(),
+            createdSpellSlots: {},
+            setCreatedSpellSlots: vi.fn(),
+            setActionUsed: vi.fn(),
+            setBonusActionUsed: vi.fn(),
+            setConcentrationSpell: vi.fn(),
+            setDeathSaves: vi.fn(),
+            setHitDiceUsed: vi.fn(),
+            setExhaustionLevel: vi.fn(),
+        });
+
+        handlers.handleShortRest();
+
+        // Second wind regains 1 use (3 used -> 2 used)
+        expect(featureUses["feat-second-wind"]).toBe(2);
+
+        // Auto-prompts Hit Dice drawer
+        expect(setDrawerItem).toHaveBeenCalledWith({
+            type: "hp",
+            current: 18,
+            max: 44,
+            temp: 0,
+        });
+    });
+
     it("handleLongRest resets all spell slots, hit dice, actions, and calls onResetHpToMax", () => {
         const setActionUsed = vi.fn();
         const setBonusActionUsed = vi.fn();

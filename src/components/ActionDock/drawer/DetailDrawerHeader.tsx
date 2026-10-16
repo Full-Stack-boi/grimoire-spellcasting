@@ -74,7 +74,11 @@ export const DetailDrawerHeader: React.FC<DetailDrawerHeaderProps> = ({ item, ch
         {item.type === "weapon" && (
             <div className="ddb-drawer-meta-row">
                 <span className="ddb-drawer-badge">To Hit: +{item.weapon.toHit}</span>
-                <span className="ddb-drawer-badge">Range: {item.weapon.rangeText}</span>
+                <span className="ddb-drawer-badge">
+                    Range: {typeof item.weapon.rangeText === "string" && !item.weapon.rangeText.includes("[object")
+                        ? item.weapon.rangeText
+                        : `${item.weapon.rangeFeet || 5} ft.`}
+                </span>
                 <span className="ddb-drawer-badge">Damage: {item.weapon.damage} {item.weapon.damageType}</span>
             </div>
         )}

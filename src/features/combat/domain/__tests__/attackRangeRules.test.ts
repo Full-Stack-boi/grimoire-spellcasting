@@ -11,6 +11,7 @@ import {
   isRangedAttackAction,
   resolveRollMode,
   hasCloseCombatDisadvantageBypass,
+  hasLongRangeDisadvantageBypass,
   getTokenDisposition,
   isTokenHostileToCaster,
   checkCloseCombatThreat,
@@ -253,6 +254,26 @@ describe("attackRangeRules - Pure D&D 5e Close Combat & Cancellation Rules", () 
       } as unknown as DDBParsedCharacter;
 
       expect(hasCloseCombatDisadvantageBypass(char)).toBe(true);
+    });
+
+    it("detects Sharpshooter (2024) in character options or feats for close combat and long range bypass", () => {
+      const charWithFeat = {
+        id: 7,
+        name: "Jinx",
+        feats: [{ name: "Sharpshooter" }],
+      } as unknown as DDBParsedCharacter;
+
+      expect(hasCloseCombatDisadvantageBypass(charWithFeat)).toBe(true);
+      expect(hasLongRangeDisadvantageBypass(charWithFeat)).toBe(true);
+
+      const charWithOptions = {
+        id: 8,
+        name: "Sharpshooter via Options",
+        options: [{ id: 101, name: "Feat: Sharpshooter", source: "feat" }],
+      } as unknown as DDBParsedCharacter;
+
+      expect(hasCloseCombatDisadvantageBypass(charWithOptions)).toBe(true);
+      expect(hasLongRangeDisadvantageBypass(charWithOptions)).toBe(true);
     });
   });
 

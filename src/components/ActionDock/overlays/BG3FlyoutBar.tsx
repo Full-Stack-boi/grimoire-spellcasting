@@ -188,9 +188,12 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                 ridersText = `${reasons}${diceTexts}`;
             }
             const isThrown = weaponData.mode === "thrown";
+            const rawRange = weaponData.weapon.rangeText;
             const rangeDisplay = isThrown
                 ? `${weaponData.weapon.thrownRange || 20} (${weaponData.weapon.thrownLongRange || 60})`
-                : weaponData.weapon.rangeText;
+                : (typeof rawRange === "string" && !rawRange.includes("[object")
+                    ? rawRange
+                    : `${weaponData.weapon.rangeFeet || 5} ft.${weaponData.weapon.type === "melee" ? " Reach" : ""}`);
             const toHitDisplay = isThrown ? (weaponData.weapon.thrownToHit ?? weaponData.weapon.toHit) : weaponData.weapon.toHit;
             return (
                 <span className="ddb-flyout-header-base">

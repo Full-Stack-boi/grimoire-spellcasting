@@ -15,6 +15,7 @@ import { getTokenVitals, applyDamage } from "../../../features/combat/tokenVital
 import { getDamageApplicationMode } from "../../../features/combat/damageModeService";
 import { resolveAttackHit } from "../../../features/combat/domain/attackResolution";
 import { combineD20RollModes, resolveConditionRules } from "../../../features/combat/domain/conditionRules";
+import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
 
 interface UseWeaponRollHandlersOptions {
     casterId?: string;
@@ -144,6 +145,19 @@ export function useWeaponRollHandlers({
                 removeTokenBuff(casterId, "channeled_attack").catch(() => {});
             });
         }
+        if (roll.isCrit && character) {
+            dispatchCombatFeatureTrigger("on_critical_hit", {
+                character,
+                casterTokenId: casterId,
+                targetTokenId: targetId,
+                targetName,
+                weapon,
+                isCritical: true,
+            }).catch(console.error);
+        }
+        cards[0].casterId = casterId;
+        cards[0].characterId = character?.id;
+
         const damageMode = await getDamageApplicationMode();
         const isTargetHexed = Boolean(isHexActive && concentrationSpell?.hexTargetId && targetId && concentrationSpell.hexTargetId === targetId);
         if (!roll.isMiss && isTargetHexed) {
@@ -157,10 +171,21 @@ export function useWeaponRollHandlers({
                 hexAppliedAmount = hexRes?.effectiveDamage ?? hexDmg.total;
                 hexResolutionNote = hexRes?.defenseNote;
                 hexStatus = "applied";
+                if (hexRes?.targetDefeated) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character: character || undefined,
+                        casterTokenId: casterId,
+                        targetTokenId: targetId,
+                        targetName,
+                        damageTotal: hexDmg.total,
+                    }).catch(console.error);
+                }
             }
             cards.push({
                 id: `${Date.now()}-dock-hex-dmg`,
                 casterName,
+                casterId,
+                characterId: character?.id,
                 targetName,
                 targetId,
                 targetAc,
@@ -190,10 +215,22 @@ export function useWeaponRollHandlers({
                 grazeAppliedAmount = grazeRes?.effectiveDamage ?? abilityMod;
                 grazeResolutionNote = grazeRes?.defenseNote;
                 grazeStatus = "applied";
+                if (grazeRes?.targetDefeated) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character: character || undefined,
+                        casterTokenId: casterId,
+                        targetTokenId: targetId,
+                        targetName,
+                        weapon,
+                        damageTotal: abilityMod,
+                    }).catch(console.error);
+                }
             }
             cards.push({
                 id: `${Date.now()}-dock-graze-dmg`,
                 casterName,
+                casterId,
+                characterId: character?.id,
                 targetName,
                 targetId,
                 actionName: `${weapon.name.toUpperCase()} (GRAZE)`,
@@ -254,18 +291,6 @@ export function useWeaponRollHandlers({
             }
         } catch { /* Ignore selection error */ }
 
-        if (triggerInfo?.hasTrigger) {
-            const triggerId = `trig_${Date.now()}_dock`;
-            pendingTriggerId = triggerId;
-            await addConditionalTrigger({
-                id: triggerId, spellId: riderObj?.name.toLowerCase().replace(/[^a-z0-9_]/g, "") || "rider_spell",
-                spellName: riderObj?.name || "Spell", casterName, targetId: targetTokenId || "TARGET", targetName: targetTokenName,
-                conditionType: triggerInfo.conditionType, damageFormula: triggerInfo.damageDice,
-                damageType: triggerInfo.damageType, conditionDescription: triggerInfo.conditionDesc,
-                appliedAt: Date.now(), initialPosition: targetPosition
-            });
-            triggerSubtitle = ` • Condition Applied: ${triggerInfo.conditionDesc}`;
-        }
         const bonusNote = bonusNum > 0 ? (isRaging ? ` • Rage (+${bonusNum})` : ` • Buff (+${bonusNum})`) : "";
 
         const buffsToPass = activeBuffs || (isRaging ? ["rage"] : []);
@@ -295,25 +320,55 @@ export function useWeaponRollHandlers({
             finalFormula += " + " + extraRiderRolls.map(i => `${i.rider.dice}${i.rider.bonus ? `+${i.rider.bonus}` : ""} ${i.rider.damageType}`).join(" + ");
         }
 
-        const riderSubtitles = extraRiderRolls.map(i => ` • ${i.rider.name} (${i.rider.damageType})`).join("");
-        const finalSubtitle = `Damage (${weapon.damageType})${bonusNote}${riderSubtitles}${triggerSubtitle}`;
-        const actionLabel = isThrown ? `${weapon.name} (Thrown)` : weapon.name;
-
         const damageMode = await getDamageApplicationMode();
         let appliedDamageAmount: number | undefined;
         let resolutionNote: string | undefined;
         let damageResolutionStatus: "pending" | "applied" = "pending";
+        let isTargetDefeated = false;
 
         if (damageMode === "auto" && targetTokenId) {
             const applyRes = await applyDamage(targetTokenId, finalTotal, weapon.damageType);
             appliedDamageAmount = applyRes?.effectiveDamage ?? finalTotal;
             resolutionNote = applyRes?.defenseNote;
             damageResolutionStatus = "applied";
+            if (applyRes?.targetDefeated) {
+                isTargetDefeated = true;
+                if (character) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character,
+                        casterTokenId: casterId,
+                        targetTokenId,
+                        targetName: targetTokenName,
+                        weapon,
+                        damageDiceRoll: total,
+                        damageTotal: finalTotal,
+                    }).catch(console.error);
+                }
+            }
         }
+
+        if (triggerInfo?.hasTrigger && !isTargetDefeated) {
+            const triggerId = `trig_${Date.now()}_dock`;
+            pendingTriggerId = triggerId;
+            await addConditionalTrigger({
+                id: triggerId, spellId: riderObj?.name.toLowerCase().replace(/[^a-z0-9_]/g, "") || "rider_spell",
+                spellName: riderObj?.name || "Spell", casterName, targetId: targetTokenId || "TARGET", targetName: targetTokenName,
+                conditionType: triggerInfo.conditionType, damageFormula: triggerInfo.damageDice,
+                damageType: triggerInfo.damageType, conditionDescription: triggerInfo.conditionDesc,
+                appliedAt: Date.now(), initialPosition: targetPosition
+            });
+            triggerSubtitle = ` • Condition Applied: ${triggerInfo.conditionDesc}`;
+        }
+
+        const riderSubtitles = extraRiderRolls.map(i => ` • ${i.rider.name} (${i.rider.damageType})`).join("");
+        const finalSubtitle = `Damage (${weapon.damageType})${bonusNote}${riderSubtitles}${triggerSubtitle}`;
+        const actionLabel = isThrown ? `${weapon.name} (Thrown)` : weapon.name;
 
         const cards: DDBRollCardData[] = [{
             id: `${Date.now()}-dock-dmg`,
             casterName,
+            casterId,
+            characterId: character?.id,
             targetName: targetTokenName,
             targetId: targetTokenId,
             targetAc,
@@ -409,6 +464,16 @@ export function useWeaponRollHandlers({
             appliedDamageAmount = applyRes?.effectiveDamage ?? total;
             resolutionNote = applyRes?.defenseNote;
             damageResolutionStatus = "applied";
+            if (applyRes?.targetDefeated && character) {
+                dispatchCombatFeatureTrigger("on_target_defeated", {
+                    character,
+                    casterTokenId: casterId,
+                    targetTokenId: targetId,
+                    weapon,
+                    damageDiceRoll: total,
+                    damageTotal: total,
+                }).catch(console.error);
+            }
         }
 
         broadcastDDBRoll([{

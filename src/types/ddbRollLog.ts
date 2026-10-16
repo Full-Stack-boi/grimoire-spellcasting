@@ -61,6 +61,8 @@ export interface DDBTargetSaveResolution {
 export interface DDBRollCardData {
   id: string;
   casterName: string;
+  casterId?: string;
+  characterId?: number | string;
   targetName?: string;
   targetId?: string;
   actionName: string; // e.g. "ARCANA", "ELDRITCH BLAST", "RAPIER", "FIRE BOLT"

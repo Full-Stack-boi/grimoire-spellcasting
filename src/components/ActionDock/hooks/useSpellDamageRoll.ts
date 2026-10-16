@@ -9,6 +9,7 @@ import {
     getDamageApplicationMode,
     getHealResolutionStatus,
 } from "../../../features/combat/damageModeService";
+import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
 
 interface SpellDamageRollInput {
     id: string;
@@ -28,6 +29,7 @@ interface SpellDamageRollInput {
 }
 
 interface UseSpellDamageRollOptions {
+    casterId?: string;
     character: DDBParsedCharacter | null;
     spellRegistry: SpellFormulaRegistry | null;
     damageTypeOverrides: Record<string, string>;
@@ -36,6 +38,7 @@ interface UseSpellDamageRollOptions {
 }
 
 export function useSpellDamageRoll({
+    casterId,
     character,
     spellRegistry,
     damageTypeOverrides,
@@ -143,6 +146,16 @@ export function useSpellDamageRoll({
                 appliedDamageAmount = applyRes?.effectiveDamage ?? dmgResult.total;
                 resolutionNote = applyRes?.defenseNote;
                 damageResolutionStatus = "applied";
+                if (applyRes?.targetDefeated && character) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        character,
+                        casterTokenId: casterId,
+                        targetTokenId: targetId,
+                        targetName,
+                        spell: spell.rawDdbSpell,
+                        damageTotal: appliedDamageAmount ?? dmgResult.total,
+                    }).catch(console.error);
+                }
             }
         }
 

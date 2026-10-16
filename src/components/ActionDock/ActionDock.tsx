@@ -414,6 +414,7 @@ export const ActionDock: React.FC = () => {
     } = useSpellResourceHandlers({
         character: syncedDdbChar,
         drawerItem,
+        setDrawerItem,
         featureUses,
         setFeatureUses,
         spellSlots,
@@ -745,6 +746,32 @@ export const ActionDock: React.FC = () => {
         return () => unsub();
     }, [obr.ready, obr.sceneReady, caster?.id]);
 
+    // Live listener for combat events (e.g. Temp HP granted by Dark One's Blessing or Parasitic Leech)
+    useEffect(() => {
+        let combatChannel: BroadcastChannel | null = null;
+        try {
+            combatChannel = new BroadcastChannel("embers-combat-events");
+            combatChannel.onmessage = (event) => {
+                if (event.data?.type === "TEMP_HP_GRANTED" && typeof event.data.tempHp === "number") {
+                    const matchesCaster = Boolean(caster?.id && event.data.casterTokenId === caster.id);
+                    const matchesChar = Boolean(syncedDdbChar?.id && event.data.characterId === syncedDdbChar.id);
+                    if (matchesCaster || matchesChar) {
+                        setCustomHp(prev => {
+                            const cur = prev ? prev.current : (syncedDdbChar?.hp?.current ?? 0);
+                            const mx = prev ? prev.max : (syncedDdbChar?.hp?.max ?? 0);
+                            const oldTemp = prev ? prev.temp : (syncedDdbChar?.hp?.temp ?? 0);
+                            const newTemp = Math.max(oldTemp, event.data.tempHp);
+                            return { current: cur, max: mx, temp: newTemp };
+                        });
+                    }
+                }
+            };
+        } catch {}
+        return () => {
+            combatChannel?.close();
+        };
+    }, [caster?.id, syncedDdbChar?.id, syncedDdbChar?.hp?.current, syncedDdbChar?.hp?.max, syncedDdbChar?.hp?.temp]);
+
     const {
         activeFlyoutSpell,
         getAvailableSlotLevels,
@@ -901,6 +928,7 @@ export const ActionDock: React.FC = () => {
         };
     }, [aimingWeapon, aimingWeaponMode, buffMods.damageBonus, syncedDdbChar, activeBuffNames, riderChoice, caster?.id, handleWeaponAttackRoll, handleWeaponDamageRoll, handleSelectWeapon]);
     const handleSpellDamageRoll = useSpellDamageRoll({
+        casterId: caster?.id,
         character: syncedDdbChar,
         spellRegistry,
         damageTypeOverrides: spellDamageTypeOverrides,
@@ -1386,6 +1414,8 @@ export const ActionDock: React.FC = () => {
                     proficiencyBonus: syncedDdbChar.proficiencyBonus,
                     level: syncedDdbChar.level,
                     characterModifiers: syncedDdbChar.characterModifiers,
+                    weaponProficiencies: syncedDdbChar.proficiencies?.weapons,
+                    isMonk: syncedDdbChar.classes.some(c => c.name.toLowerCase() === "monk"),
                 }
             );
             if (weaponAttack) {

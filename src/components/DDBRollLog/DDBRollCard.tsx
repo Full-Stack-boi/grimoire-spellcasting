@@ -4,6 +4,7 @@ import "./DDBRollCard.scss";
 import { DDBRollCardData } from "../../types/ddbRollLog";
 import { fireConditionalTrigger } from "../../services/conditionalTriggerService";
 import { applyDamage, applyHeal, getTokenVitals } from "../../features/combat/tokenVitalsService";
+import { dispatchCombatFeatureTrigger } from "../../features/combat/domain/combatFeatureHooks";
 import { updateRollCardResolution } from "../../services/rollLogService";
 import { evaluateShieldReaction, formatHitLabelForViewer, resolveAttackHit } from "../../features/combat/domain/attackResolution";
 import { aggregateSubRollDamages } from "../../features/combat/domain/multiTargetDamage";
@@ -439,10 +440,20 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
         if (data.damageComponents?.length && targetId) {
             let appliedTotal = 0;
             const notes: string[] = [];
+            let anyDefeated = false;
             for (const component of data.damageComponents) {
                 const result = await applyDamage(targetId, component.total, component.damageType);
                 appliedTotal += result?.effectiveDamage ?? component.total;
                 if (result?.defenseNote) notes.push(`${component.damageType}: ${result.defenseNote}`);
+                if (result?.targetDefeated) anyDefeated = true;
+            }
+            if (anyDefeated) {
+                dispatchCombatFeatureTrigger("on_target_defeated", {
+                    casterTokenId: data.casterId,
+                    targetTokenId: targetId,
+                    targetName: targetName || data.targetName,
+                    damageTotal: appliedTotal,
+                }).catch(console.error);
             }
             const note = notes.join("; ") || undefined;
             OBR.notification.show(
@@ -466,6 +477,14 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
             defenseNote = res?.defenseNote;
             const noteText = defenseNote ? ` • ${defenseNote}` : "";
             OBR.notification.show(`Applied -${effectiveDamage} damage${noteText} to ${targetName || "target token"}.`, "SUCCESS");
+            if (res?.targetDefeated) {
+                dispatchCombatFeatureTrigger("on_target_defeated", {
+                    casterTokenId: data.casterId,
+                    targetTokenId: targetId,
+                    targetName: targetName || data.targetName,
+                    damageTotal: effectiveDamage,
+                }).catch(console.error);
+            }
         } else {
             OBR.notification.show(`Damage approved (-${pendingDmg}). Select a token on the map to deduct HP.`, "INFO");
         }
@@ -553,6 +572,14 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
             defenseNote = res?.defenseNote;
             const noteText = defenseNote ? ` • ${defenseNote}` : "";
             OBR.notification.show(`Applied half damage (-${effectiveHalf}${noteText}) to ${targetName || "target token"}.`, "SUCCESS");
+            if (res?.targetDefeated) {
+                dispatchCombatFeatureTrigger("on_target_defeated", {
+                    casterTokenId: data.casterId,
+                    targetTokenId: targetId,
+                    targetName: targetName || data.targetName,
+                    damageTotal: effectiveHalf,
+                }).catch(console.error);
+            }
         } else {
             OBR.notification.show(`Half damage approved (-${halfDmg}).`, "INFO");
         }
