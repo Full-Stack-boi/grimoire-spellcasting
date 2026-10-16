@@ -14,7 +14,7 @@ export async function openSpellDetailModal(spellID: string) {
         id: spellDetailModalId,
         url: `${window.location.origin}/spell-detail-modal/${encodeURIComponent(spellID)}${search}`,
         width: 440,
-        height: 540,
+        height: 560,
     });
 }
 
@@ -40,10 +40,23 @@ export const SpellDetailModal: React.FC = () => {
     }
 
     return (
-        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", p: 2 }}>
+        <Box
+            sx={{
+                width: "100%",
+                height: "100vh",
+                bgcolor: "#0d1118",
+                color: "#e5e7eb",
+                overflow: "hidden",
+                p: 0,
+                m: 0,
+                display: "flex",
+                flexDirection: "column",
+            }}
+        >
             <SpellDetailViewer
                 spellID={id}
                 onClose={() => OBR.modal.close(spellDetailModalId)}
+                isModal={true}
             />
         </Box>
     );

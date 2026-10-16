@@ -14,6 +14,7 @@ export interface SpellDetailViewerProps {
     compact?: boolean;
     castButtonLabel?: string;
     style?: React.CSSProperties;
+    isModal?: boolean;
 }
 
 export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
@@ -23,7 +24,8 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
     onCast,
     compact = false,
     castButtonLabel,
-    style
+    style,
+    isModal = false,
 }) => {
     const meta = getSpellMetadata(spellID, spellName);
     const [castLevel, setCastLevel] = useState<number>(meta.level);
@@ -53,7 +55,7 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
     const ddbSchoolIcon = meta.school ? `https://media.dndbeyond.com/media/spell-school-icons/${meta.school.toLowerCase()}.svg` : null;
 
     return (
-        <div className={`bg3-spell-card ${compact ? "compact" : ""}`} style={style}>
+        <div className={`bg3-spell-card ${compact ? "compact" : ""} ${isModal ? "modal-mode" : ""}`} style={style}>
             {/* Header */}
             <div className="bg3-card-header">
                 <div className="bg3-card-title-group">
@@ -65,132 +67,155 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
                         <p className="bg3-card-subtitle">{meta.school}</p>
                     </div>
                 </div>
-                <div className="bg3-card-badges">
-                    <span className="bg3-badge bg3-badge-level">{levelText}</span>
-                    {meta.concentration && (
-                        <span className="bg3-badge bg3-badge-concentration" title="Requires Concentration">
-                            Conc
-                        </span>
-                    )}
-                    {meta.ritual && (
-                        <span className="bg3-badge bg3-badge-ritual" title="Can be cast as a Ritual">
-                            Ritual
-                        </span>
+                <div className="bg3-card-header-right">
+                    <div className="bg3-card-badges">
+                        <span className="bg3-badge bg3-badge-level">{levelText}</span>
+                        {meta.concentration && (
+                            <span className="bg3-badge bg3-badge-concentration" title="Requires Concentration">
+                                Conc
+                            </span>
+                        )}
+                        {meta.ritual && (
+                            <span className="bg3-badge bg3-badge-ritual" title="Can be cast as a Ritual">
+                                Ritual
+                            </span>
+                        )}
+                    </div>
+                    {onClose && (
+                        <button
+                            type="button"
+                            className="bg3-header-close-btn"
+                            onClick={onClose}
+                            title="Close"
+                            aria-label="Close"
+                        >
+                            ✕
+                        </button>
                     )}
                 </div>
             </div>
 
-            {/* D&D Beyond Cast & Level Selector Bar */}
-            <div className="dndb-cast-action-bar">
-                <button
-                    className="dndb-cast-btn"
-                    onClick={() => handleCast(castLevel)}
-                    title={`Cast ${meta.name} at ${getOrdinal(castLevel)} level`}
-                >
-                    <IconCastLightning />
-                    <span>CAST</span>
-                    <span className="dndb-slot-badge">
-                        {meta.level === 0 ? "CANTRIP" : `${getOrdinal(castLevel)} SPELL SLOT`}
-                    </span>
-                </button>
+            {/* Scrollable Content Body */}
+            <div className="bg3-card-scroll-body">
+                {/* D&D Beyond Cast & Level Selector Bar */}
+                <div className="dndb-cast-action-bar">
+                    <button
+                        type="button"
+                        className="dndb-cast-btn"
+                        onClick={() => handleCast(castLevel)}
+                        title={`Cast ${meta.name} at ${getOrdinal(castLevel)} level`}
+                    >
+                        <IconCastLightning />
+                        <span>CAST</span>
+                        <span className="dndb-slot-badge">
+                            {meta.level === 0 ? "CANTRIP" : `${getOrdinal(castLevel)} SPELL SLOT`}
+                        </span>
+                    </button>
 
-                {isUpcastable && (
-                    <div className="dndb-level-selector">
-                        <span className="dndb-level-label">LEVEL</span>
-                        <div className="dndb-stepper">
-                            <button
-                                className="dndb-step-btn"
-                                onClick={() => setCastLevel(prev => Math.max(meta.level, prev - 1))}
-                                disabled={castLevel <= meta.level}
-                                title="Decrease spell slot level"
-                            >
-                                −
-                            </button>
-                            <span className="dndb-level-value">{getOrdinal(castLevel)}</span>
-                            <button
-                                className="dndb-step-btn"
-                                onClick={() => setCastLevel(prev => Math.min(9, prev + 1))}
-                                disabled={castLevel >= 9}
-                                title="Increase spell slot level (Upcast)"
-                            >
-                                +
-                            </button>
+                    {isUpcastable && (
+                        <div className="dndb-level-selector">
+                            <span className="dndb-level-label">LEVEL</span>
+                            <div className="dndb-stepper">
+                                <button
+                                    type="button"
+                                    className="dndb-step-btn"
+                                    onClick={() => setCastLevel(prev => Math.max(meta.level, prev - 1))}
+                                    disabled={castLevel <= meta.level}
+                                    title="Decrease spell slot level"
+                                    aria-label="Decrease spell level"
+                                >
+                                    −
+                                </button>
+                                <span className="dndb-level-value">{getOrdinal(castLevel)}</span>
+                                <button
+                                    type="button"
+                                    className="dndb-step-btn"
+                                    onClick={() => setCastLevel(prev => Math.min(9, prev + 1))}
+                                    disabled={castLevel >= 9}
+                                    title="Increase spell slot level (Upcast)"
+                                    aria-label="Increase spell level"
+                                >
+                                    +
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                )}
-            </div>
-
-            {/* D&D Beyond Scaled Damage Banner */}
-            {scaled.damage && (
-                <div className="dndb-scaled-damage-banner">
-                    <span className="dndb-damage-amount">{scaled.damage}</span>
-                    <span className="dndb-damage-label">Damage / Effect</span>
-                    {castLevel > meta.level && (
-                        <span className="dndb-upcast-tag">Upcast +{castLevel - meta.level}</span>
                     )}
                 </div>
-            )}
 
-            {/* Core Stats Grid */}
-            <div className="bg3-card-stats-grid">
-                <div className="bg3-stat-item">
-                    <span className="bg3-stat-label">Casting Time</span>
-                    <span className="bg3-stat-value">{meta.castingTime}</span>
-                </div>
-                <div className="bg3-stat-item">
-                    <span className="bg3-stat-label">Range</span>
-                    <span className="bg3-stat-value highlight-range">{meta.range}</span>
-                </div>
-                {meta.aoe && (
-                    <div className="bg3-stat-item" style={{ gridColumn: "span 2" }}>
-                        <span className="bg3-stat-label">Area of Effect</span>
-                        <span className="bg3-stat-value" style={{ color: "#fb923c" }}>{meta.aoe}</span>
-                    </div>
-                )}
-                <div className="bg3-stat-item">
-                    <span className="bg3-stat-label">Duration</span>
-                    <span className="bg3-stat-value">{meta.duration}</span>
-                </div>
-                <div className="bg3-stat-item">
-                    <span className="bg3-stat-label">Components</span>
-                    <span className="bg3-stat-value">{meta.components}</span>
-                </div>
+                {/* D&D Beyond Scaled Damage Banner */}
                 {scaled.damage && (
-                    <div className="bg3-stat-item">
-                        <span className="bg3-stat-label">Damage / Effect</span>
-                        <span className="bg3-stat-value highlight-damage">{scaled.damage}</span>
+                    <div className="dndb-scaled-damage-banner">
+                        <span className="dndb-damage-amount">{scaled.damage}</span>
+                        <span className="dndb-damage-label">Damage / Effect</span>
+                        {castLevel > meta.level && (
+                            <span className="dndb-upcast-tag">Upcast +{castLevel - meta.level}</span>
+                        )}
                     </div>
                 )}
-                {meta.saveOrAttack && (
+
+                {/* Core Stats Grid */}
+                <div className="bg3-card-stats-grid">
                     <div className="bg3-stat-item">
-                        <span className="bg3-stat-label">Attack / Save</span>
-                        <span className="bg3-stat-value">{meta.saveOrAttack}</span>
+                        <span className="bg3-stat-label">Casting Time</span>
+                        <span className="bg3-stat-value">{meta.castingTime}</span>
+                    </div>
+                    <div className="bg3-stat-item">
+                        <span className="bg3-stat-label">Range</span>
+                        <span className="bg3-stat-value highlight-range">{meta.range}</span>
+                    </div>
+                    {meta.aoe && (
+                        <div className="bg3-stat-item aoe-item">
+                            <span className="bg3-stat-label">Area of Effect</span>
+                            <span className="bg3-stat-value highlight-aoe">{meta.aoe}</span>
+                        </div>
+                    )}
+                    <div className="bg3-stat-item">
+                        <span className="bg3-stat-label">Duration</span>
+                        <span className="bg3-stat-value">{meta.duration}</span>
+                    </div>
+                    <div className="bg3-stat-item">
+                        <span className="bg3-stat-label">Components</span>
+                        <span className="bg3-stat-value">{meta.components}</span>
+                    </div>
+                    {scaled.damage && (
+                        <div className="bg3-stat-item">
+                            <span className="bg3-stat-label">Damage / Effect</span>
+                            <span className="bg3-stat-value highlight-damage">{scaled.damage}</span>
+                        </div>
+                    )}
+                    {meta.saveOrAttack && (
+                        <div className="bg3-stat-item">
+                            <span className="bg3-stat-label">Attack / Save</span>
+                            <span className="bg3-stat-value">{meta.saveOrAttack}</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Spell Description */}
+                <div className="bg3-card-description-section">
+                    <p className="bg3-card-description">{meta.description}</p>
+                </div>
+
+                {/* Higher Levels Upcast */}
+                {meta.higherLevels && (
+                    <div className="bg3-card-higher-levels">
+                        <strong className="higher-levels-title">At Higher Levels: </strong>
+                        <span>{meta.higherLevels}</span>
                     </div>
                 )}
             </div>
-
-            {/* Spell Description */}
-            <p className="bg3-card-description">{meta.description}</p>
-
-            {/* Higher Levels Upcast */}
-            {meta.higherLevels && (
-                <div className="bg3-card-higher-levels">
-                    <strong>At Higher Levels: </strong>
-                    {meta.higherLevels}
-                </div>
-            )}
 
             {/* Actions */}
             {!compact && (
                 <div className="bg3-card-footer">
                     {onClose && (
-                        <button className="bg3-close-btn" onClick={onClose}>
+                        <button type="button" className="bg3-close-btn" onClick={onClose}>
                             Close
                         </button>
                     )}
-                    <button className="bg3-cast-btn" onClick={() => handleCast(castLevel)}>
+                    <button type="button" className="bg3-cast-btn" onClick={() => handleCast(castLevel)}>
                         {castButtonLabel ? castButtonLabel : (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <span className="bg3-cast-btn-content">
                                 <IconCastLightning />
                                 <span>Cast Spell</span>
                             </span>

@@ -70,7 +70,7 @@ export const IconCastLightning: React.FC<IconProps> = ({
   size = 20,
   className,
 }) => (
-  <FaWandMagicSparkles size={size} className={className} aria-hidden="true" />
+  <FaBoltLightning size={size} className={className} aria-hidden="true" />
 );
 export const IconGrimoire: React.FC<IconProps> = ({ size = 20, className }) => (
   <FaBookOpen size={size} className={className} aria-hidden="true" />
