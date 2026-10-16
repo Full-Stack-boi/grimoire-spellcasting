@@ -259,6 +259,43 @@ export function useSpellAttackRoll({
             let extraNotice = "";
             const damageMode = await getDamageApplicationMode();
             if (!roll.isMiss) {
+                const shouldRollDamage = roll.isCrit || hitResolution === null || hitResolution?.isHit === true;
+                if (shouldRollDamage && ddbSpell?.damage) {
+                    const dmg = rollDamageDDB(ddbSpell.damage, damageType, "", roll.isCrit);
+                    let appliedAmount: number | undefined;
+                    let resolutionNote: string | undefined;
+                    let damageStatus: "pending" | "applied" = "pending";
+                    if (damageMode === "auto" && targetId && isHit) {
+                        const applyRes = await applyDamage(targetId, dmg.total, damageType);
+                        appliedAmount = applyRes?.effectiveDamage ?? dmg.total;
+                        resolutionNote = applyRes?.defenseNote;
+                        damageStatus = "applied";
+                    }
+                    const dieFaces = Number(ddbSpell.damage.match(/d(\d+)/i)?.[1] ?? 8);
+                    const formulaDisplay = roll.isCrit ? doubleDiceFormula(ddbSpell.damage) : ddbSpell.damage;
+                    cards.push({
+                        id: `${Date.now()}-dock-spell-dmg`,
+                        casterName,
+                        targetName,
+                        targetId,
+                        actionName: spell.name.toUpperCase(),
+                        actionType: "DAMAGE",
+                        dieType: dieFaces,
+                        diceBreakdown: dmg.breakdown.replace(/\+/g, " + "),
+                        formula: `${formulaDisplay} ${damageType}`,
+                        total: dmg.total,
+                        pendingDamage: dmg.total,
+                        appliedDamageAmount: appliedAmount,
+                        resolutionNote,
+                        damageType,
+                        damageResolutionStatus: damageStatus,
+                        subtitle: roll.isCrit ? `Critical Hit! (${formulaDisplay} ${damageType})` : `${formulaDisplay} ${damageType}`,
+                        isCrit: roll.isCrit,
+                        timestamp: Date.now() + 1,
+                    });
+                    extraNotice = ` | Damage: ${dmg.total} ${damageType}`;
+                }
+
                 if (
                     spell.name.trim().toLowerCase() === "ray of frost" &&
                     typeof targetVitals?.armorClass !== "number"
@@ -280,7 +317,7 @@ export function useSpellAttackRoll({
                         const speedMessage = displayedSpeed.speed === null
                             ? "Speed reduced by 10 ft."
                             : `Speed is now ${displayedSpeed.speed} ft.`;
-                        extraNotice = ` | Ray of Frost: ${speedMessage} until your next turn`;
+                        extraNotice += ` | Ray of Frost: ${speedMessage} until your next turn`;
                         OBR.notification.show(
                             `${targetName}'s ${speedMessage} until ${casterName}'s next turn. Movement is not enforced.`,
                             "INFO",
@@ -317,9 +354,9 @@ export function useSpellAttackRoll({
                         damageResolutionStatus: hexStatus,
                         subtitle: roll.isCrit ? "Hex Critical Hit (+2d6 Necrotic)" : "Hex Curse (+1d6 Necrotic)",
                         isCrit: roll.isCrit,
-                        timestamp: Date.now() + 1
+                        timestamp: Date.now() + 2
                     });
-                    extraNotice = ` | Hex: +${hexDmg.total} Necrotic`;
+                    extraNotice += ` | Hex: +${hexDmg.total} Necrotic`;
                 }
             } else {
                 const isCantrip = ddbSpell?.level === 0;

@@ -144,7 +144,6 @@ export function resolveFallbackSpellKey(meta: { id?: string; name: string; schoo
     const id = normalizeSpellAnimationId(meta.id ?? meta.name);
     const nameId = normalizeSpellAnimationId(meta.name);
     const explicitMapping = SPELL_ANIMATION_MAPPINGS[id] ?? SPELL_ANIMATION_MAPPINGS[nameId];
-    if (explicitMapping) return explicitMapping;
 
     if (damage.includes("healing") || nameLower.includes("heal")) {
         return "cure_wounds";
@@ -176,9 +175,17 @@ export function resolveFallbackSpellKey(meta: { id?: string; name: string; schoo
     if (damage.includes("necrotic")) {
         return "toll_the_dead";
     }
+    if (damage.includes("psychic") || nameLower.includes("mind")) {
+        return "mind_sliver";
+    }
+    if (damage.includes("thunder")) {
+        return "shatter";
+    }
     if (damage.includes("force") || nameLower.includes("blast")) {
         return "eldritch_blast";
     }
+
+    if (explicitMapping) return explicitMapping;
 
     return undefined;
 }

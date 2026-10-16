@@ -45,6 +45,9 @@ import {
 import type { Item } from "@owlbear-rodeo/sdk";
 import { getLinkedDDBCharacterId, getCachedDDBCharacter } from "../../../services/ddbService";
 import { getScopedMetadata } from "../../../platform/obr/metadataHelper";
+import { getTokenDisposition } from "../../../features/combat/domain/attackRangeRules";
+import { APP_KEY } from "../../../config";
+import { GLOBAL_STORAGE_KEYS } from "../../Settings/settings";
 
 async function getOBR() {
   const sdk = await import("@owlbear-rodeo/sdk");
@@ -56,6 +59,9 @@ export interface InitiativeTrackerBarProps {
   defaultCollapsed?: boolean;
   initialEncounter?: CombatEncounter | null;
   isGM?: boolean;
+  initialShowHpToPlayers?: boolean;
+  initialShowHpBarToPlayers?: boolean;
+  initialShowAcToPlayers?: boolean;
 }
 
 export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
@@ -63,6 +69,9 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
   defaultCollapsed = false,
   initialEncounter = null,
   isGM: propIsGM,
+  initialShowHpToPlayers,
+  initialShowHpBarToPlayers,
+  initialShowAcToPlayers,
 }) => {
   const [encounter, setEncounter] = useState<CombatEncounter | null>(initialEncounter);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
@@ -70,6 +79,9 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
   const [editInitValue, setEditInitValue] = useState<number>(10);
   const [roleIsGM, setRoleIsGM] = useState<boolean>(false);
   const [myPrimaryTokenId, setMyPrimaryTokenId] = useState<string | null>(null);
+  const [showHpToPlayers, setShowHpToPlayers] = useState<boolean>(initialShowHpToPlayers ?? false);
+  const [showHpBarToPlayers, setShowHpBarToPlayers] = useState<boolean>(initialShowHpBarToPlayers ?? false);
+  const [showAcToPlayers, setShowAcToPlayers] = useState<boolean>(initialShowAcToPlayers ?? false);
   interface RollMenuAnchorState {
     type: "all" | "single";
     tokenId?: string;
@@ -98,6 +110,7 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
 
   useEffect(() => {
     let unsubItems: (() => void) | undefined;
+    let unsubMetadata: (() => void) | undefined;
     const unsubscribe = subscribeToEncounter((enc) => {
       setEncounter(enc);
     });
@@ -115,6 +128,22 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
           });
           OBR.scene.items.getItems().then((items) => setSceneItems(items)).catch(() => {});
           unsubItems = OBR.scene.items.onChange((items) => setSceneItems(items));
+
+          const hpSettingKey = `${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_TO_PLAYERS}`;
+          const hpBarSettingKey = `${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_BAR_TO_PLAYERS}`;
+          const acSettingKey = `${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_AC_TO_PLAYERS}`;
+
+          OBR.scene.getMetadata().then((metadata) => {
+            if (initialShowHpToPlayers === undefined) setShowHpToPlayers(metadata[hpSettingKey] === true);
+            if (initialShowHpBarToPlayers === undefined) setShowHpBarToPlayers(metadata[hpBarSettingKey] === true);
+            if (initialShowAcToPlayers === undefined) setShowAcToPlayers(metadata[acSettingKey] === true);
+          }).catch(() => {});
+
+          unsubMetadata = OBR.scene.onMetadataChange((metadata) => {
+            if (initialShowHpToPlayers === undefined) setShowHpToPlayers(metadata[hpSettingKey] === true);
+            if (initialShowHpBarToPlayers === undefined) setShowHpBarToPlayers(metadata[hpBarSettingKey] === true);
+            if (initialShowAcToPlayers === undefined) setShowAcToPlayers(metadata[acSettingKey] === true);
+          });
         }
       })
       .catch(() => {});
@@ -122,8 +151,9 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
     return () => {
       unsubscribe();
       if (unsubItems) unsubItems();
+      if (unsubMetadata) unsubMetadata();
     };
-  }, []);
+  }, [initialShowHpToPlayers, initialShowHpBarToPlayers, initialShowAcToPlayers]);
 
   const handleNextTurn = useCallback(async () => {
     await nextCombatTurn();
@@ -442,6 +472,19 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                 const vitals = tokenItem ? getScopedMetadata<any>(tokenItem.metadata, "vitals") : null;
                 const bound = tokenItem ? getScopedMetadata<any>(tokenItem.metadata, "bound-monster") : null;
 
+                const rawDisp = combatant.disposition ?? (tokenItem ? getTokenDisposition(tokenItem) : null);
+                const tokenConditions = ((vitals?.conditions ?? combatant.conditions ?? []) as string[]).map(c => c.toLowerCase());
+                const hasHostileMindControl = tokenConditions.includes("crown of madness") || tokenConditions.includes("dominated");
+
+                const isPlayer = combatant.isPlayer ?? false;
+                const isAlly = rawDisp === "friendly"
+                  ? true
+                  : rawDisp === "hostile"
+                    ? false
+                    : hasHostileMindControl
+                      ? !isPlayer
+                      : isPlayer;
+
                 const resolvedHpMax = typeof vitals?.hpMax === "number"
                   ? vitals.hpMax
                   : (typeof bound?.hitPoints?.average === "number" ? bound.hitPoints.average : (combatant.hpMax ?? 10));
@@ -469,6 +512,11 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                 const hpRatio = hpMax > 0 ? Math.max(0, Math.min(1, hpCurrent / hpMax)) : 1;
                 const isDefeated = combatant.isDefeated || hpCurrent <= 0;
                 const canRollThisCombatant = isGM || combatant.isPlayer || (myPrimaryTokenId && combatant.id === myPrimaryTokenId);
+
+                const showAc = isAlly || isGM || (showAcToPlayers && !vitals?.hideNumbers);
+                const showHpText = isAlly || isGM || (showHpToPlayers && !vitals?.hideNumbers);
+                const showHpBar = isAlly || isGM || showHpBarToPlayers;
+                const showDefenses = isAlly || isGM;
 
                 let hpClass = "high";
                 if (isDefeated) hpClass = "dead";
@@ -571,12 +619,14 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                             </div>
                           )}
 
-                          <span className="ddb-bg3-ac-badge" title="Armor Class">
-                            <FaShieldHalved size={9} />
-                            {resolvedAc}
-                          </span>
+                          {showAc && (
+                            <span className="ddb-bg3-ac-badge" title="Armor Class">
+                              <FaShieldHalved size={9} />
+                              {resolvedAc}
+                            </span>
+                          )}
 
-                          {resolvedImmunities.length > 0 && (
+                          {showDefenses && resolvedImmunities.length > 0 && (
                             <span
                               className="ddb-bg3-defense-badge imm"
                               style={{
@@ -594,7 +644,7 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                             </span>
                           )}
 
-                          {resolvedResistances.length > 0 && (
+                          {showDefenses && resolvedResistances.length > 0 && (
                             <span
                               className="ddb-bg3-defense-badge res"
                               style={{
@@ -624,16 +674,18 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                           ) : (
                             <FaHeartPulse size={9} style={{ color: "#10b981", marginRight: 3 }} />
                           )}
-                          {isDefeated ? "Defeated" : `${hpCurrent}/${hpMax}`}
+                          {isDefeated ? "Defeated" : showHpText ? `${hpCurrent}/${hpMax}` : "Active"}
                         </span>
                         <FaLocationCrosshairs size={9} style={{ opacity: 0.6 }} />
                       </div>
-                      <div className="ddb-bg3-card-hp-track">
-                        <div
-                          className={`ddb-bg3-card-hp-fill ${hpClass}`}
-                          style={{ width: `${Math.round(hpRatio * 100)}%` }}
-                        />
-                      </div>
+                      {showHpBar && (
+                        <div className="ddb-bg3-card-hp-track">
+                          <div
+                            className={`ddb-bg3-card-hp-fill ${hpClass}`}
+                            style={{ width: `${Math.round(hpRatio * 100)}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Quick remove button (GM only) */}

@@ -47,6 +47,28 @@ describe("Spell Range & AoE Accuracy Audit (D&D 5e Rules)", () => {
             expect(spell?.blueprints?.[0]?.id).toBe("generic.energy.energy_strand.normal");
         });
 
+        it("resolves sorcerous burst to fire_bolt or dynamic damage element", () => {
+            expect(resolveFallbackSpellKey({
+                id: "sorcerous_burst",
+                name: "Sorcerous Burst",
+                level: 0,
+            })).toBe("fire_bolt");
+
+            expect(resolveFallbackSpellKey({
+                id: "sorcerous_burst",
+                name: "Sorcerous Burst",
+                level: 0,
+                damage: "1d8 cold",
+            })).toBe("ray_of_frost");
+
+            expect(resolveFallbackSpellKey({
+                id: "sorcerous_burst",
+                name: "Sorcerous Burst",
+                level: 0,
+                damage: "1d8 lightning",
+            })).toBe("witch_bolt");
+        });
+
         it("leaves a future spell without a safe category fallback animation-free", () => {
             expect(resolveFallbackSpellKey({
                 id: "future_ward",

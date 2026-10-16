@@ -94,16 +94,18 @@ const mockEncounter = {
       hpCurrent: 27,
       hpMax: 27,
       ac: 15,
+      isPlayer: true,
     },
     {
       id: "tok-2",
       name: "Goblin Archer",
       initiative: 12,
       initiativeBonus: 2,
-      hpCurrent: 0,
+      hpCurrent: 7,
       hpMax: 7,
       ac: 13,
-      isDefeated: true,
+      immunities: ["Poison"],
+      isPlayer: false,
     },
   ],
   updatedAt: Date.now(),
@@ -111,7 +113,7 @@ const mockEncounter = {
 
 describe("InitiativeTrackerBar Component", () => {
   it("renders active encounter with round and turn indicators without emojis", () => {
-    const html = renderToStaticMarkup(<InitiativeTrackerBar initialEncounter={mockEncounter} />);
+    const html = renderToStaticMarkup(<InitiativeTrackerBar initialEncounter={mockEncounter} isGM={true} />);
 
     // Round badge
     expect(html).toContain("Round 2");
@@ -122,7 +124,9 @@ describe("InitiativeTrackerBar Component", () => {
     expect(html).toContain("Init 19");
     expect(html).toContain("27/27");
     expect(html).toContain("Goblin Archer");
-    expect(html).toContain("Defeated");
+    expect(html).toContain("7/7");
+    expect(html).toContain("13");
+    expect(html).toContain("Imm: Poison");
 
     // Strict zero-emoji check
     expect(html).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
@@ -130,6 +134,67 @@ describe("InitiativeTrackerBar Component", () => {
     expect(html).not.toContain("🛡️");
     expect(html).not.toContain("💀");
     expect(html).not.toContain("⚔️");
+  });
+
+  it("hides monster AC, exact HP numbers, HP track bar, and defenses from players by default", () => {
+    const html = renderToStaticMarkup(
+      <InitiativeTrackerBar
+        initialEncounter={mockEncounter}
+        isGM={false}
+        initialShowHpToPlayers={false}
+        initialShowHpBarToPlayers={false}
+        initialShowAcToPlayers={false}
+      />
+    );
+
+    // Player vitals are always visible to teammates
+    expect(html).toContain("Astarion");
+    expect(html).toContain("27/27");
+    expect(html).toContain("15");
+
+    // Monster details
+    expect(html).toContain("Goblin Archer");
+    expect(html).toContain("Init 12");
+    expect(html).toContain("Active");
+
+    // Monster confidential stats must be hidden from players
+    expect(html).not.toContain("7/7");
+    expect(html).not.toContain("Imm: Poison");
+
+    // AC 13 must not be rendered in badges
+    expect(html).not.toContain(">13<");
+  });
+
+  it("renders monster AC to players when showAcToPlayers is enabled", () => {
+    const html = renderToStaticMarkup(
+      <InitiativeTrackerBar
+        initialEncounter={mockEncounter}
+        isGM={false}
+        initialShowAcToPlayers={true}
+        initialShowHpToPlayers={false}
+        initialShowHpBarToPlayers={false}
+      />
+    );
+
+    expect(html).toContain("13");
+    expect(html).not.toContain("7/7");
+    expect(html).not.toContain("Imm: Poison");
+  });
+
+  it("renders monster HP numbers to players when showHpToPlayers is enabled", () => {
+    const html = renderToStaticMarkup(
+      <InitiativeTrackerBar
+        initialEncounter={mockEncounter}
+        isGM={false}
+        initialShowHpToPlayers={true}
+        initialShowHpBarToPlayers={false}
+        initialShowAcToPlayers={false}
+      />
+    );
+
+    expect(html).toContain("7/7");
+    expect(html).not.toContain(">13<");
+    expect(html).not.toContain("Imm: Poison");
   });
 
   it("renders collapsed mode when specified for GM", () => {

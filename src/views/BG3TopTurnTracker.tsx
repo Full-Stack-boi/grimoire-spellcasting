@@ -387,7 +387,7 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
                 : hasHostileMindControl
                   ? !isPlayer
                   : isPlayer;
-            const isMonster = !isAlly && Boolean(bound);
+            const isMonster = !isAlly;
 
             const resolvedHpMax = typeof vitals?.hpMax === "number"
               ? vitals.hpMax
