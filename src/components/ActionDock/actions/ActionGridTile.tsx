@@ -43,7 +43,20 @@ const ActionGridTooltipContext = React.createContext<ActionGridTooltipContextVal
 
 export const ActionGridTooltipProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [tooltip, setTooltip] = useState<ActionGridTooltipState | null>(null);
+    const showTimer = useRef<number | undefined>(undefined);
     const hideTimer = useRef<number | undefined>(undefined);
+    const activeTileIdRef = useRef<string | null>(null);
+
+    const clearTimers = () => {
+        if (showTimer.current !== undefined) {
+            window.clearTimeout(showTimer.current);
+            showTimer.current = undefined;
+        }
+        if (hideTimer.current !== undefined) {
+            window.clearTimeout(hideTimer.current);
+            hideTimer.current = undefined;
+        }
+    };
 
     const keepTooltipOpen = () => {
         if (hideTimer.current !== undefined) {
@@ -52,43 +65,96 @@ export const ActionGridTooltipProvider: React.FC<{ children: React.ReactNode }> 
         }
     };
 
-    const showTooltip: ActionGridTooltipContextValue["showTooltip"] = (id, event, data) => {
-        keepTooltipOpen();
-        const rect = event.currentTarget.getBoundingClientRect();
-        const width = Math.min(270, window.innerWidth - 16);
-        const estimatedHeight = Math.min(185, window.innerHeight - 16);
-        const centeredLeft = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8));
-        const aboveTop = rect.top - estimatedHeight - 10;
-        if (aboveTop >= 8) {
-            setTooltip({ ...data, id, left: centeredLeft, top: aboveTop });
-            return;
-        }
-
-        const gap = 9;
-        const rightSpace = window.innerWidth - rect.right - gap;
-        const leftSpace = rect.left - gap;
-        const placeRight = rightSpace >= width || rightSpace >= leftSpace;
-        const left = placeRight
-            ? Math.max(8, Math.min(rect.right + gap, window.innerWidth - width - 8))
-            : Math.max(8, rect.left - width - gap);
-        const top = Math.max(8, Math.min(rect.top + rect.height / 2 - estimatedHeight / 2, window.innerHeight - estimatedHeight - 8));
-        setTooltip({ ...data, id, left, top });
-    };
-
     const hideTooltip = () => {
-        keepTooltipOpen();
+        clearTimers();
+        activeTileIdRef.current = null;
         setTooltip(null);
     };
 
     const scheduleTooltipClose = () => {
-        keepTooltipOpen();
+        if (showTimer.current !== undefined) {
+            window.clearTimeout(showTimer.current);
+            showTimer.current = undefined;
+        }
+        activeTileIdRef.current = null;
         hideTimer.current = window.setTimeout(() => {
             setTooltip(null);
             hideTimer.current = undefined;
-        }, 240);
+        }, 120);
     };
 
-    useEffect(() => () => keepTooltipOpen(), []);
+    const calculatePosition = (targetEl: HTMLElement, width: number, estimatedHeight: number) => {
+        const rect = targetEl.getBoundingClientRect();
+        const gridPane = targetEl.closest(".ddb-bg3-grid-pane") ?? targetEl.closest(".ddb-action-content-workspace");
+        const containerRect = gridPane ? gridPane.getBoundingClientRect() : null;
+
+        const minLeft = containerRect ? Math.max(8, containerRect.left) : 8;
+        const maxRight = containerRect ? Math.min(window.innerWidth - 8, containerRect.right) : window.innerWidth - 8;
+        const minTop = containerRect ? Math.max(8, containerRect.top) : 8;
+        const maxBottom = containerRect ? Math.min(window.innerHeight - 8, containerRect.bottom) : window.innerHeight - 8;
+
+        const actualWidth = Math.min(width, Math.max(180, maxRight - minLeft));
+        const gap = 8;
+
+        // Try placing above if there is sufficient room
+        const aboveTop = rect.top - estimatedHeight - gap;
+        if (aboveTop >= minTop) {
+            const left = Math.max(minLeft, Math.min(rect.left + rect.width / 2 - actualWidth / 2, maxRight - actualWidth));
+            return { left, top: aboveTop };
+        }
+
+        // Try placing right of the tile if space permits in container
+        const rightSpace = maxRight - rect.right - gap;
+        const leftSpace = rect.left - minLeft - gap;
+        let left: number;
+        if (rightSpace >= actualWidth || rightSpace >= leftSpace) {
+            left = Math.max(minLeft, Math.min(rect.right + gap, maxRight - actualWidth));
+        } else {
+            left = Math.max(minLeft, rect.left - actualWidth - gap);
+        }
+
+        // Align with top of tile, clamped within container
+        const top = Math.max(minTop, Math.min(rect.top, maxBottom - estimatedHeight));
+        return { left, top };
+    };
+
+    const showTooltip: ActionGridTooltipContextValue["showTooltip"] = (id, event, data) => {
+        if (hideTimer.current !== undefined) {
+            window.clearTimeout(hideTimer.current);
+            hideTimer.current = undefined;
+        }
+
+        const targetEl = event.currentTarget;
+        activeTileIdRef.current = id;
+
+        const applyTooltip = () => {
+            if (activeTileIdRef.current !== id) return;
+            const width = 260;
+            const estimatedHeight = 125;
+            const { left, top } = calculatePosition(targetEl, width, estimatedHeight);
+            setTooltip({ ...data, id, left, top });
+        };
+
+        // If a tooltip is already visible, switch immediately (responsive browsing across adjacent tiles)
+        if (tooltip) {
+            if (showTimer.current !== undefined) {
+                window.clearTimeout(showTimer.current);
+                showTimer.current = undefined;
+            }
+            applyTooltip();
+        } else {
+            // First hover: debounce with 180ms hover intent delay so accidental cursor sweeps don't flash
+            if (showTimer.current !== undefined) {
+                window.clearTimeout(showTimer.current);
+            }
+            showTimer.current = window.setTimeout(() => {
+                showTimer.current = undefined;
+                applyTooltip();
+            }, 180);
+        }
+    };
+
+    useEffect(() => () => clearTimers(), []);
 
     const contextValue: ActionGridTooltipContextValue = {
         activeId: tooltip?.id ?? null,
@@ -107,8 +173,6 @@ export const ActionGridTooltipProvider: React.FC<{ children: React.ReactNode }> 
                     className="ddb-bg3-grid-tooltip"
                     role="tooltip"
                     style={{ left: tooltip.left, top: tooltip.top }}
-                    onMouseEnter={keepTooltipOpen}
-                    onMouseLeave={hideTooltip}
                 >
                     <div className="ddb-bg3-grid-tooltip-header">
                         <div>
@@ -119,6 +183,7 @@ export const ActionGridTooltipProvider: React.FC<{ children: React.ReactNode }> 
                     </div>
                     {tooltip.details && tooltip.details.length > 0 && <div className="ddb-bg3-grid-tooltip-details">{tooltip.details.join(" · ")}</div>}
                     {tooltip.description && <div className="ddb-bg3-grid-tooltip-description">{tooltip.description}</div>}
+                    <div className="ddb-bg3-grid-tooltip-hint">Right-click for details</div>
                 </div>,
                 document.body
             )}
@@ -161,8 +226,14 @@ export const ActionGridTile: React.FC<ActionGridTileProps> = ({
             onMouseLeave={() => tooltip?.scheduleTooltipClose()}
             onFocus={event => tooltip?.showTooltip(tooltipId, event, { name, category, subtitle, description, details, icon, accent })}
             onBlur={() => tooltip?.scheduleTooltipClose()}
-            onClick={disabled ? undefined : onActivate}
-            onContextMenu={disabled ? undefined : onContextMenu}
+            onClick={disabled ? undefined : () => {
+                tooltip?.hideTooltip();
+                onActivate();
+            }}
+            onContextMenu={disabled ? undefined : (event) => {
+                tooltip?.hideTooltip();
+                onContextMenu?.(event);
+            }}
         >
             <span className="ddb-bg3-icon-tile-shortcut" aria-hidden="true">{shortcut}</span>
             <span className="ddb-bg3-icon-tile-art" aria-hidden="true">{icon}</span>

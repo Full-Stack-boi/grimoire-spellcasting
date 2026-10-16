@@ -370,21 +370,19 @@
 .ddb-bg3-grid-tooltip {
     position: fixed;
     z-index: 120;
-    width: 270px;
+    width: 260px;
     max-width: calc(100vw - 16px);
-    max-height: min(230px, calc(100vh - 16px));
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: #62666d transparent;
+    max-height: 145px;
+    overflow: hidden;
     box-sizing: border-box;
-    padding: 11px 13px;
+    padding: 8px 10px;
     border: 1px solid #9d7543;
     border-radius: 5px;
-    background: #10141b;
+    background: rgba(16, 20, 27, 0.96);
+    backdrop-filter: blur(4px);
     color: #e2e5e9;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.62);
-    pointer-events: auto;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+    pointer-events: none;
     text-align: left;
     animation: ddbGridTooltipFade 120ms ease-out;
 }
@@ -393,59 +391,68 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: 10px;
+    margin-bottom: 5px;
 }
 
 .ddb-bg3-grid-tooltip-title {
     color: #f4f3f0;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.2;
     overflow-wrap: anywhere;
 }
 
 .ddb-bg3-grid-tooltip-subtitle {
-    margin-top: 2px;
+    margin-top: 1px;
     color: #aaaeb5;
-    font-size: 0.68rem;
+    font-size: 0.65rem;
 }
 
 .ddb-bg3-grid-tooltip-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 32px;
-    width: 32px;
-    height: 32px;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
     overflow: hidden;
     border: 1px solid;
     border-radius: 4px;
-    font-size: 20px;
+    font-size: 18px;
 }
 
 .ddb-bg3-grid-tooltip-details {
-    padding: 6px 0;
+    padding: 3px 0;
     border-top: 1px solid #2e3239;
     border-bottom: 1px solid #2e3239;
     color: #d2b475;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
-    line-height: 1.45;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ddb-bg3-grid-tooltip-description {
-    margin-top: 7px;
-    color: #d0d2d6;
-    font-size: 0.72rem;
-    line-height: 1.45;
-    white-space: pre-line;
+    margin-top: 4px;
+    color: #c4c7cc;
+    font-size: 0.70rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
 }
 
-@media (min-width: 1100px) {
-    .ddb-bg3-grid-tooltip {
-        max-height: calc(100vh - 56px);
-    }
+.ddb-bg3-grid-tooltip-hint {
+    margin-top: 4px;
+    color: #848a94;
+    font-size: 0.60rem;
+    font-style: italic;
+    text-align: right;
 }
 
 @keyframes ddbGridTooltipFade {
