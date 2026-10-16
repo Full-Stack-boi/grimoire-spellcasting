@@ -140,14 +140,16 @@ function browserBridgePlugin(): Plugin {
         }
 
         if (req.url?.startsWith("/api/browser/fetch-monster") || req.url?.startsWith("/api/brave/fetch-monster")) {
+          const urlObj = new URL(req.url, "http://localhost:5173");
+          const targetUrl = urlObj.searchParams.get("url");
+          if (!targetUrl) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "Missing url parameter" }));
+            return;
+          }
+
+          // Tier A: Try Puppeteer connected to debugging port 9222
           try {
-            const urlObj = new URL(req.url, "http://localhost:5173");
-            const targetUrl = urlObj.searchParams.get("url");
-            if (!targetUrl) {
-              res.statusCode = 400;
-              res.end(JSON.stringify({ error: "Missing url parameter" }));
-              return;
-            }
             const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
             const pages = await browser.pages();
             const ddbPage = pages.find((p) => p.url().includes("dndbeyond.com")) || pages[0];
@@ -159,8 +161,54 @@ function browserBridgePlugin(): Plugin {
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ html, url: targetUrl }));
             return;
+          } catch {
+            // Tier B: Fallback to direct server-side fetch via Node.js
+            try {
+              const resp = await fetch(targetUrl, {
+                headers: {
+                  "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                  "Accept-Language": "en-US,en;q=0.9",
+                },
+              });
+              if (resp.ok) {
+                const html = await resp.text();
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ html, url: targetUrl }));
+                return;
+              }
+            } catch {}
+
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ html: null, url: targetUrl, error: "Browser bridge offline" }));
+            return;
+          }
+        }
+
+        if (req.url?.startsWith("/api/ddb-monsters")) {
+          try {
+            const targetPath = req.url.replace(/^\/api\/ddb-monsters/, "");
+            const targetUrl = `https://www.dndbeyond.com${targetPath}`;
+            const upstream = await fetch(targetUrl, {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+              },
+            });
+            const body = await upstream.text();
+            res.statusCode = upstream.status;
+            res.setHeader(
+              "Content-Type",
+              upstream.headers.get("content-type") || "text/html; charset=utf-8",
+            );
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.end(body);
+            return;
           } catch (err: any) {
-            res.statusCode = 500;
+            res.statusCode = 502;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ error: err.message }));
             return;
@@ -195,11 +243,6 @@ export default defineConfig({
         target: "https://character-service.dndbeyond.com",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ddb/, ""),
-      },
-      "/api/ddb-monsters": {
-        target: "https://www.dndbeyond.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/ddb-monsters/, ""),
       },
     },
   },

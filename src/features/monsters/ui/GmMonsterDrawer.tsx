@@ -185,8 +185,9 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
       type: monsterType === "ALL" ? undefined : monsterType,
     });
   }, [monsters, search, edition, cr, monsterType]);
-  const customMonsterIds = new Set(
-    getCustomMonsters().map((monster) => monster.id),
+  const customMonsterIds = useMemo(
+    () => new Set(getCustomMonsters().map((monster) => monster.id)),
+    [monsters],
   );
 
 

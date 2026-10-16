@@ -902,6 +902,7 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
       searchParams.delete("view");
       searchParams.delete("mode");
       searchParams.delete("dockHeight");
+      searchParams.delete("obrref");
       const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
       const [viewportWidth, viewportHeight] = await Promise.all([
         OBR.viewport.getWidth(),

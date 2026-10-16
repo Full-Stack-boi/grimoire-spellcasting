@@ -180,6 +180,8 @@
   cursor: pointer;
   transition: background-color 0.15s ease;
   user-select: none;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 62px;
 }
 
 .gm-monster-list-item:hover {

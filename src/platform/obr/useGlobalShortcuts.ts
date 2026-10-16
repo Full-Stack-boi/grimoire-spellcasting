@@ -104,6 +104,7 @@ export function useGlobalShortcuts() {
                         searchParams.delete("view");
                         searchParams.delete("mode");
                         searchParams.delete("dockHeight");
+                        searchParams.delete("obrref");
                         const searchStr = searchParams.toString() ? `?${searchParams.toString()}` : "";
                         void OBR.popover.open({
                             id: spellPopoverId,

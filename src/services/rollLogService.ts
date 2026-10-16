@@ -268,6 +268,7 @@ function computeRollLogLayout(viewWidth: number, viewHeight: number, mode: "auto
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search || "" : "");
     params.delete("view");
     params.delete("dockHeight");
+    params.delete("obrref");
     params.set("mode", mode);
     const searchStr = params.toString() ? `?${params.toString()}` : "";
     const popoverUrl = `${origin}/ddb-roll-log${searchStr}`;

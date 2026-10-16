@@ -122,6 +122,7 @@ function computeDockLayout(viewWidth: number, viewHeight: number) {
     dockSearch.delete("view");
     dockSearch.delete("mode");
     dockSearch.delete("dockHeight");
+    dockSearch.delete("obrref");
     const searchStr = dockSearch.toString() ? `?${dockSearch.toString()}` : "";
     const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
     const url = `${origin}/action-dock${searchStr}`;

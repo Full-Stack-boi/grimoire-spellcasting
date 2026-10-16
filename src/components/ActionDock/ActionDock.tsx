@@ -1555,6 +1555,7 @@ export const ActionDock: React.FC = () => {
     };
     const renderBg3SpellCard = (spell: typeof dockSpells[0], index: number) => (
         <Bg3SpellCard
+            key={`spell_${spell.id}_${index}`}
             spell={spell}
             index={index}
             selected={selectedSpell === spell.id}
@@ -1575,6 +1576,7 @@ export const ActionDock: React.FC = () => {
 
     const renderBg3FeatureCard = (feature: DDBFeatureAction, index: number) => (
         <Bg3FeatureCard
+            key={`feat_${feature.id}_${index}`}
             feature={feature}
             index={index}
             usedCount={featureUses[feature.id] ?? (feature.limitedUse?.used || 0)}
@@ -1589,6 +1591,7 @@ export const ActionDock: React.FC = () => {
 
     const renderBg3WeaponCard = (weapon: DDBWeaponAttack, index: number, mode?: "melee" | "thrown") => (
         <Bg3WeaponCard
+            key={`wpn_${weapon.id}_${mode ?? "melee"}_${index}`}
             weapon={weapon}
             index={index}
             mode={mode}
@@ -1602,6 +1605,7 @@ export const ActionDock: React.FC = () => {
 
     const renderBg3CombatActionCard = (action: { name: string; description: string }, index: number) => (
         <Bg3CombatActionCard
+            key={`combat_${action.name}_${index}`}
             action={action}
             index={index}
             onActivate={selectedAction => setDrawerItem({
