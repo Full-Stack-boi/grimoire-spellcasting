@@ -1,4 +1,5 @@
 import React from "react";
+import { DndIcon } from "./DndIcon";
 import {
   FaBoltLightning,
   FaBookOpen,
@@ -14,7 +15,6 @@ import {
   FaPersonWalking,
   FaShieldHalved,
   FaSun,
-  FaWandMagicSparkles,
   FaYinYang,
   FaDiceD20,
   FaFire,
@@ -188,7 +188,6 @@ import {
   GiBrain,
   GiAllSeeingEye,
   GiDramaMasks,
-  GiSun,
 } from "react-icons/gi";
 
 export {
@@ -214,45 +213,45 @@ export const DAMAGE_TYPE_META: Record<
   { label: string; color: string; border: string; bg: string }
 > = {
   acid: { label: "Acid", color: "#bef264", border: "#65a30d", bg: "#1e2612" },
-  cold: { label: "Cold", color: "#7dd3fc", border: "#0284c7", bg: "#0e263d" },
-  fire: { label: "Fire", color: "#fdba74", border: "#ea580c", bg: "#38160f" },
+  cold: { label: "Cold", color: "#38bdf8", border: "#0284c7", bg: "#0e263d" },
+  fire: { label: "Fire", color: "#f97316", border: "#ea580c", bg: "#38160f" },
+  force: { label: "Force", color: "#f87171", border: "#dc2626", bg: "#3b1115" },
   lightning: {
     label: "Lightning",
-    color: "#93c5fd",
+    color: "#60a5fa",
     border: "#2563eb",
     bg: "#172554",
   },
+  necrotic: {
+    label: "Necrotic",
+    color: "#34d399",
+    border: "#059669",
+    bg: "#0d281e",
+  },
   poison: {
     label: "Poison",
-    color: "#86efac",
-    border: "#16a34a",
-    bg: "#142918",
+    color: "#84cc16",
+    border: "#4d7c0f",
+    bg: "#18260e",
   },
   psychic: {
     label: "Psychic",
-    color: "#f0abfc",
-    border: "#a21caf",
-    bg: "#34113f",
+    color: "#f472b6",
+    border: "#db2777",
+    bg: "#3b1129",
   },
   thunder: {
     label: "Thunder",
-    color: "#d8b4fe",
+    color: "#a855f7",
     border: "#7e22ce",
-    bg: "#2b144a",
+    bg: "#251238",
   },
   radiant: {
     label: "Radiant",
-    color: "#fde047",
+    color: "#facc15",
     border: "#ca8a04",
     bg: "#332608",
   },
-  necrotic: {
-    label: "Necrotic",
-    color: "#96f0c0",
-    border: "#46a374",
-    bg: "#0d1f11",
-  },
-  force: { label: "Force", color: "#f472b6", border: "#db2777", bg: "#3b1129" },
   bear: {
     label: "Bear's Endurance",
     color: "#10b981",
@@ -346,30 +345,26 @@ export function getDamageTypeIcon(
   type: string,
   size = 24,
 ): React.ReactElement | null {
-  switch (type.toLowerCase()) {
-    case "acid":
-      return <GiAcidBlob size={size} aria-hidden="true" />;
-    case "cold":
-      return <GiSnowflake1 size={size} aria-hidden="true" />;
-    case "fire":
-      return <GiFlame size={size} aria-hidden="true" />;
-    case "lightning":
-      return <GiLightningArc size={size} aria-hidden="true" />;
-    case "poison":
-      return <GiSkullCrossedBones size={size} aria-hidden="true" />;
-    case "psychic":
-      return <GiThirdEye size={size} aria-hidden="true" />;
-    case "thunder":
-      return <GiSoundWaves size={size} aria-hidden="true" />;
-    case "radiant":
-      return <GiSun size={size} aria-hidden="true" />;
-    case "necrotic":
-      return <GiSkullCrossedBones size={size} aria-hidden="true" />;
-    case "force":
-      return <FaWandMagicSparkles size={size} aria-hidden="true" />;
-    default:
-      return null;
+  const lower = type.toLowerCase();
+  const knownDamageTypes = [
+    "acid",
+    "cold",
+    "fire",
+    "force",
+    "lightning",
+    "necrotic",
+    "poison",
+    "psychic",
+    "radiant",
+    "thunder",
+    "slashing",
+    "piercing",
+    "bludgeoning",
+  ];
+  if (knownDamageTypes.includes(lower)) {
+    return <DndIcon category="damage" name={lower} size={size} color="currentColor" />;
   }
+  return null;
 }
 
 export function getWeaponIcon(
@@ -378,65 +373,68 @@ export function getWeaponIcon(
   size = 18,
 ): React.ReactElement {
   const lower = `${name} ${type || ""}`.toLowerCase();
-  if (
-    lower.includes("dagger") ||
-    lower.includes("knife") ||
-    lower.includes("blade")
-  ) {
-    return <GiDaggerRose size={size} aria-hidden="true" />;
-  }
-  if (
-    lower.includes("bow") ||
-    lower.includes("crossbow") ||
-    lower.includes("sling") ||
-    lower.includes("arrow") ||
-    lower.includes("ranged")
-  ) {
-    return <GiPocketBow size={size} aria-hidden="true" />;
-  }
-  if (
-    lower.includes("axe") ||
-    lower.includes("halberd") ||
-    lower.includes("glaive")
-  ) {
-    return <GiWarAxe size={size} aria-hidden="true" />;
-  }
-  if (
-    lower.includes("hammer") ||
-    lower.includes("mace") ||
-    lower.includes("club") ||
-    lower.includes("flail") ||
-    lower.includes("morningstar")
-  ) {
-    return <GiWarhammer size={size} aria-hidden="true" />;
-  }
-  if (
-    lower.includes("staff") ||
-    lower.includes("rod") ||
-    lower.includes("wand")
-  ) {
-    return <GiWizardStaff size={size} aria-hidden="true" />;
-  }
-  if (
+  let weaponName = "sword";
+
+  if (lower.includes("dagger") || lower.includes("knife") || lower.includes("blade")) {
+    weaponName = "dagger";
+  } else if (lower.includes("rapier")) {
+    weaponName = "rapier";
+  } else if (lower.includes("scimitar")) {
+    weaponName = "scimitar";
+  } else if (lower.includes("crossbow")) {
+    weaponName = "crossbow";
+  } else if (lower.includes("bow") || lower.includes("arrow") || lower.includes("ranged")) {
+    weaponName = "bow";
+  } else if (lower.includes("sling")) {
+    weaponName = "sling";
+  } else if (lower.includes("handaxe")) {
+    weaponName = "handaxe";
+  } else if (lower.includes("axe")) {
+    weaponName = "battleaxe";
+  } else if (lower.includes("halberd")) {
+    weaponName = "halberd";
+  } else if (lower.includes("glaive")) {
+    weaponName = "glaive";
+  } else if (lower.includes("spear")) {
+    weaponName = "spear";
+  } else if (lower.includes("pike")) {
+    weaponName = "pike";
+  } else if (lower.includes("lance")) {
+    weaponName = "lance";
+  } else if (lower.includes("trident")) {
+    weaponName = "trident";
+  } else if (lower.includes("whip")) {
+    weaponName = "whip";
+  } else if (lower.includes("hammer") || lower.includes("warhammer")) {
+    weaponName = "hammer";
+  } else if (lower.includes("mace")) {
+    weaponName = "mace";
+  } else if (lower.includes("morningstar")) {
+    weaponName = "morningstar";
+  } else if (lower.includes("flail")) {
+    weaponName = "flail";
+  } else if (lower.includes("club")) {
+    weaponName = "club";
+  } else if (lower.includes("staff") || lower.includes("rod") || lower.includes("wand")) {
+    weaponName = "staff";
+  } else if (
     lower.includes("unarmed") ||
     lower.includes("punch") ||
     lower.includes("fist") ||
     lower.includes("kick") ||
     lower.includes("strike")
   ) {
-    return <GiFist size={size} aria-hidden="true" />;
-  }
-  if (
+    weaponName = "strike";
+  } else if (
     lower.includes("sword") ||
-    lower.includes("rapier") ||
-    lower.includes("scimitar") ||
     lower.includes("greatsword") ||
     lower.includes("longsword") ||
     lower.includes("shortsword")
   ) {
-    return <GiBroadsword size={size} aria-hidden="true" />;
+    weaponName = "sword";
   }
-  return <GiSwordsPower size={size} aria-hidden="true" />;
+
+  return <DndIcon category="weapon" name={weaponName} size={size} color="currentColor" />;
 }
 
 export type HexAbilityKey =

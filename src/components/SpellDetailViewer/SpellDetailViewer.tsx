@@ -5,6 +5,41 @@ import { setSelectedSpell } from "../../effectsTool";
 import OBR from "@owlbear-rodeo/sdk";
 import { toolID } from "../../effectsTool";
 import { IconCastLightning } from "../ActionDock/shared/Bg3Icons";
+import { DndIcon } from "../ActionDock/shared/DndIcon";
+
+const SCHOOL_COLORS: Record<string, string> = {
+    abjuration:    "#7b9fd4",
+    conjuration:   "#b19cd9",
+    divination:    "#f0c44a",
+    enchantment:   "#f48fb1",
+    evocation:     "#ef7c56",
+    illusion:      "#80cbc4",
+    necromancy:    "#90a4ae",
+    transmutation: "#81c784",
+};
+
+const DAMAGE_COLORS: Record<string, string> = {
+    acid:        "#bef264",
+    cold:        "#38bdf8",
+    fire:        "#f97316",
+    force:       "#f87171",
+    lightning:   "#60a5fa",
+    necrotic:    "#34d399",
+    poison:      "#84cc16",
+    psychic:     "#f472b6",
+    radiant:     "#facc15",
+    thunder:     "#a855f7",
+    slashing:    "#94a3b8",
+    piercing:    "#94a3b8",
+    bludgeoning: "#94a3b8",
+};
+
+const getDamageTypeFromName = (dmgStr?: string): string | null => {
+    if (!dmgStr) return null;
+    const lower = dmgStr.toLowerCase();
+    const types = ["fire", "cold", "lightning", "necrotic", "radiant", "acid", "poison", "psychic", "thunder", "force", "slashing", "piercing", "bludgeoning"];
+    return types.find(t => lower.includes(t)) || null;
+};
 
 export interface SpellDetailViewerProps {
     spellID: string;
@@ -36,6 +71,9 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
 
     const isUpcastable = isSpellUpcastable(spellID, meta);
     const scaled = getScaledSpellStats(spellID, castLevel, meta);
+    const detectedDamageType = getDamageTypeFromName(scaled.damage || meta.damage);
+    const schoolKey = meta.school ? meta.school.toLowerCase() : "";
+    const schoolColor = SCHOOL_COLORS[schoolKey] || "var(--bg3-gold-primary)";
 
     const handleCast = async (levelToCast: number = castLevel) => {
         await setSelectedSpell(spellID);
@@ -52,19 +90,42 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
     };
 
     const levelText = meta.level === 0 ? "Cantrip" : `Level ${meta.level}`;
-    const ddbSchoolIcon = meta.school ? `https://media.dndbeyond.com/media/spell-school-icons/${meta.school.toLowerCase()}.svg` : null;
 
     return (
         <div className={`bg3-spell-card ${compact ? "compact" : ""} ${isModal ? "modal-mode" : ""}`} style={style}>
             {/* Header */}
             <div className="bg3-card-header">
                 <div className="bg3-card-title-group">
-                    {ddbSchoolIcon && (
-                        <img className="bg3-card-ddb-school-icon" src={ddbSchoolIcon} alt={meta.school} loading="lazy" />
+                    {meta.school && (
+                        <div
+                            className="bg3-card-school-badge-wrapper"
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: 38,
+                                height: 38,
+                                borderRadius: "50%",
+                                background: "rgba(10, 13, 19, 0.8)",
+                                border: `1px solid ${schoolColor}`,
+                                boxShadow: `0 0 10px ${schoolColor}33`,
+                                flexShrink: 0,
+                            }}
+                        >
+                            <DndIcon
+                                category="spell"
+                                name={schoolKey}
+                                size={22}
+                                color={schoolColor}
+                                title={meta.school}
+                            />
+                        </div>
                     )}
                     <div className="bg3-card-title-text">
                         <h3 className="bg3-card-title">{meta.name}</h3>
-                        <p className="bg3-card-subtitle">{meta.school}</p>
+                        <p className="bg3-card-subtitle" style={{ color: schoolColor }}>
+                            {meta.school}
+                        </p>
                     </div>
                 </div>
                 <div className="bg3-card-header-right">
@@ -145,7 +206,17 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
                 {/* D&D Beyond Scaled Damage Banner */}
                 {scaled.damage && (
                     <div className="dndb-scaled-damage-banner">
-                        <span className="dndb-damage-amount">{scaled.damage}</span>
+                        {detectedDamageType && (
+                            <DndIcon
+                                category="damage"
+                                name={detectedDamageType}
+                                size={18}
+                                color={DAMAGE_COLORS[detectedDamageType] || "#f87171"}
+                            />
+                        )}
+                        <span className="dndb-damage-amount" style={{ color: detectedDamageType ? DAMAGE_COLORS[detectedDamageType] : "#f87171" }}>
+                            {scaled.damage}
+                        </span>
                         <span className="dndb-damage-label">Damage / Effect</span>
                         {castLevel > meta.level && (
                             <span className="dndb-upcast-tag">Upcast +{castLevel - meta.level}</span>
@@ -157,11 +228,29 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
                 <div className="bg3-card-stats-grid">
                     <div className="bg3-stat-item">
                         <span className="bg3-stat-label">Casting Time</span>
-                        <span className="bg3-stat-value">{meta.castingTime}</span>
+                        <span className="bg3-stat-value">
+                            <DndIcon
+                                category="combat"
+                                name={meta.castingTime.toLowerCase().includes("bonus") ? "bonus-action" : meta.castingTime.toLowerCase().includes("reaction") ? "reaction" : "action"}
+                                size={13}
+                                color="#9ca3af"
+                                style={{ marginRight: 6 }}
+                            />
+                            {meta.castingTime}
+                        </span>
                     </div>
                     <div className="bg3-stat-item">
                         <span className="bg3-stat-label">Range</span>
-                        <span className="bg3-stat-value highlight-range">{meta.range}</span>
+                        <span className="bg3-stat-value highlight-range">
+                            <DndIcon
+                                category="combat"
+                                name={meta.range.toLowerCase().includes("touch") || meta.range.toLowerCase().includes("self") ? "melee" : "ranged"}
+                                size={13}
+                                color="#38bdf8"
+                                style={{ marginRight: 6 }}
+                            />
+                            {meta.range}
+                        </span>
                     </div>
                     {meta.aoe && (
                         <div className="bg3-stat-item aoe-item">
@@ -180,7 +269,18 @@ export const SpellDetailViewer: React.FC<SpellDetailViewerProps> = ({
                     {scaled.damage && (
                         <div className="bg3-stat-item">
                             <span className="bg3-stat-label">Damage / Effect</span>
-                            <span className="bg3-stat-value highlight-damage">{scaled.damage}</span>
+                            <span className="bg3-stat-value highlight-damage">
+                                {detectedDamageType && (
+                                    <DndIcon
+                                        category="damage"
+                                        name={detectedDamageType}
+                                        size={14}
+                                        color={DAMAGE_COLORS[detectedDamageType] || "#f87171"}
+                                        style={{ marginRight: 6 }}
+                                    />
+                                )}
+                                {scaled.damage}
+                            </span>
                         </div>
                     )}
                     {meta.saveOrAttack && (
