@@ -160,10 +160,12 @@ describe("dice utility", () => {
         const mixedAdv = rollCustomDicePool({ 20: 1, 4: 1 }, 2, "advantage");
         const d20Group = mixedAdv.diceGroups.find(g => g.die === 20);
         const d4Group = mixedAdv.diceGroups.find(g => g.die === 4);
-        expect(d20Group?.rolls).toHaveLength(2);
-        expect(d20Group?.keptRoll!).toBeGreaterThanOrEqual(d20Group?.droppedRoll!);
-        expect(d4Group?.rolls).toHaveLength(2);
-        expect(d4Group?.keptRoll!).toBeGreaterThanOrEqual(d4Group?.droppedRoll!);
+        expect(d20Group).toBeDefined();
+        expect(d4Group).toBeDefined();
+        expect(d20Group!.rolls).toHaveLength(2);
+        expect(d20Group!.keptRoll!).toBeGreaterThanOrEqual(d20Group!.droppedRoll!);
+        expect(d4Group!.rolls).toHaveLength(2);
+        expect(d4Group!.keptRoll!).toBeGreaterThanOrEqual(d4Group!.droppedRoll!);
         expect(mixedAdv.breakdown).toContain("1d20 [");
         expect(mixedAdv.breakdown).toContain("1d4 [");
     });

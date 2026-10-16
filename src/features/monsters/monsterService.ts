@@ -252,7 +252,7 @@ export function extractTokenColorMarker(
   }
 
   // 2. Bracketed or parenthesized color tags: (Red), [Blue], {Green}, (แดง)
-  const bracketMatch = name.match(/[\(\[\{]([^\)\]\}]+)[\)\]\}]/);
+  const bracketMatch = name.match(/[({[]([^)}\]]+)[)}\]]/);
   if (bracketMatch) {
     const inside = bracketMatch[1].trim().toLowerCase();
     for (const [word, colorKey] of Object.entries(COLOR_WORD_MAP)) {

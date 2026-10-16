@@ -56,7 +56,7 @@ describe("useSpellResourceHandlers rest actions", () => {
         const setPactSlots = vi.fn((updater) => {
             pactSlots = typeof updater === "function" ? updater(pactSlots) : updater;
         });
-        let spellSlots = { 1: { max: 4, used: 3 } };
+        const spellSlots = { 1: { max: 4, used: 3 } };
         const setSpellSlots = vi.fn();
         let featureUses = {
             "feat-action-surge": 1,

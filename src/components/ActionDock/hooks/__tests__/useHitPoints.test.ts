@@ -28,7 +28,7 @@ describe("useHitPoints hook", () => {
     } as any;
 
     it("initializes with character stats when customHp is null", () => {
-        let customHp = null;
+        const customHp = null;
         const setCustomHp = vi.fn();
         const setDeathSaves = vi.fn();
 

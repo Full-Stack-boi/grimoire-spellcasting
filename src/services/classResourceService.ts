@@ -31,9 +31,9 @@ export function resolveFeatureResource(params: {
 }): ResolvedFeatureResource {
   const { formula, character, feature, featureUses = {} } = params;
 
-  let resourceName = formula?.resource?.name || feature?.name || "Resource";
+  const resourceName = formula?.resource?.name || feature?.name || "Resource";
   let maxPoints = feature?.limitedUse?.max || 0;
-  let resetType = formula?.resource?.resetType || feature?.limitedUse?.resetType || "Long Rest";
+  const resetType = formula?.resource?.resetType || feature?.limitedUse?.resetType || "Long Rest";
 
   if (maxPoints === 0 && formula?.resource?.scaling && character) {
     const { scaling } = formula.resource;
