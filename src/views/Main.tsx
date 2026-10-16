@@ -1,4 +1,4 @@
-import "./Main.css";
+import "./Main.scss";
 
 import { Box, Button, Tab, Tabs } from "@mui/material";
 import {

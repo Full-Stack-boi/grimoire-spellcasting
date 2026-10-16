@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import OBR from "@owlbear-rodeo/sdk";
-import "./CharacterChecks.css";
+import "./CharacterChecks.scss";
 import { useOBR } from "../../platform/obr/react/providers/BaseOBRProvider";
 import { resolveActiveCaster, ActiveCasterInfo } from "../../features/targeting/infrastructure/obr/activeCasterResolver";
 import {

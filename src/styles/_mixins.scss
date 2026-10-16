@@ -1,0 +1,55 @@
+// =============================================================================
+// REUSABLE UI & LAYOUT MIXINS
+// =============================================================================
+
+@mixin modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+@mixin modal-card {
+  width: min(96%, 880px);
+  height: 95%;
+  max-height: 95vh;
+  background: #11141b;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(239, 68, 68, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e5e7eb;
+  container-type: inline-size;
+}
+
+@mixin scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: #283347 transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #283347;
+    border-radius: 4px;
+
+    &:hover {
+      background: #d97706;
+    }
+  }
+}

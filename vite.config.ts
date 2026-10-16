@@ -223,6 +223,23 @@ function browserBridgePlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src"),
+    },
+  },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        additionalData: (source: string, filename: string) => {
+          if (filename.includes("src\\styles") || filename.includes("src/styles")) {
+            return source;
+          }
+          return `@use "@/styles/index.scss" as *;\n${source}`;
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     raw({

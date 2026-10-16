@@ -1,0 +1,71 @@
+// =============================================================================
+// CENTRALIZED BREAKPOINT TOKENS (Mirrors src/styles/tokens.ts)
+// =============================================================================
+
+$bp-xs: 420px;  // Mobile portrait / narrow popover
+$bp-sm: 540px;  // Mobile landscape / compact modal
+$bp-md: 768px;  // Tablet / default ActionDock popover
+$bp-lg: 960px;  // Targeted responsive canvas (e.g. 957x910) / small laptop
+$bp-xl: 1200px; // Standard desktop
+
+// =============================================================================
+// VIEWPORT MEDIA QUERY MIXINS (@media)
+// =============================================================================
+
+@mixin mobile-sm {
+  @media (max-width: #{$bp-xs}) {
+    @content;
+  }
+}
+
+@mixin mobile {
+  @media (max-width: #{$bp-sm}) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (max-width: #{$bp-md}) {
+    @content;
+  }
+}
+
+@mixin compact-screen {
+  @media (max-width: #{$bp-lg}) {
+    @content;
+  }
+}
+
+@mixin desktop-up {
+  @media (min-width: #{$bp-md + 1px}) {
+    @content;
+  }
+}
+
+// =============================================================================
+// CONTAINER QUERY MIXINS (@container - Component-Level Responsiveness)
+// =============================================================================
+
+@mixin container-xs {
+  @container (max-width: #{$bp-xs}) {
+    @content;
+  }
+}
+
+@mixin container-sm {
+  @container (max-width: #{$bp-sm}) {
+    @content;
+  }
+}
+
+@mixin container-md {
+  @container (max-width: #{$bp-md}) {
+    @content;
+  }
+}
+
+@mixin container-lg {
+  @container (max-width: #{$bp-lg}) {
+    @content;
+  }
+}

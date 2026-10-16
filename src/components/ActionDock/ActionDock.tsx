@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef, Dispatch, SetStateAction } from "react";
-import "./ActionDock.css";
+import "./ActionDock.scss";
 import OBR, { isImage, Item } from "@owlbear-rodeo/sdk";
 import { spellIDs } from "../../effects/spells";
 import { getCharacterFeatures } from "../../features/characterFeatures/domain/characterFeatureCatalog";
@@ -35,7 +35,7 @@ import { removeTokenBuff, getComputedBuffModifiers } from "../../services/buffSe
 const CustomDiceRoller = React.lazy(() =>
     import("./overlays/CustomDiceRoller").then(m => ({ default: m.CustomDiceRoller }))
 );
-import "./overlays/CustomDiceRoller.css";
+import "./overlays/CustomDiceRoller.scss";
 import {
     saveCombatState,
     COMBAT_STATE_STORAGE_PREFIX,
@@ -65,7 +65,7 @@ import { BG3FlyoutBar } from "./overlays/BG3FlyoutBar";
 import { getFeatureFlyoutKind, findMatchingActionFormula } from "../../assets/manual-formulas";
 import { resolveWeaponRiders } from "../../services/weaponDamageRiders";
 import { getWeaponAnimationVariant } from "./domain/weaponAnimationVariant";
-import "./overlays/BG3FlyoutBar.css";
+import "./overlays/BG3FlyoutBar.scss";
 import { ActionGridTooltipProvider } from "./actions/ActionGridTile";
 import { DEFAULT_WEAPONS } from "./domain/constants";
 import { closeActionDock } from "./domain/popover";

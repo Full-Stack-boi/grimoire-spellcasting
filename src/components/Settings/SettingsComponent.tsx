@@ -1,4 +1,4 @@
-import "./SettingsComponent.css";
+import "./SettingsComponent.scss";
 
 import {
     FaChevronDown,

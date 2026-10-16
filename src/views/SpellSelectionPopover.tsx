@@ -1,4 +1,4 @@
-import "./SpellSelectionPopover.css";
+import "./SpellSelectionPopover.scss";
 
 import { APP_KEY, ASSET_LOCATION } from "../config";
 import { LOCAL_STORAGE_KEYS, getSettingsValue } from "../components/Settings/settings";

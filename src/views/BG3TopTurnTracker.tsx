@@ -7,7 +7,7 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import "./BG3TopTurnTracker.css";
+import "./BG3TopTurnTracker.scss";
 import { FaChevronLeft, FaChevronRight, FaSkull } from "react-icons/fa6";
 import type { Item } from "@owlbear-rodeo/sdk";
 import type { Combatant, CombatEncounter } from "../features/combat/domain/types";

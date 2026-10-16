@@ -1,4 +1,4 @@
-import "./SceneControls.css";
+import "./SceneControls.scss";
 
 import {
     FaArrowPointer,

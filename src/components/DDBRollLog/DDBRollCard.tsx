@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import OBR from "@owlbear-rodeo/sdk";
-import "./DDBRollCard.css";
+import "./DDBRollCard.scss";
 import { DDBRollCardData } from "../../types/ddbRollLog";
 import { fireConditionalTrigger } from "../../services/conditionalTriggerService";
 import { applyDamage, applyHeal, getTokenVitals } from "../../features/combat/tokenVitalsService";

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./HomebrewMonsterModal.css";
+import "./HomebrewMonsterModal.scss";
 import type { MonsterStatblock, MonsterAction, MonsterType } from "../domain/types";
 import { saveCustomMonster, isDefaultMonster } from "../monsterService";
 import { formatModifier } from "../monsterExportService";
@@ -511,19 +511,21 @@ export const HomebrewMonsterModal: React.FC<HomebrewMonsterModalProps> = ({
           </button>
         </div>
 
-        {/* Preset Starters */}
-        <div className="gm-hb-presets-row">
-          <span className="gm-hb-preset-label">Quick Presets:</span>
-          <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("skirmisher")}>
-            Goblin Skirmisher
-          </button>
-          <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("dragon_whelp")}>
-            Flame Drake
-          </button>
-          <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("undead_brute")}>
-            Rotting Hulk
-          </button>
-        </div>
+        {/* Preset Starters (Only shown when creating a new monster to conserve vertical space and prevent accidental overwrites) */}
+        {!initialMonster && (
+          <div className="gm-hb-presets-row">
+            <span className="gm-hb-preset-label">Quick Presets:</span>
+            <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("skirmisher")}>
+              Goblin Skirmisher
+            </button>
+            <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("dragon_whelp")}>
+              Flame Drake
+            </button>
+            <button type="button" className="gm-hb-preset-btn" onClick={() => applyPreset("undead_brute")}>
+              Rotting Hulk
+            </button>
+          </div>
+        )}
 
         {/* Scrollable Form Body */}
         <div className="gm-hb-form-body">

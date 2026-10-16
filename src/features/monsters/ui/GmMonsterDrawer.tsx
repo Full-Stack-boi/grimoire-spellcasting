@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import OBR, { Item, isImage } from "@owlbear-rodeo/sdk";
 import { FaTrash, FaPen, FaLink, FaFileCode } from "react-icons/fa6";
-import "./GmMonsterDrawer.css";
+import "./GmMonsterDrawer.scss";
 import type {
   MonsterAction,
   MonsterStatblock,

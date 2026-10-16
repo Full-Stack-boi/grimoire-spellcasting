@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import "./DDBCharacterSyncModal.css";
+import "./DDBCharacterSyncModal.scss";
 import { FaDiceD20, FaXmark } from "react-icons/fa6";
 import OBR from "@owlbear-rodeo/sdk";
 import {

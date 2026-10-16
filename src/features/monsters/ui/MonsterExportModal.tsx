@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./MonsterExportModal.css";
+import "./MonsterExportModal.scss";
 import type { MonsterStatblock } from "../domain/types";
 import {
   exportMonsterToJson,

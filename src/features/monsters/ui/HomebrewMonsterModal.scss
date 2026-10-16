@@ -1,38 +1,53 @@
+// =============================================================================
+// HomebrewMonsterModal Styles (SCSS + Centralized Responsive Tokens)
+// =============================================================================
+
+.gm-modal-overlay {
+  @include modal-overlay;
+}
+
 .gm-homebrew-modal {
-  width: 95%;
-  max-width: 860px;
-  max-height: 90vh;
-  background: #11141b;
+  @include modal-card;
   border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: 12px;
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(239, 68, 68, 0.2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  color: #e5e7eb;
+
+  @include mobile-sm {
+    width: 98%;
+    height: 98%;
+    border-radius: 8px;
+  }
 }
 
 .gm-hb-header {
-  padding: 14px 20px;
+  padding: 12px clamp(14px, 2vw, 20px);
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #1f2937;
   background: #161a23;
+  flex-shrink: 0;
+
+  @include mobile-sm {
+    padding: 10px 14px;
+  }
 }
 
 .gm-hb-title-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .gm-hb-title {
   margin: 0;
-  font-size: 17px;
+  font-size: clamp(14px, 1.8vw, 17px);
   font-weight: 700;
   color: #f3f4f6;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gm-hb-badge {
@@ -43,6 +58,7 @@
   padding: 2px 8px;
   border-radius: 6px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .gm-hb-close-btn {
@@ -53,11 +69,12 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-}
+  flex-shrink: 0;
 
-.gm-hb-close-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .gm-hb-presets-row {
@@ -65,9 +82,10 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 8px clamp(14px, 2vw, 20px);
   background: #131720;
   border-bottom: 1px solid #1f2937;
+  flex-shrink: 0;
 }
 
 .gm-hb-preset-label {
@@ -86,20 +104,23 @@
   color: #d1d5db;
   cursor: pointer;
   transition: all 0.15s;
-}
 
-.gm-hb-preset-btn:hover {
-  background: #374151;
-  border-color: #ef4444;
-  color: #fff;
+  &:hover {
+    background: #374151;
+    border-color: #ef4444;
+    color: #fff;
+  }
 }
 
 .gm-hb-form-body {
-  padding: 18px 22px;
+  padding: clamp(12px, 1.6vw, 18px) clamp(14px, 2vw, 22px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: clamp(10px, 1.2vw, 14px);
+  flex: 1 1 auto;
+  min-height: 0;
+  @include scrollbar-dark;
 }
 
 .gm-hb-error-banner {
@@ -115,10 +136,10 @@
   background: #141822;
   border: 1px solid #1f2937;
   border-radius: 8px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .gm-hb-section-header-row {
@@ -138,64 +159,83 @@
 .gm-hb-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .gm-hb-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
+
+  &.flex-1 {
+    flex: 1 1 140px;
+    min-width: 130px;
+  }
+
+  &.flex-2 {
+    flex: 2 1 200px;
+    min-width: 180px;
+  }
+
+  label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9ca3af;
+  }
+
+  input,
+  select {
+    background: #0f1219;
+    border: 1px solid #374151;
+    color: #f3f4f6;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    height: auto;
+    min-height: 34px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s;
+
+    &:focus {
+      border-color: #ef4444;
+    }
+
+    &.readonly-input {
+      background: #1a1e29;
+      color: #9ca3af;
+      border-color: #2b3240;
+      cursor: not-allowed;
+      font-weight: 600;
+    }
+  }
 }
 
-.gm-hb-field.flex-1 {
-  flex: 1;
-  min-width: 140px;
-}
-
-.gm-hb-field.flex-2 {
-  flex: 2;
-  min-width: 200px;
-}
-
-.gm-hb-field label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #9ca3af;
-}
-
-.gm-hb-field input,
-.gm-hb-field select {
-  background: #0f1219;
-  border: 1px solid #374151;
-  color: #f3f4f6;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 13px;
-  line-height: 1.4;
-  height: auto;
-  min-height: 34px;
-  box-sizing: border-box;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.gm-hb-field input:focus,
-.gm-hb-field select:focus {
-  border-color: #ef4444;
-}
-
-.gm-hb-field input.readonly-input {
-  background: #1a1e29;
-  color: #9ca3af;
-  border-color: #2b3240;
-  cursor: not-allowed;
-  font-weight: 600;
-}
+// -----------------------------------------------------------------------------
+// Section 3: Ability Scores & Saving Throws
+// -----------------------------------------------------------------------------
 
 .gm-hb-stats-row {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
+  gap: 8px;
+
+  @include tablet {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @include container-md {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @include mobile-sm {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @include container-xs {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .gm-hb-stat-box {
@@ -243,17 +283,18 @@
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.15s;
-}
 
-.gm-hb-add-btn:hover {
-  background: #2563eb;
-  border-color: #3b82f6;
-  color: #fff;
+  &:hover {
+    background: #2563eb;
+    border-color: #3b82f6;
+    color: #fff;
+  }
 }
 
 .gm-hb-action-add-group {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .gm-hb-item-card {
@@ -270,10 +311,20 @@
   display: flex;
   align-items: center;
   gap: 10px;
+
+  @include mobile {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  @include container-sm {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
 }
 
 .gm-hb-item-name-input {
-  flex: 1;
+  flex: 1 1 180px;
   background: #141822;
   border: 1px solid #374151;
   border-radius: 5px;
@@ -294,6 +345,7 @@
   min-height: 30px;
   box-sizing: border-box;
   color: #fca5a5;
+  flex-shrink: 0;
 }
 
 .gm-hb-remove-btn {
@@ -304,11 +356,12 @@
   padding: 4px 8px;
   font-size: 11px;
   cursor: pointer;
-}
+  flex-shrink: 0;
 
-.gm-hb-remove-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: #ef4444;
+  &:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+  }
 }
 
 .gm-hb-item-desc-input {
@@ -325,12 +378,13 @@
 }
 
 .gm-hb-footer {
-  padding: 14px 20px;
+  padding: 12px clamp(14px, 2vw, 20px);
   border-top: 1px solid #1f2937;
   background: #161a23;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .gm-hb-cancel-btn {
@@ -342,11 +396,11 @@
   background: #1f2937;
   color: #d1d5db;
   cursor: pointer;
-}
 
-.gm-hb-cancel-btn:hover {
-  background: #374151;
-  color: #fff;
+  &:hover {
+    background: #374151;
+    color: #fff;
+  }
 }
 
 .gm-hb-save-btn {
@@ -359,13 +413,16 @@
   color: #fff;
   cursor: pointer;
   box-shadow: 0 2px 10px rgba(220, 38, 38, 0.4);
+
+  &:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  }
 }
 
-.gm-hb-save-btn:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-}
+// -----------------------------------------------------------------------------
+// Proficiency Bonus & Saving Throws Grid
+// -----------------------------------------------------------------------------
 
-/* Proficiency bonus custom input */
 .gm-hb-prof-label {
   display: flex;
   align-items: center;
@@ -382,12 +439,12 @@
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
-}
 
-.gm-hb-auto-btn:hover {
-  background: #1e3a8a;
-  border-color: #3b82f6;
-  color: #fff;
+  &:hover {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+    color: #fff;
+  }
 }
 
 .gm-hb-prof-input.custom-override {
@@ -395,14 +452,13 @@
   color: #93c5fd;
 }
 
-/* Saving Throw Proficiencies */
 .gm-hb-saves-container {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px dashed rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .gm-hb-saves-header {
@@ -429,11 +485,21 @@
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
-}
 
-@media (max-width: 768px) {
-  .gm-hb-saves-grid {
+  @include tablet {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  @include container-md {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @include mobile {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @include container-sm {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -446,11 +512,15 @@
   flex-direction: column;
   gap: 6px;
   transition: border-color 0.15s ease, background 0.15s ease;
-}
 
-.gm-hb-save-box.proficient {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.06);
+  &.proficient {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.06);
+
+    .gm-hb-save-label {
+      color: #fbbf24;
+    }
+  }
 }
 
 .gm-hb-save-top {
@@ -466,21 +536,17 @@
   gap: 6px;
   cursor: pointer;
   user-select: none;
-}
 
-.gm-hb-save-check-label input[type="checkbox"] {
-  cursor: pointer;
-  accent-color: #f59e0b;
+  input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: #f59e0b;
+  }
 }
 
 .gm-hb-save-label {
   font-size: 12px;
   font-weight: 700;
   color: #d1d5db;
-}
-
-.gm-hb-save-box.proficient .gm-hb-save-label {
-  color: #fbbf24;
 }
 
 .gm-hb-save-prof-badge {
@@ -524,4 +590,3 @@
   color: #6b7280;
   padding: 2px 6px;
 }
-

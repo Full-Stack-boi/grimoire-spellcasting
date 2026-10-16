@@ -1,4 +1,4 @@
-import "./AnimationsTab.css";
+import "./AnimationsTab.scss";
 
 import OBR from "@owlbear-rodeo/sdk";
 import { useCallback, useEffect, useMemo, useState } from "react";

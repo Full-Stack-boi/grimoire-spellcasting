@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import "./SpellDetailViewer.css";
+import "./SpellDetailViewer.scss";
 import { getSpellMetadata, isSpellUpcastable, getScaledSpellStats, getOrdinal } from "../../assets/spellInfo";
 import { setSelectedSpell } from "../../effectsTool";
 import OBR from "@owlbear-rodeo/sdk";

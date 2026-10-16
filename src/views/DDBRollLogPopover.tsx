@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import OBR from "@owlbear-rodeo/sdk";
-import "./DDBRollLogPopover.css";
+import "./DDBRollLogPopover.scss";
 import { DDBRollCardData, DDBRollLogPayload } from "../types/ddbRollLog";
 import { DDBRollCard } from "../components/DDBRollLog/DDBRollCard";
 import {

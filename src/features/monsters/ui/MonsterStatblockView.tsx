@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import OBR, { Item, isImage } from "@owlbear-rodeo/sdk";
-import "./MonsterStatblockView.css";
+import "./MonsterStatblockView.scss";
 import type { MonsterStatblock, MonsterAction, MonsterSpellOption, MonsterUsageLimit } from "../domain/types";
 import {
   bindMonsterToToken,

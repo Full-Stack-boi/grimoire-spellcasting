@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import "./initiative-tracker.css";
+import "./initiative-tracker.scss";
 import {
   FaForwardStep,
   FaBackwardStep,
