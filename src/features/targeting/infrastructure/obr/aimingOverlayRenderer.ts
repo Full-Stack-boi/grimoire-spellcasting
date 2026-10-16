@@ -19,6 +19,8 @@ export interface AimingOverlayRenderOptions {
     isWeapon?: boolean;
     hasAdvantage?: boolean;
     hasDisadvantage?: boolean;
+    advantageReason?: string;
+    disadvantageReason?: string;
 }
 
 export interface AimingOverlayRenderResult {
@@ -54,7 +56,9 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         visionCheck,
         isWeapon = false,
         hasAdvantage = false,
-        hasDisadvantage = false
+        hasDisadvantage = false,
+        advantageReason,
+        disadvantageReason
     } = state;
 
     const rangeCheck = isWithinRange(casterPos, cursorPos, maxRangeFeet, grid, rangeMultiplier);
@@ -63,15 +67,17 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
     type AimState = "valid" | "advantage" | "disadvantage" | "invalid_range" | "invalid_vision";
     let aimState: AimState = "valid";
 
+    const effectiveBoth = hasAdvantage && hasDisadvantage;
+    const effectiveAdvantage = hasAdvantage && !hasDisadvantage;
+    const effectiveDisadvantage = hasDisadvantage && !hasAdvantage;
+
     if (!rangeCheck.withinRange) {
         aimState = "invalid_range";
-    } else if (!canSee) {
-        if (isWeapon || hasDisadvantage) {
-            aimState = "disadvantage";
-        } else {
-            aimState = "invalid_vision";
-        }
-    } else if (hasAdvantage) {
+    } else if (!canSee && !isWeapon && !hasDisadvantage) {
+        aimState = "invalid_vision";
+    } else if (effectiveDisadvantage || (!canSee && (isWeapon || hasDisadvantage))) {
+        aimState = "disadvantage";
+    } else if (effectiveAdvantage) {
         aimState = "advantage";
     } else {
         aimState = "valid";
@@ -95,12 +101,25 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         strokeColor = emeraldColor;
         textColor = "#a7f3d0";
         bgColor = "#064e3b";
-        textLabel = `${rangeCheck.currentDistanceFeet} ft / ${rangeCheck.effectiveMaxRangeFeet} ft (Advantage - Unseen Attacker)`;
+        let reason = advantageReason || "Advantage";
+        if (!reason.toLowerCase().includes("advantage")) {
+            reason = `Advantage - ${reason}`;
+        }
+        textLabel = `${rangeCheck.currentDistanceFeet} ft / ${rangeCheck.effectiveMaxRangeFeet} ft (${reason})`;
     } else if (aimState === "disadvantage") {
         strokeColor = amberColor;
         textColor = "#fde68a";
         bgColor = "#1c1917";
-        textLabel = `${rangeCheck.currentDistanceFeet} ft / ${rangeCheck.effectiveMaxRangeFeet} ft (Disadvantage - Unseen in Darkness)`;
+        let reason = disadvantageReason || (!canSee ? "Disadvantage - Unseen in Darkness" : "Disadvantage");
+        if (!reason.toLowerCase().includes("disadvantage")) {
+            reason = `Disadvantage - ${reason}`;
+        }
+        textLabel = `${rangeCheck.currentDistanceFeet} ft / ${rangeCheck.effectiveMaxRangeFeet} ft (${reason})`;
+    } else if (aimState === "valid" && effectiveBoth) {
+        strokeColor = cyanColor;
+        textColor = "#ffffff";
+        bgColor = "#0f172a";
+        textLabel = `${rangeCheck.currentDistanceFeet} ft / ${rangeCheck.effectiveMaxRangeFeet} ft (Normal - Adv & Disadv Cancelled)`;
     } else if (aimState === "invalid_range") {
         strokeColor = redColor;
         textColor = "#fca5a5";

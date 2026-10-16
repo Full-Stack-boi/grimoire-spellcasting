@@ -17,8 +17,9 @@ import {
   prevCombatTurn,
   extractEncounterFromMetadata,
 } from "../features/combat/initiativeService";
-import { focusCameraOnToken } from "../features/player/playerCharacterService";
+import { focusCameraOnToken, setTokenDisposition } from "../features/player/playerCharacterService";
 import { getScopedMetadata } from "../platform/obr/metadataHelper";
+import { getTokenDisposition } from "../features/combat/domain/attackRangeRules";
 import { APP_KEY } from "../config";
 import { GLOBAL_STORAGE_KEYS } from "../components/Settings/settings";
 import { darknessVisibilityReducer } from "./darknessVisibilityState";
@@ -370,12 +371,23 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
         <div className="bg3-portraits-track" role="list">
           {encounter.combatants.map((combatant, index) => {
             const isActive = index === encounter.turnIndex;
-            const isPlayer = combatant.isPlayer ?? false;
-
             const tokenItem = sceneItems.find((it) => it.id === combatant.id);
             const vitals = tokenItem ? getScopedMetadata<any>(tokenItem.metadata, "vitals") : null;
             const bound = tokenItem ? getScopedMetadata<any>(tokenItem.metadata, "bound-monster") : null;
-            const isMonster = !isPlayer && Boolean(bound);
+
+            const rawDisp = combatant.disposition ?? (tokenItem ? getTokenDisposition(tokenItem) : null);
+            const tokenConditions = ((vitals?.conditions ?? combatant.conditions ?? []) as string[]).map(c => c.toLowerCase());
+            const hasHostileMindControl = tokenConditions.includes("crown of madness") || tokenConditions.includes("dominated");
+
+            const isPlayer = combatant.isPlayer ?? false;
+            const isAlly = rawDisp === "friendly"
+              ? true
+              : rawDisp === "hostile"
+                ? false
+                : hasHostileMindControl
+                  ? !isPlayer
+                  : isPlayer;
+            const isMonster = !isAlly && Boolean(bound);
 
             const resolvedHpMax = typeof vitals?.hpMax === "number"
               ? vitals.hpMax
@@ -449,9 +461,16 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
                 key={combatant.id}
                 role="listitem"
                 className={`bg3-portrait-card ${isActive ? "active" : ""} ${
-                  isPlayer ? "ally" : "enemy"
+                  isAlly ? "ally" : "enemy"
                 } ${showDefeated ? "defeated" : ""}`}
                 onClick={() => handleFocus(combatant)}
+                onContextMenu={async (event) => {
+                  if (isGM) {
+                    event.preventDefault();
+                    const nextDisp = isAlly ? "hostile" : "friendly";
+                    await setTokenDisposition(combatant.id, nextDisp);
+                  }
+                }}
                 onMouseEnter={(event) =>
                   showTooltip(event, combatant.id, tooltipContent)
                 }

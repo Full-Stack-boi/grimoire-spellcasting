@@ -211,10 +211,13 @@ export function extractBuffEffects(text: string): ParsedBuffEffects {
         effects.spellAttackAdvantage = true;
     }
 
-    // 3. Attack Advantage (general or melee)
-    // e.g. "Advantage on melee weapon attack rolls", "Advantage on attack rolls"
-    if (/(?:advantage\s+on\s+(?:all\s+)?(?:melee\s+(?:weapon\s+)?)?attack\s+rolls)/i.test(lower) && !effects.spellAttackAdvantage) {
+    // 3. Attack Advantage (general, next, or melee)
+    // e.g. "Advantage on melee weapon attack rolls", "Advantage on attack rolls", "Advantage on your next attack roll"
+    if (/(?:advantage\s+on\s+(?:all\s+|your\s+next\s+)?(?:melee\s+(?:weapon\s+)?)?attack\s+rolls?)/i.test(lower) && !effects.attackAdvantage) {
         effects.attackAdvantage = true;
+        if (!/(?:melee|weapon)/i.test(lower)) {
+            effects.spellAttackAdvantage = true;
+        }
     }
 
     // 4. Flat Damage Bonus

@@ -2,12 +2,23 @@ import OBR, { Item, BoundingBox } from "@owlbear-rodeo/sdk";
 import { APP_KEY, LEGACY_APP_KEY } from "../../config";
 import { getLinkedDDBCharacterId, getAllCachedDDBCharacters } from "../../services/ddbService";
 import { readTokenElevation } from "../targeting/application/lineOfSightService";
+import {
+    TOKEN_DISPOSITION_METADATA_KEY,
+    LEGACY_TOKEN_DISPOSITION_METADATA_KEY,
+    type TokenDisposition
+} from "../combat/domain/types";
+import { getActiveEncounter, saveEncounter } from "../combat/initiativeService";
+import { getTokenVitals, setTokenVitals } from "../combat/tokenVitalsService";
 
 export const BOUND_PLAYER_METADATA_KEY = `${APP_KEY}/bound-player`;
 export const PRIMARY_CHARACTER_STORAGE_KEY = `${APP_KEY}/primary-character-token-id`;
 export const EFFECT_METADATA_KEY = `${APP_KEY}/effect-id`;
 export const SPELL_METADATA_KEY = `${APP_KEY}/spell-id`;
 export const DARKNESS_METADATA_KEY = `${APP_KEY}/darkness-zone`;
+export const gmSetHostileMenuId = `${APP_KEY}/gm-set-hostile`;
+export const gmSetFriendlyMenuId = `${APP_KEY}/gm-set-friendly`;
+export const gmSetNeutralMenuId = `${APP_KEY}/gm-set-neutral`;
+export const gmResetDispositionMenuId = `${APP_KEY}/gm-reset-disposition`;
 
 export interface BoundPlayerInfo {
     playerId: string;
@@ -407,6 +418,131 @@ export async function setupGMUnassignContextMenuOption(): Promise<void> {
 }
 
 /**
+ * Updates token disposition on scene metadata, vitals, and active combat encounter.
+ */
+export async function setTokenDisposition(
+    tokenId: string,
+    disposition: TokenDisposition | null
+): Promise<void> {
+    await OBR.scene.items.updateItems([tokenId], items => {
+        items.forEach(item => {
+            if (disposition) {
+                item.metadata[TOKEN_DISPOSITION_METADATA_KEY] = disposition;
+                item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY] = disposition;
+            } else {
+                delete item.metadata[TOKEN_DISPOSITION_METADATA_KEY];
+                delete item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY];
+                delete item.metadata["disposition"];
+            }
+        });
+    });
+
+    try {
+        const vitals = await getTokenVitals(tokenId);
+        if (vitals) {
+            await setTokenVitals(tokenId, { disposition: disposition ?? undefined });
+        }
+    } catch {}
+
+    try {
+        const encounter = await getActiveEncounter();
+        if (encounter && encounter.combatants.some(c => c.id === tokenId)) {
+            const updated = {
+                ...encounter,
+                combatants: encounter.combatants.map(c =>
+                    c.id === tokenId ? { ...c, disposition: disposition ?? undefined } : c
+                ),
+                updatedAt: Date.now()
+            };
+            await saveEncounter(updated);
+        }
+    } catch {}
+}
+
+/**
+ * Registers GM context menu options to mark tokens as Hostile, Friendly, Neutral, or Reset.
+ */
+export async function setupGMDispositionContextMenuOptions(): Promise<void> {
+    const filter = {
+        roles: ["GM" as const],
+        min: 1,
+        max: 1,
+        some: [
+            { key: "layer", value: "CHARACTER" },
+            { key: "layer", value: "ATTACHMENT" }
+        ]
+    };
+
+    try {
+        await OBR.contextMenu.remove(gmSetHostileMenuId);
+        await OBR.contextMenu.create({
+            id: gmSetHostileMenuId,
+            icons: [{
+                icon: "/embers.svg",
+                label: "Set Disposition: Hostile (Enemy)",
+                filter
+            }],
+            onClick: async (context) => {
+                const item = context.items[0];
+                if (!item) return;
+                await setTokenDisposition(item.id, "hostile");
+                OBR.notification.show(`Marked "${item.name || "Token"}" as Hostile (Enemy).`, "INFO");
+            }
+        });
+
+        await OBR.contextMenu.remove(gmSetFriendlyMenuId);
+        await OBR.contextMenu.create({
+            id: gmSetFriendlyMenuId,
+            icons: [{
+                icon: "/embers.svg",
+                label: "Set Disposition: Friendly (Ally)",
+                filter
+            }],
+            onClick: async (context) => {
+                const item = context.items[0];
+                if (!item) return;
+                await setTokenDisposition(item.id, "friendly");
+                OBR.notification.show(`Marked "${item.name || "Token"}" as Friendly (Ally).`, "INFO");
+            }
+        });
+
+        await OBR.contextMenu.remove(gmSetNeutralMenuId);
+        await OBR.contextMenu.create({
+            id: gmSetNeutralMenuId,
+            icons: [{
+                icon: "/embers.svg",
+                label: "Set Disposition: Neutral",
+                filter
+            }],
+            onClick: async (context) => {
+                const item = context.items[0];
+                if (!item) return;
+                await setTokenDisposition(item.id, "neutral");
+                OBR.notification.show(`Marked "${item.name || "Token"}" as Neutral.`, "INFO");
+            }
+        });
+
+        await OBR.contextMenu.remove(gmResetDispositionMenuId);
+        await OBR.contextMenu.create({
+            id: gmResetDispositionMenuId,
+            icons: [{
+                icon: "/embers.svg",
+                label: "Reset Disposition (Auto)",
+                filter
+            }],
+            onClick: async (context) => {
+                const item = context.items[0];
+                if (!item) return;
+                await setTokenDisposition(item.id, null);
+                OBR.notification.show(`Reset "${item.name || "Token"}" disposition to automatic.`, "INFO");
+            }
+        });
+    } catch (err) {
+        console.error("Failed to setup GM disposition context menus:", err);
+    }
+}
+
+/**
  * Sets up all player character context menus.
  */
 export async function setupPlayerCharacterContextMenus(): Promise<void> {
@@ -415,6 +551,7 @@ export async function setupPlayerCharacterContextMenus(): Promise<void> {
         setupUnclaimContextMenuOption(),
         setupFocusCameraContextMenuOption(),
         setupGMAssignContextMenuOption(),
-        setupGMUnassignContextMenuOption()
+        setupGMUnassignContextMenuOption(),
+        setupGMDispositionContextMenuOptions()
     ]);
 }

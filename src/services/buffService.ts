@@ -65,11 +65,21 @@ export const KNOWN_BUFFS: Record<string, Omit<ActiveBuff, "activatedAt">> = {
         description: "Bonus to weapon attack roll equal to Intelligence, Wisdom, or Charisma modifier (minimum +1).",
         attackBonus: 1,
     },
+    steady_aim: {
+        id: "steady_aim",
+        name: "Steady Aim",
+        icon: "",
+        source: "Rogue",
+        durationText: "Next attack (this turn)",
+        description: "Advantage on your next attack roll on the current turn. Movement speed is 0.",
+        attackAdvantage: true,
+        spellAttackAdvantage: true,
+    },
 };
 
 /**
  * Determines whether a given feature represents an activatable buff or stance
- * (e.g. Innate Sorcery, Rage, Bladesong).
+ * (e.g. Innate Sorcery, Rage, Bladesong, Steady Aim).
  */
 export function isActivatableBuffFeature(name?: string | null, description?: string | null): boolean {
     if (!name) return false;
@@ -82,6 +92,7 @@ export function isActivatableBuffFeature(name?: string | null, description?: str
         lower.includes("bladesong") ||
         lower.includes("frenzy") ||
         lower.includes("starry form") ||
+        lower.includes("steady aim") ||
         lower.includes("channeled attack")
     );
 }

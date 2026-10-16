@@ -8,10 +8,11 @@ import type { DDBParsedCharacter } from "../../../types/ddb";
 import type { DDBRollCardData, DDBSubRollEntry, DDBSubRollExtraDamage } from "../../../types/ddbRollLog";
 import { applyDamage, applyRayOfFrostSpeedReduction, getTokenVitals } from "../../../features/combat/tokenVitalsService";
 import { getDamageApplicationMode } from "../../../features/combat/damageModeService";
-import { combineD20RollModes, resolveConditionRules } from "../../../features/combat/domain/conditionRules";
-import type { D20RollMode } from "../../../features/combat/domain/conditionRules";
+import { resolveConditionRules } from "../../../features/combat/domain/conditionRules";
 import { resolveAttackHit } from "../../../features/combat/domain/attackResolution";
 import { calculateDisplayedSpeed } from "../../../features/combat/domain/temporaryCombatEffects";
+import { isRangedAttackAction, resolveRollMode, checkCloseCombatThreat } from "../../../features/combat/domain/attackRangeRules";
+import { getActiveEncounter } from "../../../features/combat/initiativeService";
 
 interface UseSpellAttackRollOptions {
     casterId?: string;
@@ -75,14 +76,46 @@ export function useSpellAttackRoll({
                     "WARNING",
                 );
             }
-            const mode: D20RollMode = combineD20RollModes(
-                hasSpellAdvantage ? "advantage" : "normal",
-                conditionRules.mode,
-            );
+            const ddbSpell = character?.spells?.find(s => s.id === spell.id || s.name.toLowerCase() === spell.name.toLowerCase());
+            const isRangedSpell = isRangedAttackAction({
+                selectedSpell: spell.id,
+                saveOrAttack: ddbSpell?.saveOrAttack,
+                attackType: "ranged",
+            });
+
+            let hasCloseCombatDisadvantage = false;
+            if (isRangedSpell && casterId) {
+                try {
+                    const sceneItems = await OBR.scene.items.getItems();
+                    const casterToken = sceneItems.find(i => i.id === casterId);
+                    if (casterToken) {
+                        const [dpi, scale] = await Promise.all([
+                            OBR.scene.grid.getDpi(),
+                            OBR.scene.grid.getScale(),
+                        ]);
+                        const scaleMultiplier = typeof scale === "string" ? parseFloat(scale) || 5 : (scale?.parsed?.multiplier ?? 5);
+                        const encounter = await getActiveEncounter();
+                        const threat = checkCloseCombatThreat(
+                            casterToken.position,
+                            sceneItems,
+                            { dpi, scaleMultiplier },
+                            casterToken,
+                            encounter,
+                            character
+                        );
+                        if (threat.isThreatened) {
+                            hasCloseCombatDisadvantage = true;
+                        }
+                    }
+                } catch {}
+            }
+
+            const hasAdv = hasSpellAdvantage || conditionRules.mode === "advantage";
+            const hasDis = hasCloseCombatDisadvantage || conditionRules.mode === "disadvantage";
+            const mode = resolveRollMode(hasAdv, hasDis);
             const conditionNote = [...conditionRules.reasons, ...conditionRules.requiresAdjudication].join(" • ");
             const isHexActive = concentrationSpell?.id?.toLowerCase() === "hex" || concentrationSpell?.name?.toLowerCase() === "hex";
             const isTargetHexed = Boolean(isHexActive && concentrationSpell?.hexTargetId && targetId && concentrationSpell.hexTargetId === targetId);
-            const ddbSpell = character?.spells?.find(s => s.id === spell.id || s.name.toLowerCase() === spell.name.toLowerCase());
             const damageType = ddbSpell?.damageType || "Force";
             const dieFaces = Number(ddbSpell?.damage?.match(/d(\d+)/i)?.[1] ?? 10);
 

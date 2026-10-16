@@ -110,6 +110,12 @@ import {
 } from "./features/combat/tokenVitalsService";
 import type { TokenVitals } from "./features/combat/domain/types";
 import {
+  isRangedAttackAction,
+  resolveRollMode,
+  checkCloseCombatThreat,
+} from "./features/combat/domain/attackRangeRules";
+import { getActiveEncounter } from "./features/combat/initiativeService";
+import {
   resolveAttackHit,
 } from "./features/combat/domain/attackResolution";
 import {
@@ -1287,6 +1293,20 @@ async function processAimingMove(
 
     let hasAdvantage = false;
     let hasDisadvantage = false;
+    let advantageReason: string | undefined;
+    let disadvantageReason: string | undefined;
+
+    if (activeCaster.item) {
+      const buffs = getTokenBuffs(activeCaster.item);
+      const buffMods = getComputedBuffModifiers(buffs);
+      if (isWeapon && buffMods.hasAttackAdvantage) {
+        hasAdvantage = true;
+        advantageReason = "Advantage (Buff)";
+      } else if (!isWeapon && buffMods.hasSpellAdvantage) {
+        hasAdvantage = true;
+        advantageReason = "Advantage (Buff)";
+      }
+    }
 
     if (darknessZones.length > 0) {
       const casterInDarkness = darknessZones.some((zone) => {
@@ -1300,6 +1320,7 @@ async function processAimingMove(
       if (!visionCheck.canSee) {
         if (isWeapon) {
           hasDisadvantage = true;
+          disadvantageReason = "Disadvantage - Unseen Target";
         }
       } else if (casterInDarkness) {
         const targetToken = sceneItems.find(
@@ -1323,7 +1344,28 @@ async function processAimingMove(
         );
         if (!targetHasDarknessVision) {
           hasAdvantage = true;
+          advantageReason = "Advantage - Unseen Attacker";
         }
+      }
+    }
+
+    const isRanged = isRangedAttackAction({
+      selectedSpell,
+      spellFormula: spell as any,
+    });
+
+    if (isRanged && activeCaster.item) {
+      const activeEncounter = await getActiveEncounter();
+      const threat = checkCloseCombatThreat(
+        activeCaster.position,
+        sceneItems,
+        grid,
+        activeCaster.item,
+        activeEncounter
+      );
+      if (threat.isThreatened) {
+        hasDisadvantage = true;
+        disadvantageReason = threat.reason || "Close Combat (Foe within 5 ft)";
       }
     }
 
@@ -1336,6 +1378,8 @@ async function processAimingMove(
       isWeapon,
       hasAdvantage,
       hasDisadvantage,
+      advantageReason,
+      disadvantageReason,
     });
   }
 }
@@ -2002,25 +2046,23 @@ async function setupTargetToolModes(
 
                   // Close combat: check if any other combat token is within 5.5 ft of the attacker
                   const sceneItems = await OBR.scene.items.getItems();
-                  const hasAdjacentEnemy = sceneItems.some((item) => {
-                    if (!isValidCombatTargetToken(item)) return false;
-                    if (item.id === castContext.casterTokenId || item.id === activeCaster.id) return false;
-                    const dEnemy = (Math.hypot(item.position.x - casterPos.x, item.position.y - casterPos.y) / grid.dpi) * grid.scaleMultiplier;
-                    return dEnemy <= 5.5;
-                  });
-                  if (hasAdjacentEnemy) {
+                  const activeEncounter = await getActiveEncounter();
+                  const threat = checkCloseCombatThreat(
+                    casterPos,
+                    sceneItems,
+                    grid,
+                    activeCaster.item ?? ({ id: castContext.casterTokenId, position: casterPos } as any),
+                    activeEncounter,
+                    ddbChar
+                  );
+                  if (threat.isThreatened) {
                     disadvantageReasons.push("Close Combat");
                   }
                 }
 
-                let effectiveRollMode = rollMode;
-                if (disadvantageReasons.length > 0) {
-                  if (effectiveRollMode === "advantage") {
-                    effectiveRollMode = "normal";
-                  } else if (effectiveRollMode === "normal") {
-                    effectiveRollMode = "disadvantage";
-                  }
-                }
+                const hasAdv = rollMode === "advantage";
+                const hasDis = rollMode === "disadvantage" || disadvantageReasons.length > 0;
+                const effectiveRollMode = resolveRollMode(hasAdv, hasDis);
 
                 const attackBonus = buffMods.attackBonus || 0;
                 const effectiveToHit = (isThrown && weapon.thrownToHit != null ? weapon.thrownToHit : weapon.toHit) + attackBonus;
@@ -2842,15 +2884,38 @@ async function setupTargetToolModes(
                 const damageType =
                   selectedDamageType || ddbSpell?.damageType || "Force";
                 const dieFaces = Number(
-                  ddbSpell?.damage?.match(/d(\d+)/i)?.[1] ?? 10,
+                  ddbSpell?.damage?.match(/d(\d+)/i)?.[1] ?? 10
                 );
+                const isRangedSpell = isRangedAttackAction({
+                  selectedSpell,
+                  spellFormula,
+                  saveOrAttack: ddbSpell?.saveOrAttack,
+                });
+                let effectiveSpellRollMode = rollMode;
+                if (isRangedSpell) {
+                  const grid = await getSceneGridInfo();
+                  const casterPos = castContext.position ?? activeCaster.position;
+                  const sceneItems = await OBR.scene.items.getItems();
+                  const activeEncounter = await getActiveEncounter();
+                  const threat = checkCloseCombatThreat(
+                    casterPos,
+                    sceneItems,
+                    grid,
+                    activeCaster.item ?? ({ id: castContext.casterTokenId, position: casterPos } as any),
+                    activeEncounter,
+                    ddbChar
+                  );
+                  if (threat.isThreatened) {
+                    effectiveSpellRollMode = resolveRollMode(rollMode === "advantage", true);
+                  }
+                }
 
                 for (let b = 1; b <= beamInfo.totalBeams; b++) {
                   const beamTargetId = targetTokens[b - 1] || targetTokenId;
                   const bVitals = beamTargetId ? vitalsMap.get(beamTargetId) : null;
                   const bAc = bVitals?.armorClass ?? 10;
 
-                  const roll = rollAttack(spellAttackBonus, "", rollMode);
+                  const roll = rollAttack(spellAttackBonus, "", effectiveSpellRollMode);
                   const hitRes = resolveAttackHit(
                     { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                     bAc,
@@ -3056,7 +3121,31 @@ async function setupTargetToolModes(
                 const targetAc = targetVitals?.armorClass ?? 10;
                 const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
 
-                const roll = rollAttack(spellAttackBonus, "", rollMode);
+                const isRangedSpell = isRangedAttackAction({
+                  selectedSpell,
+                  spellFormula,
+                  saveOrAttack: ddbSpell?.saveOrAttack,
+                });
+                let effectiveSpellRollMode = rollMode;
+                if (isRangedSpell) {
+                  const grid = await getSceneGridInfo();
+                  const casterPos = castContext.position ?? activeCaster.position;
+                  const sceneItems = await OBR.scene.items.getItems();
+                  const activeEncounter = await getActiveEncounter();
+                  const threat = checkCloseCombatThreat(
+                    casterPos,
+                    sceneItems,
+                    grid,
+                    activeCaster.item ?? ({ id: castContext.casterTokenId, position: casterPos } as any),
+                    activeEncounter,
+                    ddbChar
+                  );
+                  if (threat.isThreatened) {
+                    effectiveSpellRollMode = resolveRollMode(rollMode === "advantage", true);
+                  }
+                }
+
+                const roll = rollAttack(spellAttackBonus, "", effectiveSpellRollMode);
                 const hitRes = resolveAttackHit(
                   { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                   targetAc,

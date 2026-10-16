@@ -182,4 +182,66 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
         expect(mockGetItems).toHaveBeenCalledTimes(1);
         expect(mockAddItems).toHaveBeenCalledTimes(1);
     });
+
+    it("displays (Normal - Adv & Disadv Cancelled) when both Advantage and Disadvantage are active", async () => {
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            hasAdvantage: true,
+            hasDisadvantage: true,
+        });
+
+        const labelItem = mockLocalItems.find(i => i.id === AIMING_DISTANCE_LABEL_ID);
+        expect(labelItem).toBeDefined();
+        expect(labelItem.plainText).toContain("(Normal - Adv & Disadv Cancelled)");
+        expect(labelItem.plainText).not.toContain("🎯");
+    });
+
+    it("displays (Advantage) when only Advantage is active", async () => {
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            hasAdvantage: true,
+            hasDisadvantage: false,
+        });
+
+        const labelItem = mockLocalItems.find(i => i.id === AIMING_DISTANCE_LABEL_ID);
+        expect(labelItem).toBeDefined();
+        expect(labelItem.plainText).toContain("(Advantage)");
+        expect(labelItem.plainText).not.toContain("🎯");
+    });
+
+    it("displays (Disadvantage) when only Disadvantage is active", async () => {
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            hasAdvantage: false,
+            hasDisadvantage: true,
+            disadvantageReason: "Close Combat (Foe within 5 ft)",
+        });
+
+        const labelItem = mockLocalItems.find(i => i.id === AIMING_DISTANCE_LABEL_ID);
+        expect(labelItem).toBeDefined();
+        expect(labelItem.plainText).toContain("Disadvantage");
+        expect(labelItem.plainText).toContain("Close Combat (Foe within 5 ft)");
+        expect(labelItem.plainText).not.toContain("🎯");
+    });
+
+    it("verifies zero emojis in aimingOverlayRenderer.ts", async () => {
+        const fs = await import("fs");
+        const path = await import("path");
+        const sourceCode = fs.readFileSync(
+            path.resolve(__dirname, "../aimingOverlayRenderer.ts"),
+            "utf-8"
+        );
+        expect(sourceCode).not.toContain("🎯");
+        expect(sourceCode).not.toContain("🪄");
+        expect(sourceCode).not.toContain("⚔️");
+    });
 });

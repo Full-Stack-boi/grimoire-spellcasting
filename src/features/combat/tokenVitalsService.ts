@@ -130,6 +130,9 @@ export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals 
     pendingConcentrationSaves: Array.isArray(data.pendingConcentrationSaves)
       ? data.pendingConcentrationSaves.filter(isPendingConcentrationSave)
       : [],
+    disposition: (data.disposition === "friendly" || data.disposition === "hostile" || data.disposition === "neutral")
+      ? data.disposition
+      : undefined,
     hideNumbers: Boolean(data.hideNumbers),
     updatedAt: data.updatedAt ?? Date.now(),
   };

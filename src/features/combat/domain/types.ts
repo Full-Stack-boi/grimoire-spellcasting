@@ -1,3 +1,5 @@
+export type TokenDisposition = "friendly" | "hostile" | "neutral";
+
 export interface Combatant {
   id: string; // Token ID on OBR scene
   name: string;
@@ -14,6 +16,7 @@ export interface Combatant {
   isDefeated?: boolean;
   avatarUrl?: string;
   isPlayer?: boolean;
+  disposition?: TokenDisposition;
   notes?: string;
 }
 
@@ -40,6 +43,7 @@ export interface TokenVitals {
   effects?: TemporaryCombatEffect[];
   concentration?: ConcentrationState | null;
   pendingConcentrationSaves?: PendingConcentrationSave[];
+  disposition?: TokenDisposition;
   hideNumbers?: boolean;
   updatedAt?: number;
 }
@@ -98,3 +102,6 @@ export const DEFAULT_ENCOUNTER: CombatEncounter = {
   combatants: [],
   updatedAt: 0,
 };
+
+export const TOKEN_DISPOSITION_METADATA_KEY = "com.fullstackboi.spellcasting/disposition";
+export const LEGACY_TOKEN_DISPOSITION_METADATA_KEY = "eu.armindo.embers/disposition";
