@@ -364,6 +364,9 @@ export async function syncDDBRollLogViewport(viewWidth: number, viewHeight: numb
 }
 
 export async function closeDDBRollLogPopover(): Promise<void> {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
     setPopoverOpenState(false);
     try {
         await OBR.popover.close(ddbRollLogPopoverId);

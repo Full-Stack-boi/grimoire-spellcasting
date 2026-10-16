@@ -14,6 +14,7 @@
   "rewrites": [
     { "source": "/background.html", "destination": "/background.html" },
     { "source": "/api/ddb/:path*", "destination": "/api/ddb" },
+    { "source": "/api/ddb-monsters/:path*", "destination": "/api/ddb" },
     { "source": "/((?!assets|combat-badges|background\\.html|[^/]+\\.[^/]+).*)", "destination": "/index.html" }
   ]
 }

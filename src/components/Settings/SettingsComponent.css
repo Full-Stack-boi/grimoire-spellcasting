@@ -326,6 +326,9 @@
     padding: 5px 10px;
     font-size: 0.8rem;
     font-weight: 600;
+    line-height: 1.35;
+    height: auto;
+    min-height: 30px;
     outline: none;
     cursor: pointer;
     box-sizing: border-box;

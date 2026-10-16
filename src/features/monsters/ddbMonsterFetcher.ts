@@ -555,6 +555,14 @@ export function parseDdbMonsterHtml(html: string, sourceUrl?: string): MonsterSt
  */
 export async function checkBrowserBridgeStatus(): Promise<{ connected: boolean; browserName?: string; activeTitle?: string; activeUrl?: string }> {
   try {
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname.endsWith(".local"));
+    if (!isLocalHost) {
+      return { connected: false };
+    }
     const origin = typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost:5173";
     const res = await fetch(`${origin}/api/browser/status`);
     if (res.ok) {
@@ -593,7 +601,7 @@ export const syncActiveMonsterFromBrave = syncActiveMonsterFromBrowser;
 /**
  * Fetches a monster from D&D Beyond using multi-tier fallbacks:
  * 1. Local Browser Bridge (uses your authenticated browser session with book entitlements)
- * 2. Vite proxy /api/ddb-monsters
+ * 2. Proxy /api/ddb-monsters (Vite dev server or Vercel serverless proxy)
  * 3. Public CORS proxies
  */
 export async function fetchDdbMonsterByUrl(input: string): Promise<MonsterStatblock> {
@@ -604,21 +612,28 @@ export async function fetchDdbMonsterByUrl(input: string): Promise<MonsterStatbl
 
   const ddbUrl = `https://www.dndbeyond.com/monsters/${slug}`;
   const origin = typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost:5173";
+  const isLocalHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.endsWith(".local"));
 
-  // Tier 1: Try Browser Bridge (has user's full login and purchased books in Chrome, Brave, or Edge!)
-  try {
-    const bridgeRes = await fetch(`${origin}/api/browser/fetch-monster?url=${encodeURIComponent(ddbUrl)}`);
-    if (bridgeRes.ok) {
-      const data = await bridgeRes.json();
-      if (data.html) {
-        const parsed = parseDdbMonsterHtml(data.html, ddbUrl);
-        if (parsed) {
-          return parsed;
+  // Tier 1: Try Browser Bridge if on localhost (has user's full login and purchased books in Chrome, Brave, or Edge!)
+  if (isLocalHost) {
+    try {
+      const bridgeRes = await fetch(`${origin}/api/browser/fetch-monster?url=${encodeURIComponent(ddbUrl)}`);
+      if (bridgeRes.ok) {
+        const data = await bridgeRes.json();
+        if (data.html) {
+          const parsed = parseDdbMonsterHtml(data.html, ddbUrl);
+          if (parsed) {
+            return parsed;
+          }
         }
       }
+    } catch {
+      // Fall back to proxies if browser bridge is offline
     }
-  } catch {
-    // Fall back to public proxies if browser bridge is offline
   }
 
   const localProxy = `${origin}/api/ddb-monsters/monsters/${slug}`;
@@ -626,7 +641,6 @@ export async function fetchDdbMonsterByUrl(input: string): Promise<MonsterStatbl
     localProxy,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(ddbUrl)}`,
     `https://corsproxy.io/?url=${encodeURIComponent(ddbUrl)}`,
-    ddbUrl,
   ];
 
   let lastError: Error | null = null;
@@ -653,6 +667,6 @@ export async function fetchDdbMonsterByUrl(input: string): Promise<MonsterStatbl
 
   throw new Error(
     `Failed to fetch monster from D&D Beyond (${slug}). ` +
-      (lastError ? lastError.message : "CORS or book permission blocked. You can open the monster in Brave and click 'Sync from Brave Tab'.")
+      (lastError ? lastError.message : "CORS or book permission blocked. You can open the monster in your browser and click 'Sync from Browser Tab'.")
   );
 }

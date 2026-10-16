@@ -60,6 +60,10 @@
   color: #d1d5db;
   padding: 5px 8px;
   font-size: 12px;
+  line-height: 1.35;
+  height: auto;
+  min-height: 30px;
+  box-sizing: border-box;
   outline: none;
   cursor: pointer;
 }
@@ -697,6 +701,10 @@
   color: #d1d5db;
   border-radius: 3px;
   font-size: 11px;
+  line-height: 1.35;
+  height: auto;
+  min-height: 26px;
+  box-sizing: border-box;
   padding: 4px 6px;
 }
 

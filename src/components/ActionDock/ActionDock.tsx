@@ -1641,7 +1641,11 @@ export const ActionDock: React.FC = () => {
         />
     );
     return (
-        <div className="ddb-dock-outer-wrapper" style={{ display: isVisible ? undefined : "none" }}>
+        <div
+            className="ddb-dock-outer-wrapper"
+            style={{ display: isVisible ? undefined : "none" }}
+            aria-hidden={!isVisible ? true : undefined}
+        >
             {/* D&D Beyond Floating Custom Dice Launcher (on the grass in the red circle area) */}
             <button
                 type="button"

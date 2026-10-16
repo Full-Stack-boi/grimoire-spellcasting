@@ -224,7 +224,7 @@ function setupViewportResizeSync(): () => void {
     } catch {}
   };
 
-  const intervalId = window.setInterval(checkViewport, 350);
+  const intervalId = window.setInterval(checkViewport, 1500);
   void checkViewport();
 
   const handleWindowResize = () => {

@@ -234,6 +234,9 @@ export async function openActionDock(): Promise<void> {
  * Closes the ActionDock popover by parking it offscreen at 0x0 size, keeping the iframe alive.
  */
 export async function closeActionDock(): Promise<void> {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
     isDockLocallyOpen = false;
     notifyDockVisibility(false);
 
@@ -266,6 +269,9 @@ export async function closeActionDock(): Promise<void> {
  * Fully closes and unmounts the ActionDock popover (used on scene teardown).
  */
 export async function destroyActionDock(): Promise<void> {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
     isDockLocallyOpen = false;
     notifyDockVisibility(false);
     try {
