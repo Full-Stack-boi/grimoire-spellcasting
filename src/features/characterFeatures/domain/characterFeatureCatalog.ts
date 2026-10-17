@@ -16,11 +16,28 @@ function hasFeatOrAction(character: DDBParsedCharacter, name: string): boolean {
     return inFeats || inActions;
 }
 
-function hasSubclassOrAction(character: DDBParsedCharacter, name: string): boolean {
-    const lower = name.toLowerCase();
-    const inSubclass = character.classes?.some(c => c.subclass?.toLowerCase().includes(lower)) ?? false;
-    const inActions = character.actions?.some(a => a.name.toLowerCase().includes(lower)) ?? false;
-    return inSubclass || inActions;
+function hasClassSubclassOrAction(
+    character: DDBParsedCharacter,
+    className: string,
+    subclassKeyword: string,
+    actionKeywords: string[],
+): boolean {
+    const classLower = className.toLowerCase();
+    const subLower = subclassKeyword.toLowerCase();
+    const inClassSubclass =
+        character.classes?.some(
+            c =>
+                c.level > 0 &&
+                c.name.toLowerCase().includes(classLower) &&
+                Boolean(c.subclass && c.subclass.toLowerCase().includes(subLower)),
+        ) ?? false;
+    if (inClassSubclass) return true;
+    return (
+        character.actions?.some(a => {
+            const actionName = a.name.toLowerCase();
+            return actionKeywords.some(k => actionName.includes(k.toLowerCase()));
+        }) ?? false
+    );
 }
 
 const featureFallbacks: FeatureFallback[] = [
@@ -52,7 +69,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Barbarian: Path of the Zealot ─────────────────────────────────────────
     {
-        matches: character => character.classes.some(c => c.name.toLowerCase().includes("barbarian") && (c.subclass?.toLowerCase().includes("zealot") ?? false)) || hasSubclassOrAction(character, "divine fury"),
+        matches: character => hasClassSubclassOrAction(character, "barbarian", "zealot", ["divine fury"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("divine fury")),
         create: character => {
             const barbarianLevel = character.classes
@@ -72,7 +89,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── VSSPP2 Subclass Features ────────────────────────────────────────────────
     {
-        matches: character => hasSubclassOrAction(character, "masks"),
+        matches: character => hasClassSubclassOrAction(character, "bard", "masks", ["persona masks"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("persona masks")),
         create: character => ({
             id: "embers:bard:college-of-masks:persona-masks",
@@ -89,7 +106,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "masks"),
+        matches: character => hasClassSubclassOrAction(character, "bard", "masks", ["virtuoso skill", "persona masks"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("virtuoso skill")),
         create: character => ({
             id: "embers:bard:college-of-masks:virtuoso-skill",
@@ -106,7 +123,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "dragon domain") || (hasSubclassOrAction(character, "dragon") && character.classes?.some(c => c.name.toLowerCase().includes("cleric"))),
+        matches: character => hasClassSubclassOrAction(character, "cleric", "dragon", ["chromatic affinity", "dragon domain"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("chromatic affinity")),
         create: character => {
             const clericLevel = character.classes
@@ -128,7 +145,7 @@ const featureFallbacks: FeatureFallback[] = [
         }
     },
     {
-        matches: character => hasSubclassOrAction(character, "dragon domain") || (hasSubclassOrAction(character, "dragon") && character.classes?.some(c => c.name.toLowerCase().includes("cleric"))),
+        matches: character => hasClassSubclassOrAction(character, "cleric", "dragon", ["draconic majesty", "dragon domain"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("draconic majesty")),
         create: character => ({
             id: "embers:cleric:dragon-domain:draconic-majesty",
@@ -140,7 +157,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "city"),
+        matches: character => hasClassSubclassOrAction(character, "druid", "city", ["city shape", "circle of the city"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("city shape")),
         create: () => ({
             id: "embers:druid:circle-of-the-city:city-shape",
@@ -152,7 +169,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "city"),
+        matches: character => hasClassSubclassOrAction(character, "druid", "city", ["wall warp", "circle of the city"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("wall warp")),
         create: () => ({
             id: "embers:druid:circle-of-the-city:wall-warp",
@@ -169,7 +186,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "beastborne"),
+        matches: character => hasClassSubclassOrAction(character, "ranger", "beastborne", ["bestial aspect", "beastborne"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("bestial aspect")),
         create: () => ({
             id: "embers:ranger:beastborne:bestial-aspect",
@@ -181,7 +198,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "heroic"),
+        matches: character => hasClassSubclassOrAction(character, "sorcerer", "heroic", ["heroic soul", "heroic sorcery"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("heroic soul")),
         create: character => {
             const sorcLevel = character.classes
@@ -198,7 +215,7 @@ const featureFallbacks: FeatureFallback[] = [
         }
     },
     {
-        matches: character => hasSubclassOrAction(character, "heroic"),
+        matches: character => hasClassSubclassOrAction(character, "sorcerer", "heroic", ["mystical maneuvers", "heroic sorcery"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("mystical maneuvers")),
         create: character => ({
             id: "embers:sorcerer:heroic-sorcery:mystical-maneuvers",
@@ -210,7 +227,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "heroic"),
+        matches: character => hasClassSubclassOrAction(character, "sorcerer", "heroic", ["innate bladework", "heroic sorcery"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("innate bladework")),
         create: () => ({
             id: "embers:sorcerer:heroic-sorcery:innate-bladework",
@@ -222,7 +239,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "heroic"),
+        matches: character => hasClassSubclassOrAction(character, "sorcerer", "heroic", ["sorcerous kindling", "heroic sorcery"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("sorcerous kindling")),
         create: () => ({
             id: "embers:sorcerer:heroic-sorcery:sorcerous-kindling",
@@ -234,7 +251,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "heroic"),
+        matches: character => hasClassSubclassOrAction(character, "sorcerer", "heroic", ["heroic haste", "heroic sorcery"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("heroic haste")),
         create: () => ({
             id: "embers:sorcerer:heroic-sorcery:heroic-haste",
@@ -246,7 +263,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "magic missile mage"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "magic missile mage", ["magic missile savant", "magic missile mage"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("magic missile savant")),
         create: character => ({
             id: "embers:wizard:magic-missile-mage:magic-missile-savant",
@@ -263,7 +280,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "magic missile mage"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "magic missile mage", ["shield of missiles", "magic missile mage"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("shield of missiles")),
         create: () => ({
             id: "embers:wizard:magic-missile-mage:shield-of-missiles",
@@ -280,7 +297,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "magic missile mage"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "magic missile mage", ["giga-missile", "magic missile mage"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("giga-missile")),
         create: character => ({
             id: "embers:wizard:magic-missile-mage:giga-missile",
@@ -297,7 +314,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "pistolero"),
+        matches: character => hasClassSubclassOrAction(character, "gunslinger", "pistolero", ["fan the hammer", "pistolero"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("fan the hammer")),
         create: () => ({
             id: "embers:gunslinger:pistolero:fan-the-hammer",
@@ -309,7 +326,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "pistolero"),
+        matches: character => hasClassSubclassOrAction(character, "gunslinger", "pistolero", ["showdown", "pistolero"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("showdown")),
         create: () => ({
             id: "embers:gunslinger:pistolero:showdown",
@@ -412,7 +429,7 @@ const featureFallbacks: FeatureFallback[] = [
     },
     // Artificer Subclasses
     {
-        matches: character => hasSubclassOrAction(character, "alchemist"),
+        matches: character => hasClassSubclassOrAction(character, "artificer", "alchemist", ["experimental elixir", "alchemist"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("experimental elixir")),
         create: character => ({
             id: "embers:artificer:alchemist:experimental-elixir",
@@ -429,7 +446,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "armorer"),
+        matches: character => hasClassSubclassOrAction(character, "artificer", "armorer", ["arcane armor", "armor model"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("arcane armor") || f.name.toLowerCase().includes("armor model")),
         create: () => ({
             id: "embers:artificer:armorer:arcane-armor",
@@ -441,7 +458,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "artillerist"),
+        matches: character => hasClassSubclassOrAction(character, "artificer", "artillerist", ["eldritch cannon"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("eldritch cannon")),
         create: () => ({
             id: "embers:artificer:artillerist:eldritch-cannon",
@@ -458,7 +475,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "battle smith"),
+        matches: character => hasClassSubclassOrAction(character, "artificer", "battle smith", ["steel defender"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("steel defender")),
         create: () => ({
             id: "embers:artificer:battle-smith:steel-defender",
@@ -470,7 +487,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "cartographer"),
+        matches: character => hasClassSubclassOrAction(character, "artificer", "cartographer", ["mapper's survey"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("cartographer") || f.name.toLowerCase().includes("mapper's survey")),
         create: () => ({
             id: "embers:artificer:cartographer:mappers-survey",
@@ -483,7 +500,7 @@ const featureFallbacks: FeatureFallback[] = [
     },
     // Monster Hunter Guilds
     {
-        matches: character => hasSubclassOrAction(character, "weapon master"),
+        matches: character => hasClassSubclassOrAction(character, "monster hunter", "weapon master", ["close quarters", "master's stride"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("close quarters") || f.name.toLowerCase().includes("master's stride")),
         create: () => ({
             id: "embers:monster-hunter:guild-of-the-weapon-master:close-quarters",
@@ -495,7 +512,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "mystic"),
+        matches: character => hasClassSubclassOrAction(character, "monster hunter", "mystic", ["mystic focus"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("mystic focus") || f.name.toLowerCase().includes("ward")),
         create: () => ({
             id: "embers:monster-hunter:guild-of-the-mystic:mystic-focus",
@@ -507,7 +524,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "apothecary"),
+        matches: character => hasClassSubclassOrAction(character, "monster hunter", "apothecary", ["poultice craft", "tincture"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("poultice craft") || f.name.toLowerCase().includes("tincture")),
         create: character => ({
             id: "embers:monster-hunter:guild-of-the-apothecary:poultice-craft",
@@ -524,7 +541,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "trapper"),
+        matches: character => hasClassSubclassOrAction(character, "monster hunter", "trapper", ["cunning snare", "hunter's ambush"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("cunning snare") || f.name.toLowerCase().includes("hunter's ambush")),
         create: () => ({
             id: "embers:monster-hunter:guild-of-the-trapper:cunning-snare",
@@ -537,7 +554,7 @@ const featureFallbacks: FeatureFallback[] = [
     },
     // Arcana Unleashed Subclasses
     {
-        matches: character => hasSubclassOrAction(character, "arcane archer"),
+        matches: character => hasClassSubclassOrAction(character, "fighter", "arcane archer", ["arcane shot"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("arcane shot")),
         create: () => ({
             id: "embers:fighter:arcane-archer:arcane-shot",
@@ -554,7 +571,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "bladesing"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "bladesing", ["bladesong"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("bladesong")),
         create: character => ({
             id: "embers:wizard:bladesinger:bladesong",
@@ -571,7 +588,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "mystic arts"),
+        matches: character => hasClassSubclassOrAction(character, "monk", "mystic arts", ["mystic ki", "warrior of the mystic arts"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("mystic ki") || f.name.toLowerCase().includes("mystic arts")),
         create: () => ({
             id: "embers:monk:warrior-of-the-mystic-arts:mystic-arts",
@@ -583,7 +600,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "shadow") && (character.classes?.some(c => c.name.toLowerCase().includes("monk")) ?? false),
+        matches: character => hasClassSubclassOrAction(character, "monk", "shadow", ["shadow arts"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("shadow arts")),
         create: () => ({
             id: "embers:monk:warrior-of-shadow:shadow-arts",
@@ -596,7 +613,7 @@ const featureFallbacks: FeatureFallback[] = [
     },
     // Grim Hollow Subclasses
     {
-        matches: character => hasSubclassOrAction(character, "misfortune bringer"),
+        matches: character => hasClassSubclassOrAction(character, "rogue", "misfortune bringer", ["evil eye"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("evil eye")),
         create: () => ({
             id: "embers:rogue:misfortune-bringer:evil-eye",
@@ -608,7 +625,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "circle of blood"),
+        matches: character => hasClassSubclassOrAction(character, "druid", "circle of blood", ["rite of the blood moon", "blood boon"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("rite of the blood moon") || f.name.toLowerCase().includes("blood boon")),
         create: () => ({
             id: "embers:druid:circle-of-blood:rite-of-the-blood-moon",
@@ -620,7 +637,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "plague doctor"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "plague doctor", ["potion craft", "good medicine"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("potion craft") || f.name.toLowerCase().includes("good medicine")),
         create: () => ({
             id: "embers:wizard:plague-doctor:potion-craft",
@@ -632,7 +649,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasSubclassOrAction(character, "sangromancer"),
+        matches: character => hasClassSubclassOrAction(character, "wizard", "sangromancer", ["full-blooded", "sangromancy"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("full-blooded") || f.name.toLowerCase().includes("sangromancy")),
         create: character => {
             const wizLevel = character.classes
@@ -656,8 +673,8 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Player's Handbook (2024) Feats ─────────────────────────────────────────
     {
-        matches: character => hasFeatOrAction(character, "lucky") || hasFeatOrAction(character, "luck"),
-        findExisting: features => features.find(f => f.name.toLowerCase().includes("lucky") || f.name.toLowerCase().includes("luck")),
+        matches: character => hasFeatOrAction(character, "lucky") || hasFeatOrAction(character, "luck points"),
+        findExisting: features => features.find(f => f.name.toLowerCase().includes("lucky") || f.name.toLowerCase().includes("luck points")),
         create: character => ({
             id: "feat:lucky",
             name: "Lucky: Luck Points",

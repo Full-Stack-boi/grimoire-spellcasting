@@ -305,5 +305,44 @@ describe("getCharacterFeatures", () => {
         expect(bladesong).toBeDefined();
         expect(bladesong?.limitedUse?.max).toBe(2);
     });
+
+    it("regression: does not inject Weapon Master Guild feature for Occultist Guild Monster Hunter with Thrown Weapon Master feat", () => {
+        const mhChar = {
+            ...character(
+                [{ name: "Monster Hunter", level: 6, subclass: "Occultist Guild" }],
+                [
+                    {
+                        id: "feat-twm",
+                        name: "Thrown Weapon Master",
+                        source: "feat",
+                        activationType: "bonus",
+                        description: "Rapid Volley",
+                    },
+                ],
+            ),
+            feats: [{ id: 1, name: "Thrown Weapon Master", description: "Mastery of thrown weapons." }],
+        };
+        const result = getCharacterFeatures(mhChar);
+        expect(result.find(f => f.id === "embers:monster-hunter:guild-of-the-weapon-master:close-quarters")).toBeUndefined();
+        expect(result.some(f => f.name.includes("Thrown Weapon Master"))).toBe(true);
+    });
+
+    it("regression: does not inject Lucky feat for Fiend Warlock with Dark One's Own Luck", () => {
+        const warlockChar = character(
+            [{ name: "Warlock", level: 6, subclass: "The Fiend" }],
+            [
+                {
+                    id: "dool",
+                    name: "Dark One's Own Luck",
+                    source: "class",
+                    activationType: "special",
+                    description: "Add 1d10 to ability check or saving throw.",
+                },
+            ],
+        );
+        const result = getCharacterFeatures(warlockChar);
+        expect(result.find(f => f.id === "feat:lucky")).toBeUndefined();
+    });
 });
+
 

@@ -39,30 +39,71 @@ export interface CombatFeatureDefinition {
 }
 
 /**
- * Checks whether a character has a feature, option, feat, action, or subclass matching the given pattern.
+ * Checks whether a character has a feature, option, feat, action, or classFeature NAME matching the given pattern.
+ * Intentionally does NOT match description/snippet prose to prevent false positives
+ * (e.g. Monster Hunter's Monster Grimoire listing "Fiends", or Tiefling "Fiendish Legacy" description).
  */
-export function hasCharacterFeature(character: DDBParsedCharacter, pattern: RegExp | string): boolean {
+export function hasCharacterFeature(
+  character: DDBParsedCharacter,
+  pattern: RegExp | string,
+  options?: { matchSubclass?: boolean },
+): boolean {
   if (!character) return false;
   const regex = typeof pattern === "string" ? new RegExp(pattern, "i") : pattern;
+  const matchSubclass = options?.matchSubclass ?? true;
 
-  if (character.actions?.some(a => regex.test(a.name) || regex.test(a.description || ""))) {
+  if (character.actions?.some(a => Boolean(a?.name && regex.test(a.name)))) {
     return true;
   }
-  if (character.feats?.some(f => regex.test(f.name) || regex.test(f.description || ""))) {
+  if (character.feats?.some(f => Boolean(f?.name && regex.test(f.name)))) {
     return true;
   }
-  if (character.options?.some(o => regex.test(o.name) || regex.test(o.description || "") || regex.test(o.snippet || ""))) {
+  if (character.options?.some(o => Boolean(o?.name && regex.test(o.name)))) {
     return true;
   }
-  if (character.classes?.some(c => (c.subclass && regex.test(c.subclass)) || regex.test(c.name))) {
+  if (
+    matchSubclass &&
+    character.classes?.some(c => (c.subclass && regex.test(c.subclass)) || regex.test(c.name))
+  ) {
     return true;
   }
-  if (character.classFeatures) {
-    for (const key of Object.keys(character.classFeatures)) {
+  if (character.classFeatures && typeof character.classFeatures === "object") {
+    for (const [key, value] of Object.entries(character.classFeatures)) {
       if (regex.test(key)) return true;
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const entryName =
+            typeof entry === "string"
+              ? entry
+              : entry && typeof entry === "object" && "name" in entry && typeof (entry as { name?: unknown }).name === "string"
+                ? (entry as { name: string }).name
+                : "";
+          if (entryName && regex.test(entryName)) return true;
+        }
+      }
     }
   }
   return false;
+}
+
+/**
+ * Checks whether a character has a specific class + subclass combination with level >= minLevel.
+ */
+export function hasClassSubclass(
+  character: DDBParsedCharacter,
+  classPattern: RegExp | string,
+  subclassPattern: RegExp | string,
+  minLevel = 1,
+): boolean {
+  if (!character?.classes) return false;
+  const classRegex = typeof classPattern === "string" ? new RegExp(classPattern, "i") : classPattern;
+  const subRegex = typeof subclassPattern === "string" ? new RegExp(subclassPattern, "i") : subclassPattern;
+  return character.classes.some(
+    c =>
+      c.level >= minLevel &&
+      classRegex.test(c.name) &&
+      Boolean(c.subclass && subRegex.test(c.subclass)),
+  );
 }
 
 /**
@@ -85,11 +126,20 @@ export const darkOnesBlessingFeature: CombatFeatureDefinition = {
   description: "Gain Temp HP equal to Warlock Level + CHA modifier when reducing a creature to 0 HP.",
   events: ["on_target_defeated"],
   isGrantedToCharacter: (char: DDBParsedCharacter) => {
-    return hasCharacterFeature(char, /dark one's blessing|fiend/i);
+    return (
+      hasCharacterFeature(char, /\bdark one'?s blessing\b/i, { matchSubclass: false }) ||
+      hasClassSubclass(char, /\bwarlock\b/i, /\bfiend\b/i, 1)
+    );
   },
   execute: (context: CombatEventContext) => {
     if (!context.character) return null;
-    const warlockClass = context.character.classes?.find(c => c.name.toLowerCase().includes("warlock"));
+    const warlockClass = context.character.classes?.find(c => /\bwarlock\b/i.test(c.name));
+    if (
+      !warlockClass &&
+      !hasCharacterFeature(context.character, /\bdark one'?s blessing\b/i, { matchSubclass: false })
+    ) {
+      return null;
+    }
     const warlockLevel = warlockClass?.level ?? context.character.level;
     const chaMod = context.character.modifiers?.cha ?? 0;
     const tempHp = Math.max(1, warlockLevel + chaMod);
@@ -114,7 +164,7 @@ export const parasiticLeechFeature: CombatFeatureDefinition = {
   description: "Gain Temp HP equal to rolled damage dice on Critical Hit or when reducing a creature to 0 HP with Parasitic Weapon.",
   events: ["on_critical_hit", "on_target_defeated"],
   isGrantedToCharacter: (char: DDBParsedCharacter) => {
-    return hasCharacterFeature(char, /parasitic leech/i);
+    return hasCharacterFeature(char, /\bparasitic leech\b/i, { matchSubclass: false });
   },
   weaponMatches: (weapon: DDBWeaponAttack) => {
     const wName = (weapon.name || "").toLowerCase();

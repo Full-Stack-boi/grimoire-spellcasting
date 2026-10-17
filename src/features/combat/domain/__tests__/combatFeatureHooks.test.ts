@@ -154,6 +154,57 @@ describe("combatFeatureHooks domain", () => {
       expect(res?.tempHpGranted).toBe(7);
       expect(res?.message).toContain("7 Temporary HP");
     });
+
+    it("regression (DDB 171883974): does NOT grant Dark One's Blessing to a Tiefling Monster Hunter whose traits/descriptions mention Fiendish Legacy or Fiends", async () => {
+      const tieflingMonsterHunter: DDBParsedCharacter = {
+        ...baseMockChar,
+        id: 171883974,
+        name: "Copy of Kazmalia",
+        level: 6,
+        classes: [{ name: "Monster Hunter", level: 6, subclass: "Occultist Guild" }],
+        modifiers: { str: -1, dex: 2, con: 2, int: 2, wis: 0, cha: -1 },
+        actions: [
+          {
+            id: "mh-grimoire",
+            name: "Monster Grimoire",
+            source: "class",
+            activationType: "none",
+            description:
+              "Choose creature types: Aberrations, Beasts, Celestials, Constructs, Dragons, Elementals, Fey, Fiends, Giants, Monstrosities, Oozes, Plants, or Undead.",
+          },
+          {
+            id: "tiefling-legacy",
+            name: "Fiendish Legacy",
+            source: "race",
+            activationType: "none",
+            description: "You are the recipient of a legacy that grants you supernatural abilities.",
+          },
+        ],
+        options: [
+          {
+            id: 3734085,
+            name: "Infernal",
+            source: "race",
+            description: "Linked by blood to a devil, a demon, or some other Fiend.",
+          },
+        ],
+        feats: [
+          {
+            id: 999,
+            name: "Thrown Weapon Master",
+            description: "Mastery of thrown weapons.",
+          },
+        ],
+      };
+
+      expect(darkOnesBlessingFeature.isGrantedToCharacter(tieflingMonsterHunter)).toBe(false);
+      const triggers = await dispatchCombatFeatureTrigger("on_target_defeated", {
+        character: tieflingMonsterHunter,
+        casterTokenId: "token-mh",
+        targetTokenId: "token-enemy",
+      });
+      expect(triggers).toEqual([]);
+    });
   });
 
   describe("Parasitic Leech (The Parasite)", () => {
