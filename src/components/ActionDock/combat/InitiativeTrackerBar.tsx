@@ -46,6 +46,7 @@ import type { Item } from "@owlbear-rodeo/sdk";
 import { getLinkedDDBCharacterId, getCachedDDBCharacter } from "../../../services/ddbService";
 import { getScopedMetadata } from "../../../platform/obr/metadataHelper";
 import { getTokenDisposition } from "../../../features/combat/domain/attackRangeRules";
+import { resolveArmorClassFromSources } from "../../../features/combat/domain/armorClass";
 import { APP_KEY } from "../../../config";
 import { GLOBAL_STORAGE_KEYS } from "../../Settings/settings";
 
@@ -495,9 +496,7 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                       ? bound.hitPoints.average
                       : (combatant.hpCurrent ?? resolvedHpMax));
 
-                const resolvedAc = typeof vitals?.armorClass === "number"
-                  ? vitals.armorClass
-                  : (typeof bound?.armorClass === "number" ? bound.armorClass : (combatant.ac ?? 10));
+                const resolvedAc = resolveArmorClassFromSources(vitals?.armorClass, bound?.armorClass, combatant.ac);
 
                 const resolvedImmunities: string[] = Array.isArray(vitals?.immunities) && vitals.immunities.length > 0
                   ? vitals.immunities

@@ -16,6 +16,7 @@ import {
   resolveDamageWithSaveOutcome,
   resolveDefenseDamage,
 } from "./domain/multiTargetDamage";
+import { resolveArmorClassFromSources } from "./domain/armorClass";
 import { getActiveEncounter, saveEncounter } from "./initiativeService";
 import type { DDBParsedCharacter } from "../../types/ddb";
 import {
@@ -106,7 +107,21 @@ async function deleteConcentrationVisuals(tokenId: string, spellId: string): Pro
 }
 
 /**
+ * Pure function: Reads the Armor Class from a bound monster statblock (if any).
+ * Only object-form bindings are inspected (string IDs need the monster catalog).
+ */
+export function getBoundMonsterArmorClass(metadata: Metadata | undefined): number | undefined {
+  const bound = getScopedMetadata<{ armorClass?: unknown } | string>(metadata, "bound-monster");
+  if (!bound || typeof bound !== "object") return undefined;
+  return typeof bound.armorClass === "number" && bound.armorClass > 0 ? bound.armorClass : undefined;
+}
+
+export { resolveArmorClassFromSources };
+
+/**
  * Pure function: Extracts TokenVitals from metadata with legacy fallback.
+ * Missing AC falls back to the bound monster statblock AC (same priority as the Turn Tracker UI),
+ * then to 10.
  */
 export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals | null {
   const data = getScopedMetadata<TokenVitals>(metadata, "vitals");
@@ -118,7 +133,7 @@ export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals 
     hpCurrent: Math.max(0, data.hpCurrent),
     hpMax: Math.max(1, data.hpMax),
     hpTemp: typeof data.hpTemp === "number" && data.hpTemp > 0 ? data.hpTemp : 0,
-    armorClass: typeof data.armorClass === "number" ? data.armorClass : 10,
+    armorClass: resolveArmorClassFromSources(data.armorClass, getBoundMonsterArmorClass(metadata)),
     conditions: Array.isArray(data.conditions) ? [...data.conditions] : [],
     resistances: Array.isArray(data.resistances) ? [...data.resistances] : [],
     immunities: Array.isArray(data.immunities) ? [...data.immunities] : [],
@@ -267,30 +282,59 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
     if (!item) return null;
 
     // 1. Direct item metadata
-    const explicitVitals = extractTokenVitals(item.metadata);
+    let explicitVitals = extractTokenVitals(item.metadata);
 
-    // If explicitVitals already has non-empty defenses, return it immediately
+    // Linked D&D Beyond character (resolved lazily; shared by AC repair + defense enrichment)
+    let cachedDdbChar: DDBParsedCharacter | null | undefined;
+    const loadDdbChar = async (): Promise<DDBParsedCharacter | null> => {
+      if (cachedDdbChar !== undefined) return cachedDdbChar;
+      let resolved: DDBParsedCharacter | null = resolveCasterCharacter(item) ?? null;
+      if (!resolved) {
+        const linkedId = getLinkedDDBCharacterId(item);
+        if (linkedId) {
+          try {
+            resolved = (await fetchDDBCharacter(linkedId)) ?? null;
+            if (resolved) cacheDDBCharacter(resolved);
+          } catch {
+            resolved = null;
+          }
+        }
+      }
+      cachedDdbChar = resolved;
+      return resolved;
+    };
+
+    // AC repair when the resolved AC is still the default 10 (missing or stale legacy write).
+    // Priority: linked DDB sheet AC (authoritative for PCs) → Turn Tracker combatant AC → 10.
+    let acRepaired = false;
+    if (explicitVitals && explicitVitals.armorClass === 10) {
+      const linked = await loadDdbChar();
+      const ddbAc = linked?.armorClass;
+      if (typeof ddbAc === "number" && ddbAc > 0 && ddbAc !== 10) {
+        explicitVitals = { ...explicitVitals, armorClass: ddbAc };
+        acRepaired = true;
+      } else {
+        const encounterForAc = await getActiveEncounter().catch(() => null);
+        const combatantAc = encounterForAc?.combatants.find((c) => c.id === tokenId)?.ac;
+        if (typeof combatantAc === "number" && combatantAc > 0) {
+          explicitVitals = { ...explicitVitals, armorClass: combatantAc };
+        }
+      }
+    }
+
+    // If explicitVitals already has non-empty defenses (and AC needed no repair to persist), return it
     const hasDefenses =
       explicitVitals &&
       ((explicitVitals.resistances && explicitVitals.resistances.length > 0) ||
         (explicitVitals.immunities && explicitVitals.immunities.length > 0) ||
         (explicitVitals.vulnerabilities && explicitVitals.vulnerabilities.length > 0));
 
-    if (explicitVitals && hasDefenses) {
+    if (explicitVitals && hasDefenses && !acRepaired) {
       return explicitVitals;
     }
 
     // 2. Query linked D&D Beyond Character if defenses or vitals are missing
-    let ddbChar = resolveCasterCharacter(item);
-    if (!ddbChar) {
-      const linkedId = getLinkedDDBCharacterId(item);
-      if (linkedId) {
-        try {
-          ddbChar = await fetchDDBCharacter(linkedId);
-          if (ddbChar) cacheDDBCharacter(ddbChar);
-        } catch {}
-      }
-    }
+    const ddbChar = await loadDdbChar();
 
     if (ddbChar) {
       const charDefenses = ddbChar.defenses || {
@@ -303,6 +347,12 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
         // Enrich existing vitals with defenses from DDB character
         const enriched: TokenVitals = {
           ...explicitVitals,
+          armorClass:
+            explicitVitals.armorClass === 10 &&
+            typeof ddbChar.armorClass === "number" &&
+            ddbChar.armorClass > 0
+              ? ddbChar.armorClass
+              : explicitVitals.armorClass,
           resistances:
             explicitVitals.resistances && explicitVitals.resistances.length > 0
               ? explicitVitals.resistances
@@ -368,7 +418,7 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
         hpCurrent: combatant.hpCurrent ?? combatant.hpMax,
         hpMax: combatant.hpMax,
         hpTemp: combatant.hpTemp ?? 0,
-        armorClass: combatant.ac ?? 10,
+        armorClass: resolveArmorClassFromSources(undefined, getBoundMonsterArmorClass(item.metadata), combatant.ac),
         conditions: combatant.conditions ?? [],
         resistances: combatant.resistances ?? [],
         immunities: combatant.immunities ?? [],
@@ -378,6 +428,31 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
         updatedAt: Date.now(),
       };
       return derived;
+    }
+
+    // 4. Bound monster statblock fallback
+    const bound = getScopedMetadata<{
+      armorClass?: number;
+      hitPoints?: { average?: number };
+      damageResistances?: string[];
+      damageImmunities?: string[];
+      damageVulnerabilities?: string[];
+    }>(item.metadata, "bound-monster");
+    if (bound && typeof bound === "object" && typeof bound.armorClass === "number") {
+      const hp = typeof bound.hitPoints?.average === "number" ? bound.hitPoints.average : 10;
+      return {
+        hpCurrent: hp,
+        hpMax: Math.max(1, hp),
+        hpTemp: 0,
+        armorClass: bound.armorClass,
+        conditions: [],
+        resistances: Array.isArray(bound.damageResistances) ? [...bound.damageResistances] : [],
+        immunities: Array.isArray(bound.damageImmunities) ? [...bound.damageImmunities] : [],
+        vulnerabilities: Array.isArray(bound.damageVulnerabilities) ? [...bound.damageVulnerabilities] : [],
+        exhaustionLevel: 0,
+        hideNumbers: false,
+        updatedAt: Date.now(),
+      };
     }
 
     return null;

@@ -20,6 +20,7 @@ import {
 import { focusCameraOnToken, setTokenDisposition } from "../features/player/playerCharacterService";
 import { getScopedMetadata } from "../platform/obr/metadataHelper";
 import { getTokenDisposition } from "../features/combat/domain/attackRangeRules";
+import { resolveArmorClassFromSources } from "../features/combat/domain/armorClass";
 import { APP_KEY } from "../config";
 import { GLOBAL_STORAGE_KEYS } from "../components/Settings/settings";
 import { darknessVisibilityReducer } from "./darknessVisibilityState";
@@ -399,9 +400,7 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
                   ? bound.hitPoints.average
                   : (combatant.hpCurrent ?? resolvedHpMax));
 
-            const resolvedAc = typeof vitals?.armorClass === "number"
-              ? vitals.armorClass
-              : (typeof bound?.armorClass === "number" ? bound.armorClass : (combatant.ac ?? 10));
+            const resolvedAc = resolveArmorClassFromSources(vitals?.armorClass, bound?.armorClass, combatant.ac);
 
             const resolvedHpTemp = typeof vitals?.hpTemp === "number"
               ? vitals.hpTemp
