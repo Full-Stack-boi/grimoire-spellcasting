@@ -43,7 +43,7 @@ import {
   openTopTurnTrackerPopover,
 } from "../../../features/combat/turnTrackerPopoverService";
 import type { Item } from "@owlbear-rodeo/sdk";
-import { getLinkedDDBCharacterId, getCachedDDBCharacter } from "../../../services/ddbService";
+import { getLinkedDDBCharacterId, getCachedDDBCharacter, resolveCasterCharacter } from "../../../services/ddbService";
 import { getScopedMetadata } from "../../../platform/obr/metadataHelper";
 import { getTokenDisposition } from "../../../features/combat/domain/attackRangeRules";
 import { resolveArmorClassFromSources } from "../../../features/combat/domain/armorClass";
@@ -496,7 +496,13 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
                       ? bound.hitPoints.average
                       : (combatant.hpCurrent ?? resolvedHpMax));
 
-                const resolvedAc = resolveArmorClassFromSources(vitals?.armorClass, bound?.armorClass, combatant.ac);
+                const linkedDdb = tokenItem ? resolveCasterCharacter(tokenItem) : null;
+                const resolvedAc = resolveArmorClassFromSources(
+                  vitals?.armorClass,
+                  bound?.armorClass,
+                  combatant.ac,
+                  linkedDdb?.armorClass,
+                );
 
                 const resolvedImmunities: string[] = Array.isArray(vitals?.immunities) && vitals.immunities.length > 0
                   ? vitals.immunities

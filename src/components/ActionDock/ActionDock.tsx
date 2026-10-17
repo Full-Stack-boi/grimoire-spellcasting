@@ -696,14 +696,12 @@ export const ActionDock: React.FC = () => {
                 if (
                     syncedDdbChar &&
                     linkedId === syncedDdbChar.id &&
-                    (!vitals.resistances || vitals.resistances.length === 0) &&
-                    (syncedDdbChar.defenses?.resistances?.length || syncedDdbChar.defenses?.immunities?.length)
+                    (vitals.armorClass !== syncedDdbChar.armorClass ||
+                        (typeof syncedDdbChar.hp?.max === "number" && vitals.hpMax !== syncedDdbChar.hp.max) ||
+                        ((!vitals.resistances || vitals.resistances.length === 0) &&
+                            (syncedDdbChar.defenses?.resistances?.length || syncedDdbChar.defenses?.immunities?.length)))
                 ) {
-                    setTokenVitals(caster.id, {
-                        resistances: syncedDdbChar.defenses?.resistances || [],
-                        immunities: syncedDdbChar.defenses?.immunities || [],
-                        vulnerabilities: syncedDdbChar.defenses?.vulnerabilities || [],
-                    }).catch(() => {});
+                    syncTokenVitalsFromDDB(caster.id, syncedDdbChar).catch(() => {});
                 }
             } else if (syncedDdbChar) {
                 const linkedId = caster.item ? getLinkedDDBCharacterId(caster.item) : null;

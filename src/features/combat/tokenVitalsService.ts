@@ -22,6 +22,7 @@ import type { DDBParsedCharacter } from "../../types/ddb";
 import {
   resolveCasterCharacter,
   getLinkedDDBCharacterId,
+  getCachedDDBCharacter,
   fetchDDBCharacter,
   cacheDDBCharacter,
 } from "../../services/ddbService";
@@ -129,11 +130,18 @@ export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals 
   if (typeof data.hpCurrent !== "number" || typeof data.hpMax !== "number") {
     return null;
   }
+  const linkedId = getLinkedDDBCharacterId({ metadata: metadata as Record<string, unknown> | undefined });
+  const ddbAc = linkedId ? getCachedDDBCharacter(linkedId)?.armorClass : undefined;
   return {
     hpCurrent: Math.max(0, data.hpCurrent),
     hpMax: Math.max(1, data.hpMax),
     hpTemp: typeof data.hpTemp === "number" && data.hpTemp > 0 ? data.hpTemp : 0,
-    armorClass: resolveArmorClassFromSources(data.armorClass, getBoundMonsterArmorClass(metadata)),
+    armorClass: resolveArmorClassFromSources(
+      data.armorClass,
+      getBoundMonsterArmorClass(metadata),
+      undefined,
+      ddbAc,
+    ),
     conditions: Array.isArray(data.conditions) ? [...data.conditions] : [],
     resistances: Array.isArray(data.resistances) ? [...data.resistances] : [],
     immunities: Array.isArray(data.immunities) ? [...data.immunities] : [],
@@ -304,16 +312,22 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
       return resolved;
     };
 
-    // AC repair when the resolved AC is still the default 10 (missing or stale legacy write).
+    // AC repair when a linked D&D Beyond character has a different AC (e.g. stale pre-v8 unarmored 13 vs 16)
+    // or when the resolved AC is still the default 10.
     // Priority: linked DDB sheet AC (authoritative for PCs) → Turn Tracker combatant AC → 10.
     let acRepaired = false;
-    if (explicitVitals && explicitVitals.armorClass === 10) {
+    if (explicitVitals) {
+      const rawStoredAc = getScopedMetadata<TokenVitals>(item.metadata, "vitals")?.armorClass;
       const linked = await loadDdbChar();
       const ddbAc = linked?.armorClass;
-      if (typeof ddbAc === "number" && ddbAc > 0 && ddbAc !== 10) {
+      if (
+        typeof ddbAc === "number" &&
+        ddbAc > 0 &&
+        (explicitVitals.armorClass !== ddbAc || rawStoredAc !== ddbAc)
+      ) {
         explicitVitals = { ...explicitVitals, armorClass: ddbAc };
         acRepaired = true;
-      } else {
+      } else if (explicitVitals.armorClass === 10) {
         const encounterForAc = await getActiveEncounter().catch(() => null);
         const combatantAc = encounterForAc?.combatants.find((c) => c.id === tokenId)?.ac;
         if (typeof combatantAc === "number" && combatantAc > 0) {
@@ -344,13 +358,11 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
       };
 
       if (explicitVitals) {
-        // Enrich existing vitals with defenses from DDB character
+        // Enrich existing vitals with defenses and authoritative AC from DDB character
         const enriched: TokenVitals = {
           ...explicitVitals,
           armorClass:
-            explicitVitals.armorClass === 10 &&
-            typeof ddbChar.armorClass === "number" &&
-            ddbChar.armorClass > 0
+            typeof ddbChar.armorClass === "number" && ddbChar.armorClass > 0
               ? ddbChar.armorClass
               : explicitVitals.armorClass,
           resistances:
@@ -376,6 +388,22 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
             }
           }
         }).catch(() => {});
+
+        // Also sync repaired AC to the active Turn Tracker encounter so combatant.ac is updated
+        if (acRepaired) {
+          const encounter = await getActiveEncounter().catch(() => null);
+          if (encounter) {
+            const idx = encounter.combatants.findIndex((c) => c.id === tokenId);
+            if (idx !== -1 && encounter.combatants[idx].ac !== enriched.armorClass) {
+              const updatedCombatants = [...encounter.combatants];
+              updatedCombatants[idx] = {
+                ...updatedCombatants[idx],
+                ac: enriched.armorClass,
+              };
+              await saveEncounter({ ...encounter, combatants: updatedCombatants }).catch(() => {});
+            }
+          }
+        }
 
         return enriched;
       } else {

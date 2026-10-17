@@ -6,7 +6,7 @@ import { resolveActiveCaster, type ActiveCasterInfo } from "../../../features/ta
 import { getLinkedDDBCharacterId, getCachedDDBCharacter, fetchDDBCharacter, cacheDDBCharacter } from "../../../services/ddbService";
 import { getBoundMonsterFromToken } from "../../../features/monsters/monsterService";
 import { monsterToDdbCharacter } from "../../../features/monsters/monsterToDdbAdapter";
-import { extractTokenVitals } from "../../../features/combat/tokenVitalsService";
+import { extractTokenVitals, syncTokenVitalsFromDDB } from "../../../features/combat/tokenVitalsService";
 import { getTokenBuffs } from "../../../services/buffService";
 import type { ActiveBuff } from "../../../services/buffService";
 import type { DDBParsedCharacter } from "../../../types/ddb";
@@ -149,6 +149,7 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
             if (caster?.item && getLinkedDDBCharacterId(caster.item) === characterId) {
                 setSyncedDdbChar(fresh);
                 applyDdbSlots(fresh, "merge");
+                syncTokenVitalsFromDDB(caster.id, fresh).catch(() => {});
             }
         }).catch(() => {});
 
@@ -166,12 +167,13 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
             if (fresh) {
                 setSyncedDdbChar(fresh);
                 applyDdbSlots(fresh, force ? "replace" : "merge");
+                syncTokenVitalsFromDDB(caster.id, fresh).catch(() => {});
                 OBR.notification.show(`${fresh.name} re-synced from D&D Beyond.`, "SUCCESS");
             }
         } catch {
             OBR.notification.show("Failed to re-sync character from D&D Beyond.", "WARNING");
         }
-    }, [caster?.item, syncCharacter, applyDdbSlots]);
+    }, [caster?.item, caster?.id, syncCharacter, applyDdbSlots]);
 
     useEffect(() => {
         if (!obr.ready || !obr.sceneReady) return;

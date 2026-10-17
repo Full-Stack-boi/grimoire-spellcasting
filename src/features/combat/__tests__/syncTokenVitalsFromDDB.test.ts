@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { syncTokenVitalsFromDDB, VITALS_METADATA_KEY } from "../tokenVitalsService";
+import { getTokenVitals, syncTokenVitalsFromDDB, VITALS_METADATA_KEY } from "../tokenVitalsService";
+import { cacheDDBCharacter, DDB_CHARACTER_METADATA_KEY } from "../../../services/ddbService";
 import type { DDBParsedCharacter } from "../../../types/ddb";
 
 // Mock OBR scene items
@@ -149,4 +150,32 @@ describe("syncTokenVitalsFromDDB", () => {
     expect(result?.hpCurrent).toBe(25); // Clamped at 25
     expect(result?.hpMax).toBe(25);
   });
+
+  it("getTokenVitals repairs stale pre-v8 AC 13 to authoritative DDB AC 16 and persists to metadata", async () => {
+    cacheDDBCharacter(mockDdbChar);
+    mockSceneItems = [
+      {
+        id: "tok-kazmalia",
+        name: "Rogue",
+        metadata: {
+          [DDB_CHARACTER_METADATA_KEY]: 101,
+          [VITALS_METADATA_KEY]: {
+            hpCurrent: 12,
+            hpMax: 25,
+            hpTemp: 0,
+            armorClass: 13,
+            resistances: ["Necrotic"],
+            immunities: [],
+            vulnerabilities: [],
+          },
+        },
+      },
+    ];
+
+    const vitals = await getTokenVitals("tok-kazmalia");
+    expect(vitals?.armorClass).toBe(16);
+    expect(vitals?.hpCurrent).toBe(12);
+    expect(mockSceneItems[0].metadata[VITALS_METADATA_KEY].armorClass).toBe(16);
+  });
 });
+

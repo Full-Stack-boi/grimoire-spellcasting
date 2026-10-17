@@ -2819,8 +2819,10 @@ export function cacheDDBCharacter(char: DDBParsedCharacter): void {
     try {
         const sanitized = sanitizeNonCasterSlots(char);
         const raw = JSON.stringify(sanitized);
-        localStorage.setItem(`${DDB_CACHE_STORAGE_PREFIX}${char.id}`, raw);
         characterMemoryCache.set(char.id, { raw, parsed: sanitized });
+        if (typeof localStorage !== "undefined" && typeof localStorage.setItem === "function") {
+            localStorage.setItem(`${DDB_CACHE_STORAGE_PREFIX}${char.id}`, raw);
+        }
     } catch {
         // LocalStorage quota might be exceeded
     }
@@ -2846,10 +2848,12 @@ function sanitizeNonCasterSlots(char: DDBParsedCharacter): DDBParsedCharacter {
  */
 export function getCachedDDBCharacter(characterId: number): DDBParsedCharacter | null {
     try {
+        if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") {
+            return characterMemoryCache.get(characterId)?.parsed ?? null;
+        }
         const raw = localStorage.getItem(`${DDB_CACHE_STORAGE_PREFIX}${characterId}`);
         if (!raw) {
-            characterMemoryCache.delete(characterId);
-            return null;
+            return characterMemoryCache.get(characterId)?.parsed ?? null;
         }
         const cached = characterMemoryCache.get(characterId);
         if (cached && cached.raw === raw) {
@@ -2859,7 +2863,7 @@ export function getCachedDDBCharacter(characterId: number): DDBParsedCharacter |
         characterMemoryCache.set(characterId, { raw, parsed });
         return parsed;
     } catch {
-        return null;
+        return characterMemoryCache.get(characterId)?.parsed ?? null;
     }
 }
 
@@ -2925,7 +2929,9 @@ export function findCachedDDBCharacter(identifier: number | string): DDBParsedCh
  * 2. If unlinked, attempts fallback to character name ONLY if there is exactly 1 unique match
  *    in cached characters to prevent cross-character slot and spell bleeding.
  */
-export function resolveCasterCharacter(item: Item): DDBParsedCharacter | null {
+export function resolveCasterCharacter(
+    item: { name?: string; metadata?: Record<string, unknown> } | Item | null | undefined,
+): DDBParsedCharacter | null {
     if (!item) return null;
     const linkedId = getLinkedDDBCharacterId(item);
     if (linkedId) {

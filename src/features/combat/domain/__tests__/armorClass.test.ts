@@ -3,9 +3,15 @@ import { resolveArmorClassFromSources } from "../armorClass";
 import { extractTokenVitals, VITALS_METADATA_KEY } from "../../tokenVitalsService";
 import { resolveAttackHit } from "../attackResolution";
 import { getMetadataKey } from "../../../../platform/obr/metadataHelper";
+import { cacheDDBCharacter, DDB_CHARACTER_METADATA_KEY } from "../../../../services/ddbService";
+import type { DDBParsedCharacter } from "../../../../types/ddb";
 
 describe("resolveArmorClassFromSources", () => {
-  it("prefers an explicit non-default vitals AC", () => {
+  it("prefers linked DDB character AC over stale vitals AC (e.g. pre-v8 unarmored 13 vs 16)", () => {
+    expect(resolveArmorClassFromSources(13, undefined, 13, 16)).toBe(16);
+  });
+
+  it("prefers an explicit non-default vitals AC when no DDB AC is provided", () => {
     expect(resolveArmorClassFromSources(18, 16, 14)).toBe(18);
   });
 
@@ -47,4 +53,31 @@ describe("extractTokenVitals AC fallback", () => {
     expect(ac).toBe(16);
     expect(res.isHit).toBe(false);
   });
+
+  it("regression: Kazmalia linked DDB token with stale vitals AC 13 resolves to DDB AC 16", () => {
+    cacheDDBCharacter({
+      id: 170484944,
+      name: "Kazmalia",
+      armorClass: 16,
+      hp: { current: 27, max: 27, temp: 0 },
+      classes: [],
+      spells: [],
+      spellSlots: [],
+    } as unknown as DDBParsedCharacter);
+
+    const metadata = {
+      [VITALS_METADATA_KEY]: { hpCurrent: 12, hpMax: 27, armorClass: 13 },
+      [DDB_CHARACTER_METADATA_KEY]: 170484944,
+    };
+
+    const ac = extractTokenVitals(metadata)?.armorClass ?? 0;
+    expect(ac).toBe(16);
+
+    const missRoll = resolveAttackHit({ d20: 12, total: 15, bonus: 3, mode: "disadvantage" }, ac);
+    expect(missRoll.isHit).toBe(false);
+
+    const hitRoll = resolveAttackHit({ d20: 11, total: 16, bonus: 5, mode: "disadvantage" }, ac);
+    expect(hitRoll.isHit).toBe(true);
+  });
 });
+
