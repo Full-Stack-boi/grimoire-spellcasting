@@ -25,6 +25,7 @@ export const GLOBAL_STORAGE_KEYS = {
     SHOW_TURN_TRACKER_AC_TO_PLAYERS: "show-turn-tracker-ac-to-players",
     HIDE_TOKEN_VITALS_IN_DARKNESS: "hide-token-vitals-in-darkness",
     HIDE_TRACKER_MONSTER_HP_BAR_IN_DARKNESS: "hide-tracker-monster-hp-bar-in-darkness",
+    MUTUAL_DARKNESS_5_5E_CANCEL: "mutual-darkness-5-5e-cancel",
     ANIMATIONS_ENABLED: "animations-enabled",
     ANIMATION_MAPPINGS: "animation-mappings",
     EFFECT_ASSET_BASE_URL: "effect-asset-base-url",
@@ -53,10 +54,11 @@ export const DEFAULT_VALUES = {
     [GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_AC_TO_PLAYERS]: false,
     [GLOBAL_STORAGE_KEYS.HIDE_TOKEN_VITALS_IN_DARKNESS]: true,
     [GLOBAL_STORAGE_KEYS.HIDE_TRACKER_MONSTER_HP_BAR_IN_DARKNESS]: true,
+    [GLOBAL_STORAGE_KEYS.MUTUAL_DARKNESS_5_5E_CANCEL]: true,
     [GLOBAL_STORAGE_KEYS.ANIMATIONS_ENABLED]: true,
     [GLOBAL_STORAGE_KEYS.ANIMATION_MAPPINGS]: {},
     [GLOBAL_STORAGE_KEYS.EFFECT_ASSET_BASE_URL]: ASSET_LOCATION,
-}
+};
 
 export type AnimationOverride = "follow" | "on" | "off";
 

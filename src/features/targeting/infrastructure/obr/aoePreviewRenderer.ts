@@ -23,6 +23,7 @@ export interface AoePreviewRenderOptions {
     themeColor?: string; // default orange (#f97316)
     strokeColor?: string;
     sceneItems?: Item[];
+    hiddenTokenIds?: Set<string>;
 }
 
 export interface AoePreviewRenderResult {
@@ -269,8 +270,11 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
     }
 
     // Spatial deadband: if template shape, quantized cursor/origin, affected cells, and tokens haven't changed, return cached result
+    const visibleTokenIds = state.hiddenTokenIds
+        ? affectedTokenIds.filter(id => !state.hiddenTokenIds!.has(id))
+        : affectedTokenIds;
     const cellHash = affectedCells.map(c => `${c.x}_${c.y}`).join(",");
-    const tokenHash = affectedTokenIds.join(",");
+    const tokenHash = visibleTokenIds.join(",");
     const cursorHash = `${Math.round(template.cursor.x)}_${Math.round(template.cursor.y)}`;
     const aoeStateKey = `${template.shape}_${template.sizeFeet}_${cursorHash}_${cellHash}_${tokenHash}`;
 
@@ -300,9 +304,12 @@ export async function renderAoePreview(state: AoePreviewRenderOptions): Promise<
         cellItems.push(shape);
     }
 
-    // 2. Build token warning highlight rings
+    // 2. Build token warning highlight rings (Anti-radar: suppress for tokens hidden in darkness)
     const tokenHighlights: Shape[] = [];
     for (const tokenId of affectedTokenIds) {
+        if (state.hiddenTokenIds && state.hiddenTokenIds.has(tokenId)) {
+            continue; // Suppress red ring over hidden tokens in darkness!
+        }
         const token = characterTokens.find(t => t.id === tokenId);
         if (!token) continue;
         const hlShape = buildShape()

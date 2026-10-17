@@ -69,6 +69,12 @@ import {
   readTokenVisionRules,
 } from "./features/targeting/application/lineOfSightService";
 import {
+  isAttackAction,
+  doesSpellRequireSight,
+  resolveDarknessCombatModifiers,
+  findDdbSpellSafely,
+} from "./features/targeting/domain/darknessCombatRules";
+import {
   getTokenBuffs,
   getComputedBuffModifiers,
   removeTokenBuff,
@@ -89,6 +95,7 @@ import {
 } from "./services/weaponDamageRiders";
 import {
   getLinkedDDBCharacterId,
+  getCachedDDBCharacter,
   hasPotentCantrip,
   hasWeaponGraze,
 } from "./services/ddbService";
@@ -108,7 +115,7 @@ import {
   applyHeal,
   replaceTokenConcentration,
 } from "./features/combat/tokenVitalsService";
-import type { TokenVitals } from "./features/combat/domain/types";
+import type { TokenVitals, CombatEncounter } from "./features/combat/domain/types";
 import {
   isRangedAttackAction,
   resolveRollMode,
@@ -477,12 +484,16 @@ let cachedGridInfo: { data: GridInfo; timestamp: number } | null = null;
 let cachedActiveCaster: { data: Awaited<ReturnType<typeof resolveActiveCaster>>; timestamp: number; key: string } | null = null;
 let cachedSceneItems: { data: Item[]; timestamp: number } | null = null;
 let cachedPlayerMetadata: { data: Record<string, unknown>; timestamp: number } | null = null;
+let cachedSceneMetadata: { data: Record<string, unknown>; timestamp: number } | null = null;
+let cachedActiveEncounter: { data: CombatEncounter | null; timestamp: number } | null = null;
 
 export function invalidateAimingEnvironmentCache(): void {
   cachedGridInfo = null;
   cachedActiveCaster = null;
   cachedSceneItems = null;
   cachedPlayerMetadata = null;
+  cachedSceneMetadata = null;
+  cachedActiveEncounter = null;
 }
 
 export async function clearAllAimingOverlays(): Promise<void> {
@@ -811,12 +822,17 @@ export function setupEffectsTool(
     cachedPlayerMetadata = { data: player.metadata, timestamp: Date.now() };
     cachedActiveCaster = null;
   });
+  const unsubSceneMeta = OBR.scene.onMetadataChange((metadata) => {
+    cachedSceneMetadata = { data: metadata, timestamp: Date.now() };
+    cachedActiveEncounter = null;
+  });
 
   return () => {
     toolChangeUnsub();
     unsubGrid();
     unsubItems();
     unsubPlayer();
+    unsubSceneMeta();
   };
 }
 
@@ -1204,14 +1220,6 @@ async function processAimingMove(
     const maxRange = getSpellRange(spell, selectedSpell);
     const isSelfCentered = aoe.shape === "Sphere" && maxRange === 0;
 
-    const isTargetToken =
-      !event.shiftKey && isValidCombatTargetToken(event.target);
-    const targetPos = isSelfCentered
-      ? activeCaster.position
-      : isTargetToken
-        ? event.target!.position
-        : event.pointerPosition;
-
     let sceneItems: Item[];
     if (cachedSceneItems) {
       sceneItems = cachedSceneItems.data;
@@ -1219,6 +1227,43 @@ async function processAimingMove(
       sceneItems = await OBR.scene.items.getItems();
       cachedSceneItems = { data: sceneItems, timestamp: now };
     }
+
+    let hiddenTokenIds: Set<string> | undefined;
+    const darknessZones = extractDarknessZones(sceneItems);
+    if (darknessZones.length > 0) {
+      hiddenTokenIds = new Set<string>();
+      const visionRules = activeCaster.item ? readTokenVisionRules(activeCaster.item) : {};
+      const casterElev = readTokenElevation(activeCaster.item);
+      const casterCharId = activeCaster.item ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined : undefined;
+
+      for (const it of sceneItems) {
+        if (it.layer === "CHARACTER" && it.visible && it.position?.x != null && it.position?.y != null) {
+          const tokenElev = readTokenElevation(it);
+          const los = evaluateLineOfSight(activeCaster.position, it.position, darknessZones, grid, {
+            isDM: false,
+            casterId: activeCaster.id,
+            playerId: playerID,
+            characterId: casterCharId,
+            visionRules,
+            casterElevation: casterElev,
+            targetElevation: tokenElev,
+          });
+          if (!los.canSee) {
+            hiddenTokenIds.add(it.id);
+          }
+        }
+      }
+    }
+
+    const isTargetToken =
+      !event.shiftKey &&
+      isValidCombatTargetToken(event.target) &&
+      !(hiddenTokenIds && event.target && hiddenTokenIds.has(event.target.id));
+    const targetPos = isSelfCentered
+      ? activeCaster.position
+      : isTargetToken
+        ? event.target!.position
+        : event.pointerPosition;
 
     await renderAoePreview({
       template: {
@@ -1230,6 +1275,7 @@ async function processAimingMove(
       grid,
       casterId: activeCaster.id,
       sceneItems,
+      hiddenTokenIds,
     });
   } else {
     if (activeOverlayMode === "aoe") {
@@ -1247,13 +1293,6 @@ async function processAimingMove(
       customWeaponRange > 0
         ? customWeaponRange
         : getSpellRange(spell, selectedSpell);
-    const isTargetToken =
-      !event.shiftKey && isValidCombatTargetToken(event.target);
-    const targetPos = isTargetToken
-      ? event.target!.position
-      : !event.shiftKey
-        ? snapToCellCenter(event.pointerPosition, grid)
-        : event.pointerPosition;
 
     // Check Line of Sight against any darkness zones
     let sceneItems: Item[];
@@ -1269,7 +1308,37 @@ async function processAimingMove(
       ? readTokenVisionRules(activeCaster.item)
       : {};
     const casterElevation = readTokenElevation(activeCaster.item);
-    const targetElevation = readTokenElevation(event.target);
+
+    let canSeeHoveredToken = true;
+    if (darknessZones.length > 0 && isValidCombatTargetToken(event.target) && event.target?.position) {
+      const hoveredLos = evaluateLineOfSight(
+        activeCaster.position,
+        event.target.position,
+        darknessZones,
+        grid,
+        {
+          isDM: false,
+          casterId: activeCaster.id,
+          playerId: playerID,
+          characterId: activeCaster.item
+            ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined
+            : undefined,
+          visionRules,
+          casterElevation,
+          targetElevation: readTokenElevation(event.target),
+        },
+      );
+      canSeeHoveredToken = hoveredLos.canSee;
+    }
+
+    const isTargetToken =
+      !event.shiftKey && isValidCombatTargetToken(event.target) && canSeeHoveredToken;
+    const targetPos = isTargetToken
+      ? event.target!.position
+      : !event.shiftKey
+        ? snapToCellCenter(event.pointerPosition, grid)
+        : event.pointerPosition;
+    const targetElevation = isTargetToken ? readTokenElevation(event.target) : 0;
     const visionCheck = evaluateLineOfSight(
       activeCaster.position,
       targetPos,
@@ -1288,9 +1357,22 @@ async function processAimingMove(
       },
     );
 
-    const isWeapon =
-      selectedSpell === "melee_weapon_attack" ||
-      selectedSpell === "ranged_weapon_attack";
+    const activeCharId = activeCaster.item ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined : undefined;
+    const activeDdbChar = activeCharId ? getCachedDDBCharacter(activeCharId) : null;
+    const activeDdbSpell = findDdbSpellSafely(activeDdbChar?.spells, selectedSpell);
+    const isAttack = isAttackAction({
+      selectedSpell,
+      spell,
+      ddbSpell: activeDdbSpell,
+      spellFormula: spell as any,
+    });
+    const requiresSight = doesSpellRequireSight({
+      id: selectedSpell,
+      name: spell?.name || selectedSpell,
+      description: activeDdbSpell?.description,
+      ddbSpell: activeDdbSpell,
+      spellFormula: spell as any,
+    });
 
     let hasAdvantage = false;
     let hasDisadvantage = false;
@@ -1300,53 +1382,100 @@ async function processAimingMove(
     if (activeCaster.item) {
       const buffs = getTokenBuffs(activeCaster.item);
       const buffMods = getComputedBuffModifiers(buffs);
-      if (isWeapon && buffMods.hasAttackAdvantage) {
+      if (isAttack && buffMods.hasAttackAdvantage) {
         hasAdvantage = true;
         advantageReason = "Advantage (Buff)";
-      } else if (!isWeapon && buffMods.hasSpellAdvantage) {
+      } else if (!isAttack && buffMods.hasSpellAdvantage) {
         hasAdvantage = true;
         advantageReason = "Advantage (Buff)";
       }
     }
 
     if (darknessZones.length > 0) {
-      const casterInDarkness = darknessZones.some((zone) => {
-        const dx = activeCaster.position.x - zone.position.x;
-        const dy = activeCaster.position.y - zone.position.y;
-        const distFeet =
-          (Math.sqrt(dx * dx + dy * dy) / grid.dpi) * grid.scaleMultiplier;
-        return distFeet <= zone.radiusFeet;
+      const targetToken = sceneItems.find(
+        (item) =>
+          isValidCombatTargetToken(item) &&
+          item.position?.x != null &&
+          item.position?.y != null &&
+          Math.hypot(
+            item.position.x - targetPos.x,
+            item.position.y - targetPos.y,
+          ) <
+            grid.dpi / 2,
+      );
+
+      let targetCanSeeCaster = false;
+      if (targetToken) {
+        // Anti-spoiler: only use targetToken's special vision during hover if caster can actually see targetToken
+        const canUseTargetVision = visionCheck.canSee;
+        const targetVisionRules = canUseTargetVision ? readTokenVisionRules(targetToken) : {};
+        const targetElev = canUseTargetVision ? readTokenElevation(targetToken) : 0;
+        const reverseLoS = evaluateLineOfSight(
+          targetToken.position,
+          activeCaster.position,
+          darknessZones,
+          grid,
+          {
+            isDM: false,
+            casterId: targetToken.id,
+            playerId: (targetToken as any).metadata?.["embers/characterOwner"] as string | undefined,
+            characterId: getLinkedDDBCharacterId(targetToken) ?? undefined,
+            visionRules: targetVisionRules,
+            casterElevation: targetElev,
+            targetElevation: casterElevation,
+          }
+        );
+        targetCanSeeCaster = reverseLoS.canSee;
+      } else {
+        // Empty grid cell: evaluate line of sight from cell back to caster with standard vision
+        const reverseLoS = evaluateLineOfSight(
+          targetPos,
+          activeCaster.position,
+          darknessZones,
+          grid,
+          {
+            isDM: false,
+            casterId: undefined,
+            playerId: playerID,
+            visionRules: {},
+            casterElevation: 0,
+            targetElevation: casterElevation,
+          }
+        );
+        targetCanSeeCaster = reverseLoS.canSee;
+      }
+
+      let sceneMeta: Record<string, unknown>;
+      if (cachedSceneMetadata) {
+        sceneMeta = cachedSceneMetadata.data;
+      } else {
+        sceneMeta = (await OBR.scene.getMetadata()) ?? {};
+        cachedSceneMetadata = { data: sceneMeta, timestamp: now };
+      }
+      const mutualCancelSetting = sceneMeta[`${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.MUTUAL_DARKNESS_5_5E_CANCEL}`];
+      const enableMutualCancel = mutualCancelSetting !== undefined ? mutualCancelSetting : true;
+
+      const darkMod = resolveDarknessCombatModifiers({
+        casterCanSeeTarget: visionCheck.canSee,
+        targetCanSeeCaster,
+        enableMutualCancel: enableMutualCancel !== false,
       });
 
-      if (!visionCheck.canSee) {
-        if (isWeapon) {
-          hasDisadvantage = true;
-          disadvantageReason = "Disadvantage - Unseen Target";
-        }
-      } else if (casterInDarkness) {
-        const targetToken = sceneItems.find(
-          (item) =>
-            isValidCombatTargetToken(item) &&
-            Math.hypot(
-              item.position.x - targetPos.x,
-              item.position.y - targetPos.y,
-            ) <
-              grid.dpi / 2,
-        );
-        const targetVisionRules = targetToken
-          ? readTokenVisionRules(targetToken)
-          : {};
-        const targetHasDarknessVision = Boolean(
-          targetVisionRules.devilsSight ||
-            (targetVisionRules.truesight &&
-              targetVisionRules.truesight >= 15) ||
-            (targetVisionRules.blindFighting &&
-              targetVisionRules.blindFighting >= 10),
-        );
-        if (!targetHasDarknessVision) {
+      if (isAttack) {
+        if (darkMod.rollMode === "advantage") {
           hasAdvantage = true;
-          advantageReason = "Advantage - Unseen Attacker";
+          advantageReason = darkMod.reason || "Advantage - Unseen Attacker";
+        } else if (darkMod.rollMode === "disadvantage") {
+          hasDisadvantage = true;
+          disadvantageReason = darkMod.reason || "Disadvantage - Unseen Target";
+        } else if (darkMod.isMutualDarkness) {
+          hasAdvantage = true;
+          hasDisadvantage = true;
+          advantageReason = darkMod.reason;
+          disadvantageReason = darkMod.reason;
         }
+      } else if (requiresSight && !visionCheck.canSee) {
+        // Sight required spell, line of sight blocked
       }
     }
 
@@ -1356,7 +1485,13 @@ async function processAimingMove(
     });
 
     if (isRanged && activeCaster.item) {
-      const activeEncounter = await getActiveEncounter();
+      let activeEncounter: CombatEncounter | null;
+      if (cachedActiveEncounter) {
+        activeEncounter = cachedActiveEncounter.data;
+      } else {
+        activeEncounter = await getActiveEncounter();
+        cachedActiveEncounter = { data: activeEncounter, timestamp: now };
+      }
       const threat = checkCloseCombatThreat(
         activeCaster.position,
         sceneItems,
@@ -1376,7 +1511,8 @@ async function processAimingMove(
       maxRangeFeet: maxRange,
       grid,
       visionCheck,
-      isWeapon,
+      isWeapon: isAttack,
+      canAimWithoutSight: !requiresSight,
       hasAdvantage,
       hasDisadvantage,
       advantageReason,
@@ -1467,6 +1603,7 @@ async function setupTargetToolModes(
       invalidateAimingEnvironmentCache();
       let targetIsUnseenInDarkness = false;
       let casterHasDarknessAdvantage = false;
+      let isMutualDarknessCancelled = false;
 
       // Check single-target range clamping & darkness vision if a spell is selected
       const metadata = await OBR.player.getMetadata();
@@ -1574,11 +1711,7 @@ async function setupTargetToolModes(
           const spellName = spell?.name || selectedSpell;
 
           if (charId) {
-            const ddbSpell = ddbChar?.spells?.find(
-              (s) =>
-                s.name.toLowerCase() === selectedSpell.toLowerCase() ||
-                s.id === selectedSpell,
-            );
+            const ddbSpell = findDdbSpellSafely(ddbChar?.spells, selectedSpell);
             const castSlotLevel =
               slotChoice?.spellId === selectedSpell &&
               (!slotChoice.casterId || slotChoice.casterId === castContext.casterTokenId) &&
@@ -1625,7 +1758,81 @@ async function setupTargetToolModes(
           const maxRangeFeet = (selectedSpell === "ranged_weapon_attack" || selectedSpell === "melee_weapon_attack") && typeof customWeaponRange === "number" && customWeaponRange > 0
             ? customWeaponRange
             : getSpellRange(spell, selectedSpell);
-          const isTargetToken = Boolean(!event.shiftKey && isValidCombatTargetToken(event.target));
+          const sceneItems = await OBR.scene.items.getItems();
+          const darknessZones = extractDarknessZones(sceneItems);
+
+          let isTargetToken = Boolean(!event.shiftKey && isValidCombatTargetToken(event.target));
+
+          // Blind Fire resolution: if player clicked an empty grid cell inside darkness with an attack
+          if (!isTargetToken && darknessZones.length > 0) {
+            const clickedCellCenter = snapToCellCenter(event.pointerPosition, grid);
+            const isClickedInDarkness = darknessZones.some(zone => {
+              const distFeet = (Math.hypot(clickedCellCenter.x - zone.position.x, clickedCellCenter.y - zone.position.y) / grid.dpi) * grid.scaleMultiplier;
+              return distFeet <= zone.radiusFeet;
+            });
+
+            if (isClickedInDarkness) {
+              const tokenInCell = sceneItems.find(
+                item => isValidCombatTargetToken(item) &&
+                item.position?.x != null && item.position?.y != null &&
+                Math.hypot(item.position.x - clickedCellCenter.x, item.position.y - clickedCellCenter.y) < grid.dpi * 0.6
+              );
+
+              if (tokenInCell) {
+                // Lock onto the unseen token occupying this cell
+                event.target = tokenInCell;
+                isTargetToken = true;
+              } else {
+                // Blind fire missed into empty darkness
+                const activeCharId = activeCaster.item ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined : undefined;
+                const activeDdbChar = activeCharId ? getCachedDDBCharacter(activeCharId) : null;
+                const activeDdbSpell = findDdbSpellSafely(activeDdbChar?.spells, selectedSpell);
+                const isAttack = isAttackAction({
+                  selectedSpell,
+                  spell,
+                  ddbSpell: activeDdbSpell,
+                  spellFormula: spell as any,
+                });
+
+                if (isAttack) {
+                  const castContext = await captureCastContext(playerRole, playerID, preferredCasterId);
+                  if (castContext) {
+                    clearAimingOverlay();
+                    clearAoePreview();
+                    await doSpell(selectedSpell, playerID, playerRole === "GM", castContext);
+                    await clearAllTargets();
+
+                    const casterName = castContext.casterName || "Character";
+                    const spellName = activeDdbSpell?.name || spell?.name || selectedSpell;
+                    const ddbCards: DDBRollCardData[] = [
+                      {
+                        id: `${Date.now()}-blind-miss`,
+                        casterName,
+                        targetName: "Empty Darkness",
+                        actionName: `${spellName.toUpperCase()} (BLIND SHOT)`,
+                        actionType: "TO HIT",
+                        dieType: 20,
+                        diceBreakdown: "Blind shot into shadows",
+                        formula: "1d20 (DIS)",
+                        total: "MISSED",
+                        subtitle: "Attack vanished harmlessly into the dark void",
+                        isMiss: true,
+                        timestamp: Date.now(),
+                      }
+                    ];
+                    broadcastDDBRoll(ddbCards);
+                    OBR.notification.show(
+                      `${casterName} aimed into the darkness... The attack struck empty shadows!`,
+                      "INFO",
+                    );
+                    await stopAiming();
+                    return false;
+                  }
+                }
+              }
+            }
+          }
+
           const targetPos = isTargetToken
             ? event.target!.position
             : !event.shiftKey
@@ -1644,10 +1851,6 @@ async function setupTargetToolModes(
             );
             return false;
           }
-
-          // Vision / Darkness Line of Sight check
-          const sceneItems = await OBR.scene.items.getItems();
-          const darknessZones = extractDarknessZones(sceneItems);
 
           if (darknessZones.length > 0) {
             const visionRules = activeCaster.item
@@ -1671,58 +1874,83 @@ async function setupTargetToolModes(
               },
             );
 
-            const isWeapon =
-              selectedSpell === "melee_weapon_attack" ||
-              selectedSpell === "ranged_weapon_attack";
+            const activeCharId = activeCaster.item ? getLinkedDDBCharacterId(activeCaster.item) ?? undefined : undefined;
+            const activeDdbChar = activeCharId ? getCachedDDBCharacter(activeCharId) : null;
+            const activeDdbSpell = findDdbSpellSafely(activeDdbChar?.spells, selectedSpell);
+            const isAttack = isAttackAction({
+              selectedSpell,
+              spell,
+              ddbSpell: activeDdbSpell,
+              spellFormula: spell as any,
+            });
+            const requiresSight = doesSpellRequireSight({
+              id: selectedSpell,
+              name: spell?.name || selectedSpell,
+              description: activeDdbSpell?.description,
+              ddbSpell: activeDdbSpell,
+              spellFormula: spell as any,
+            });
+
+            const targetItem = isValidCombatTargetToken(event.target) ? event.target : undefined;
+            let targetCanSeeCaster = false;
+            if (targetItem) {
+              const targetVisionRules = readTokenVisionRules(
+                targetItem as any,
+              );
+              const reverseVisionCheck = evaluateLineOfSight(
+                targetPos,
+                activeCaster.position,
+                darknessZones,
+                grid,
+                {
+                  isDM: false,
+                  casterId: targetItem.id,
+                  playerId: (targetItem as any).metadata?.["embers/characterOwner"] as string | undefined,
+                  characterId: getLinkedDDBCharacterId(targetItem) ?? undefined,
+                  visionRules: targetVisionRules,
+                  casterElevation: targetElevation,
+                  targetElevation: casterElevation,
+                },
+              );
+              targetCanSeeCaster = reverseVisionCheck.canSee;
+            }
+
+            const enableMutualCancel = await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.MUTUAL_DARKNESS_5_5E_CANCEL).catch(() => true);
+            const darkMod = resolveDarknessCombatModifiers({
+              casterCanSeeTarget: visionCheck.canSee,
+              targetCanSeeCaster,
+              enableMutualCancel: enableMutualCancel !== false,
+            });
 
             if (!visionCheck.canSee) {
-              // 5.5e Rule: If attacking an unseen target in Darkness:
-              // Physical weapon attacks can still be made, but suffer Disadvantage.
-              // Spells requiring sight ("that you can see") cannot target the creature.
-              if (isWeapon) {
-                targetIsUnseenInDarkness = true;
-                OBR.notification.show(
-                  "Attacking in Darkness without special vision (Disadvantage applied)",
-                  "INFO",
-                );
-              } else {
+              if (requiresSight) {
                 OBR.notification.show(
                   `Cannot target: ${visionCheck.reason || "Blocked by Magical Darkness (requires sight)!"}`,
                   "WARNING",
                 );
                 return false;
-              }
-            } else {
-              // Caster can see! Check if caster is inside Darkness (with Devil's Sight / Truesight)
-              // while target outside cannot see caster -> Unseen Attacker gives Advantage!
-              const targetItem = isValidCombatTargetToken(event.target) ? event.target : undefined;
-              if (targetItem) {
-                const targetVisionRules = readTokenVisionRules(
-                  targetItem as any,
-                );
-                const reverseVisionCheck = evaluateLineOfSight(
-                  targetPos,
-                  activeCaster.position,
-                  darknessZones,
-                  grid,
-                  {
-                    isDM: false,
-                    casterId: targetItem.id,
-                    playerId: (targetItem as any).metadata?.["embers/characterOwner"] as string | undefined,
-                    characterId: getLinkedDDBCharacterId(targetItem) ?? undefined,
-                    visionRules: targetVisionRules,
-                    casterElevation: targetElevation,
-                    targetElevation: casterElevation,
-                  },
-                );
-                if (!reverseVisionCheck.canSee) {
-                  // Defender cannot see attacker -> Attacker has Advantage (Invisible / Unseen Attacker)
-                  casterHasDarknessAdvantage = true;
+              } else if (isAttack) {
+                if (darkMod.isMutualDarkness && darkMod.rollMode === "normal") {
+                  isMutualDarknessCancelled = true;
                   OBR.notification.show(
-                    "Attacking from inside Darkness with special vision (Advantage applied)",
+                    "Mutual Darkness: Advantage & Disadvantage cancel out (5.5e RAW Straight Roll)",
+                    "INFO",
+                  );
+                } else {
+                  targetIsUnseenInDarkness = true;
+                  OBR.notification.show(
+                    "Attacking unseen target in Darkness (Disadvantage applied)",
                     "INFO",
                   );
                 }
+              }
+            } else {
+              if (isAttack && darkMod.rollMode === "advantage") {
+                casterHasDarknessAdvantage = true;
+                OBR.notification.show(
+                  "Attacking from unseen position (Advantage applied)",
+                  "INFO",
+                );
               }
             }
           }
@@ -1766,19 +1994,21 @@ async function setupTargetToolModes(
             rollMode = "disadvantage";
           } else if (event.shiftKey) {
             rollMode = "advantage";
-          } else if (targetIsUnseenInDarkness) {
-            rollMode = "disadvantage";
-          } else if (casterHasDarknessAdvantage) {
-            rollMode = "advantage";
+          } else if (isMutualDarknessCancelled) {
+            rollMode = "normal";
           } else {
-            const isWeapon =
-              selectedSpell === "melee_weapon_attack" ||
-              selectedSpell === "ranged_weapon_attack";
-            if (isWeapon && buffMods.hasAttackAdvantage) {
-              rollMode = "advantage";
-            } else if (!isWeapon && buffMods.hasSpellAdvantage) {
-              rollMode = "advantage";
-            }
+            const isAttackActionForBuff = isAttackAction({
+              selectedSpell,
+              spell: getSpell(selectedSpell, playerRole === "GM"),
+              ddbSpell: findDdbSpellSafely(castContext.ddbCharacter?.spells, selectedSpell),
+            });
+            const hasBuffAdv = Boolean(
+              (isAttackActionForBuff && buffMods.hasAttackAdvantage) ||
+              (!isAttackActionForBuff && buffMods.hasSpellAdvantage),
+            );
+            const hasAdv = casterHasDarknessAdvantage || hasBuffAdv;
+            const hasDis = targetIsUnseenInDarkness;
+            rollMode = resolveRollMode(hasAdv, hasDis);
           }
 
           const charId = castContext.ddbCharacterId;
@@ -1829,7 +2059,11 @@ async function setupTargetToolModes(
             }
 
             const casterName = castContext.casterName;
-            const targetName = event.target?.name || "Target";
+            const isTargetUnseenByCaster =
+              targetIsUnseenInDarkness || isMutualDarknessCancelled;
+            const targetName = isTargetUnseenByCaster
+              ? "Unseen Target"
+              : event.target?.name || "Target";
             const targetTokenId = event.target?.id;
 
             const combatState = charId ? await loadCombatState(charId) : null;
@@ -1838,11 +2072,7 @@ async function setupTargetToolModes(
               ? `HEX (${combatState.hexAbility.toUpperCase()})`
               : "HEX (CURSE)";
 
-            const ddbSpell = ddbChar?.spells?.find(
-              (s) =>
-                s.name.toLowerCase() === selectedSpell.toLowerCase() ||
-                s.id === selectedSpell,
-            );
+            const ddbSpell = findDdbSpellSafely(ddbChar?.spells, selectedSpell);
             const spell = getSpell(selectedSpell, playerRole === "GM");
             const spellAttackBonus = ddbChar?.spellAttackBonus ?? 5;
             const spellName = ddbSpell?.name || spell?.name || selectedSpell;
@@ -2011,7 +2241,7 @@ async function setupTargetToolModes(
               const weapon =
                 selectedWeapon ||
                 (selectedSpell === "flurry_of_blows"
-                  ? ddbChar?.weapons?.find((w) => w.name.toLowerCase().includes("unarmed"))
+                  ? ddbChar?.weapons?.find((w) => w.name?.toLowerCase().includes("unarmed"))
                   : undefined) ||
                 ddbChar?.weapons?.[0];
               const attackCount =
@@ -2022,7 +2252,7 @@ async function setupTargetToolModes(
               if (weapon) {
                 const isFlurry = selectedSpell === "flurry_of_blows";
                 const isRangedAttack = selectedSpell === "ranged_weapon_attack";
-                const isThrown = isRangedAttack && Boolean(weapon.hasThrown || weapon.properties?.some((p) => p.toLowerCase().includes("thrown")));
+                const isThrown = isRangedAttack && Boolean(weapon.hasThrown || weapon.properties?.some((p) => p?.toLowerCase().includes("thrown")));
                 const ddbCards: DDBRollCardData[] = [];
                 const reports: string[] = [];
                 const activeBuffNames = buffs.map((b) => b.name);
@@ -2094,7 +2324,7 @@ async function setupTargetToolModes(
                   const hitRes = resolveAttackHit(
                     { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                     targetAc,
-                    { hideAcNumber: targetVitals?.hideNumbers }
+                    { hideAcNumber: Boolean(targetVitals?.hideNumbers || isTargetUnseenByCaster) }
                   );
                   const requiresHitApproval =
                     requiresMonsterHitApproval && !roll.isMiss;
@@ -2149,7 +2379,7 @@ async function setupTargetToolModes(
                     });
 
                     let baseWeaponDamage = isThrown && weapon.thrownDamage ? weapon.thrownDamage : weapon.damage;
-                    if (isThrown && weapon.properties?.some((p) => p.toLowerCase().includes("versatile"))) {
+                    if (isThrown && weapon.properties?.some((p) => p?.toLowerCase().includes("versatile"))) {
                       baseWeaponDamage = baseWeaponDamage.replace(/\b1d8\b/, "1d6");
                     }
 
@@ -2427,7 +2657,7 @@ async function setupTargetToolModes(
                 const hitRes = resolveAttackHit(
                   { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                   targetAc,
-                  { hideAcNumber: targetVitals?.hideNumbers }
+                  { hideAcNumber: Boolean(targetVitals?.hideNumbers || isTargetUnseenByCaster) }
                 );
                 const ddbCards: DDBRollCardData[] = [
                   {
@@ -2617,7 +2847,7 @@ async function setupTargetToolModes(
                 const hitRes = resolveAttackHit(
                   { d20: attack.d20, total: attack.total, bonus: attack.bonus, mode: attack.mode },
                   targetAc,
-                  { hideAcNumber: targetVitals?.hideNumbers }
+                  { hideAcNumber: Boolean(targetVitals?.hideNumbers || isTargetUnseenByCaster) }
                 );
                 const extraDamageType = String(
                   spellFormula.cantripScale?.extraDamageType ?? "Cold",
@@ -3008,7 +3238,7 @@ async function setupTargetToolModes(
                   const hitRes = resolveAttackHit(
                     { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                     bAc,
-                    { hideAcNumber: bVitals?.hideNumbers }
+                    { hideAcNumber: Boolean(bVitals?.hideNumbers || isTargetUnseenByCaster) }
                   );
 
                   if (roll.isCrit) anyCrit = true;
@@ -3260,7 +3490,7 @@ async function setupTargetToolModes(
                 const hitRes = resolveAttackHit(
                   { d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode },
                   targetAc,
-                  { hideAcNumber: targetVitals?.hideNumbers }
+                  { hideAcNumber: Boolean(targetVitals?.hideNumbers || isTargetUnseenByCaster) }
                 );
                 const baseDamage = spellFormula.damage.find(
                   (entry) => entry.isBase,
@@ -3819,11 +4049,7 @@ async function setupTargetToolModes(
           const casterName = castContext.casterName;
           const spellName = spell?.name || selectedSpell;
 
-          const ddbSpell = ddbChar?.spells?.find(
-            (s) =>
-              s.name.toLowerCase() === selectedSpell.toLowerCase() ||
-              s.id === selectedSpell,
-          );
+          const ddbSpell = findDdbSpellSafely(ddbChar?.spells, selectedSpell);
 
           const spellFormula = resolveSpellFormula({
             id: ddbSpell?.id || selectedSpell,

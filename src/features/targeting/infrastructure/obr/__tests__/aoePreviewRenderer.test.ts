@@ -177,4 +177,27 @@ describe("aoePreviewRenderer - Optimized Diffing & Lifecycle", () => {
         expect(mockDeleteItems).toHaveBeenCalledTimes(1);
         expect(mockLocalItems.length).toBe(0);
     });
+
+    it("suppresses token warning highlight rings for tokens in hiddenTokenIds", async () => {
+        const token1 = { id: "tok-1", layer: "CHARACTER", visible: true, position: { x: 300, y: 300 } };
+        const token2 = { id: "tok-2", layer: "CHARACTER", visible: true, position: { x: 300, y: 300 } };
+
+        await renderAoePreview({
+            template: {
+                shape: "Sphere",
+                origin: { x: 150, y: 150 },
+                cursor: { x: 300, y: 300 },
+                sizeFeet: 20,
+            },
+            grid,
+            sceneItems: [token1, token2] as any[],
+            hiddenTokenIds: new Set(["tok-2"]) // tok-2 is hidden in darkness
+        });
+
+        const highlight1 = mockLocalItems.find(i => i.id.includes("tok-1"));
+        const highlight2 = mockLocalItems.find(i => i.id.includes("tok-2"));
+
+        expect(highlight1).toBeDefined();
+        expect(highlight2).toBeUndefined(); // tok-2 warning ring was suppressed!
+    });
 });

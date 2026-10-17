@@ -17,6 +17,7 @@ export interface AimingOverlayRenderOptions {
     colorBlindMode?: boolean;
     visionCheck?: VisionCheckResult;
     isWeapon?: boolean;
+    canAimWithoutSight?: boolean;
     hasAdvantage?: boolean;
     hasDisadvantage?: boolean;
     advantageReason?: string;
@@ -55,6 +56,7 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         colorBlindMode = false,
         visionCheck,
         isWeapon = false,
+        canAimWithoutSight = false,
         hasAdvantage = false,
         hasDisadvantage = false,
         advantageReason,
@@ -63,6 +65,7 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
 
     const rangeCheck = isWithinRange(casterPos, cursorPos, maxRangeFeet, grid, rangeMultiplier);
     const canSee = visionCheck ? visionCheck.canSee : true;
+    const canAimUnseen = isWeapon || canAimWithoutSight;
 
     type AimState = "valid" | "advantage" | "disadvantage" | "invalid_range" | "invalid_vision";
     let aimState: AimState = "valid";
@@ -73,9 +76,11 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
 
     if (!rangeCheck.withinRange) {
         aimState = "invalid_range";
-    } else if (!canSee && !isWeapon && !hasDisadvantage) {
+    } else if (!canSee && !canAimUnseen && !hasDisadvantage && !effectiveBoth) {
         aimState = "invalid_vision";
-    } else if (effectiveDisadvantage || (!canSee && (isWeapon || hasDisadvantage))) {
+    } else if (effectiveBoth) {
+        aimState = "valid";
+    } else if (effectiveDisadvantage || (!canSee && (canAimUnseen || hasDisadvantage))) {
         aimState = "disadvantage";
     } else if (effectiveAdvantage) {
         aimState = "advantage";
@@ -154,10 +159,12 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         .build();
 
     // 2. Tether Line (from caster to cursor)
+    const safeCasterPos: Vector2 = { x: casterPos?.x ?? 0, y: casterPos?.y ?? 0 };
+    const safeCursorPos: Vector2 = { x: cursorPos?.x ?? 0, y: cursorPos?.y ?? 0 };
     const tetherLine = buildLine()
         .id(AIMING_TETHER_LINE_ID)
-        .startPosition(casterPos)
-        .endPosition(cursorPos)
+        .startPosition(safeCasterPos)
+        .endPosition(safeCursorPos)
         .strokeColor(strokeColor)
         .strokeWidth(strokeWidth)
         .strokeOpacity(strokeOpacity)
@@ -256,11 +263,13 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         }
         isAimingOverlayMounted = true;
     } else {
+        let missingItemsCount = 0;
         await OBR.scene.local.updateItems(
             candidates.map(i => i.id),
             items => {
                 if (items.length < candidates.length) {
                     isAimingOverlayMounted = false;
+                    missingItemsCount = candidates.length - items.length;
                 }
                 for (let i = 0; i < items.length; i++) {
                     const newItem = candidates.find(u => u.id === items[i].id);
@@ -270,6 +279,17 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
                 }
             }
         );
+        if (missingItemsCount > 0) {
+            const localItems = await OBR.scene.local.getItems();
+            if (currentToken !== renderToken) return result;
+            const existingIds = new Set(localItems.map(item => item.id));
+            const itemsToAdd = candidates.filter(c => !existingIds.has(c.id));
+            if (itemsToAdd.length > 0) {
+                await OBR.scene.local.addItems(itemsToAdd);
+                if (currentToken !== renderToken) return result;
+            }
+            isAimingOverlayMounted = true;
+        }
     }
 
     return result;
