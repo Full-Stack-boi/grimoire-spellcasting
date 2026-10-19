@@ -8,7 +8,6 @@ import {
     type TokenDisposition
 } from "../combat/domain/types";
 import { getActiveEncounter, saveEncounter } from "../combat/initiativeService";
-import { getTokenVitals, setTokenVitals } from "../combat/tokenVitalsService";
 
 export const BOUND_PLAYER_METADATA_KEY = `${APP_KEY}/bound-player`;
 export const PRIMARY_CHARACTER_STORAGE_KEY = `${APP_KEY}/primary-character-token-id`;
@@ -435,19 +434,18 @@ export async function setTokenDisposition(
                 if (!item.metadata || (currentDisp === undefined && item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY] === undefined && item.metadata["disposition"] === undefined)) {
                     return;
                 }
-                delete item.metadata[TOKEN_DISPOSITION_METADATA_KEY];
-                delete item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY];
-                delete item.metadata["disposition"];
+                if (item.metadata[TOKEN_DISPOSITION_METADATA_KEY] !== undefined) {
+                    delete item.metadata[TOKEN_DISPOSITION_METADATA_KEY];
+                }
+                if (item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY] !== undefined) {
+                    delete item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY];
+                }
+                if (item.metadata["disposition"] !== undefined) {
+                    delete item.metadata["disposition"];
+                }
             }
         });
     });
-
-    try {
-        const vitals = await getTokenVitals(tokenId);
-        if (vitals && vitals.disposition !== (disposition ?? undefined)) {
-            await setTokenVitals(tokenId, { disposition: disposition ?? undefined });
-        }
-    } catch {}
 
     try {
         const encounter = await getActiveEncounter();

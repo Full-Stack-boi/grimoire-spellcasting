@@ -565,12 +565,25 @@ export async function setTokenVitals(
           }
           const nextResolvedKeys = options?.actionKey
             ? [...(liveData?.resolvedRollKeys || []), options.actionKey].slice(-50)
-            : updated.resolvedRollKeys;
+            : (updated.resolvedRollKeys ?? liveData?.resolvedRollKeys);
 
+          // Preserve existing fields on liveData (including disposition) so OBR never generates destructive "op: remove"
+          const existingVitals = (item.metadata[VITALS_METADATA_KEY] as Record<string, unknown>) || {};
           const rawVitals: Record<string, unknown> = {
+            ...existingVitals,
             ...updated,
             resolvedRollKeys: nextResolvedKeys,
           };
+
+          // If patch.disposition was NOT explicitly specified, preserve whatever is currently on existingVitals/liveData
+          if (patch.disposition === undefined) {
+            if (existingVitals.disposition !== undefined) {
+              rawVitals.disposition = existingVitals.disposition;
+            } else {
+              delete rawVitals.disposition;
+            }
+          }
+
           Object.keys(rawVitals).forEach((k) => {
             if (rawVitals[k] === undefined) {
               delete rawVitals[k];
