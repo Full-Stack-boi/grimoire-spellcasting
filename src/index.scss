@@ -114,6 +114,11 @@ p {
 .blurry-background {
   backdrop-filter: blur(10px);
   background-color: rgba(30, 34, 49, 0.6);
+
+  @media (max-width: 768px), (pointer: coarse) {
+    backdrop-filter: blur(4px);
+    background-color: rgba(30, 34, 49, 0.85);
+  }
 }
 
 .non-selectable {

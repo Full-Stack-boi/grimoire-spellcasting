@@ -339,17 +339,18 @@
   border-bottom: 7px solid #f59e0b;
   filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.9));
   animation: bg3ArrowPulse 1.8s ease-in-out infinite;
+  will-change: transform, opacity;
   z-index: 25;
 }
 
 @keyframes bg3ArrowPulse {
   0%, 100% {
     transform: translateX(-50%) translateY(0);
-    filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.8));
+    opacity: 0.85;
   }
   50% {
-    transform: translateX(-50%) translateY(-2px);
-    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 1));
+    transform: translateX(-50%) translateY(-3px);
+    opacity: 1;
   }
 }
 

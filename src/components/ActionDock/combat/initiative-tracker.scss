@@ -550,6 +550,11 @@
   min-width: 135px;
   z-index: 99999;
   backdrop-filter: blur(8px);
+
+  @media (max-width: 768px), (pointer: coarse) {
+    backdrop-filter: none;
+    background: #0d121c;
+  }
 }
 
 .ddb-bg3-roll-menu-portal {

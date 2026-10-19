@@ -332,7 +332,16 @@ export const ActionDock: React.FC = () => {
             setCharacterTokens(items.filter(isCharacterToken));
         });
         return OBR.scene.items.onChange(items => {
-            setCharacterTokens(items.filter(isCharacterToken));
+            const next = items.filter(isCharacterToken);
+            setCharacterTokens(prev => {
+                if (
+                    prev.length === next.length &&
+                    prev.every((p, i) => p.id === next[i].id && p.name === next[i].name && p.metadata === next[i].metadata)
+                ) {
+                    return prev;
+                }
+                return next;
+            });
         });
     }, [obr.ready, obr.sceneReady, isGM]);
 

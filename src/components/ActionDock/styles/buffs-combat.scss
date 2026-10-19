@@ -41,6 +41,7 @@
 }
 
 .ddb-buff-chip {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -52,12 +53,24 @@
     font-weight: 700;
     color: #fef3c7;
     box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
-    animation: ddb-buff-glow 3s infinite alternate ease-in-out;
+
+    /* GPU-accelerated pulsing glow via pseudo-element */
+    &::after {
+        content: '';
+        position: absolute;
+        inset: -1px;
+        border-radius: 12px;
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        opacity: 0.25;
+        pointer-events: none;
+        will-change: opacity;
+        animation: ddb-buff-glow-gpu 2.5s infinite alternate ease-in-out;
+    }
 }
 
-@keyframes ddb-buff-glow {
-    0% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.2); }
-    100% { box-shadow: 0 0 9px rgba(239, 68, 68, 0.4); }
+@keyframes ddb-buff-glow-gpu {
+    0% { opacity: 0.2; }
+    100% { opacity: 0.8; }
 }
 
 .ddb-buff-icon {
@@ -309,6 +322,7 @@
 
 /* Death Saves Bar */
 .ddb-death-saves-bar {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -317,12 +331,23 @@
     background: linear-gradient(90deg, rgba(80, 10, 10, 0.98), rgba(120, 20, 20, 0.95));
     border-bottom: 2px solid #ef4444;
     box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6);
-    animation: ddb-death-glow 2s infinite alternate ease-in-out;
+
+    /* Hardware-accelerated GPU pulsing glow */
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 14px rgba(239, 68, 68, 0.6);
+        opacity: 0.3;
+        pointer-events: none;
+        will-change: opacity;
+        animation: ddb-death-glow-gpu 2s infinite alternate ease-in-out;
+    }
 }
 
-@keyframes ddb-death-glow {
-    0% { box-shadow: inset 0 0 6px rgba(239, 68, 68, 0.3); }
-    100% { box-shadow: inset 0 0 14px rgba(239, 68, 68, 0.6); }
+@keyframes ddb-death-glow-gpu {
+    0% { opacity: 0.25; }
+    100% { opacity: 0.85; }
 }
 
 .ddb-death-saves-title {

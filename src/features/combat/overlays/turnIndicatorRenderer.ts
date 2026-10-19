@@ -201,6 +201,21 @@ export async function renderActiveTurnIndicator(
   }
 }
 
+const safeRequestAnimationFrame = (callback: () => void): number => {
+  if (typeof requestAnimationFrame === "function") {
+    return requestAnimationFrame(callback);
+  }
+  return setTimeout(callback, 0) as unknown as number;
+};
+
+const safeCancelAnimationFrame = (id: number): void => {
+  if (typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(id);
+  } else {
+    clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+  }
+};
+
 /**
  * Sets up a persistent subscription that synchronizes the map turn indicator
  * with the active encounter combatant whenever scene metadata or items change.
@@ -210,6 +225,7 @@ export function setupTurnIndicatorSync(): () => void {
   let unsubscribeMetadata: (() => void) | null = null;
   let unsubscribeItems: (() => void) | null = null;
   let currentActiveId: string | null = null;
+  let renderRafId: number | null = null;
 
   async function checkAndUpdate() {
     if (unsubscribed) return;
@@ -245,7 +261,13 @@ export function setupTurnIndicatorSync(): () => void {
 
       unsubscribeItems = OBR.scene.items.onChange((items) => {
         if (currentActiveId && items.some((it) => it.id === currentActiveId)) {
-          renderActiveTurnIndicator(currentActiveId);
+          if (renderRafId !== null) return;
+          renderRafId = safeRequestAnimationFrame(() => {
+            renderRafId = null;
+            if (!unsubscribed && currentActiveId) {
+              void renderActiveTurnIndicator(currentActiveId);
+            }
+          });
         }
       });
     };
@@ -259,6 +281,7 @@ export function setupTurnIndicatorSync(): () => void {
 
   return () => {
     unsubscribed = true;
+    if (renderRafId !== null) safeCancelAnimationFrame(renderRafId);
     if (unsubscribeMetadata) unsubscribeMetadata();
     if (unsubscribeItems) unsubscribeItems();
     clearActiveTurnIndicator();

@@ -283,3 +283,11 @@
   0%, 100% { opacity: 0.7; }
   50% { opacity: 1; }
 }
+
+@media (max-width: 768px), (pointer: coarse) {
+  .situational-roll-bar {
+    backdrop-filter: none;
+    background: rgba(15, 23, 42, 0.96);
+  }
+}
+

@@ -485,11 +485,16 @@ export function setupTokenVitalsSync(): () => void {
         if (!vitals) return null;
 
         let geometry: VitalsBarGeometry;
-        try {
-          const bounds = await OBR.scene.items.getItemBounds([item.id]);
-          geometry = calculateVitalsBarGeometry(item as any, bounds, sceneDpi);
-        } catch {
+        const rawImage = (item as unknown as { image?: { width?: number } }).image;
+        if (rawImage && typeof rawImage.width === "number" && rawImage.width > 0) {
           geometry = calculateVitalsBarGeometry(item as any, null, sceneDpi);
+        } else {
+          try {
+            const bounds = await OBR.scene.items.getItemBounds([item.id]);
+            geometry = calculateVitalsBarGeometry(item as any, bounds, sceneDpi);
+          } catch {
+            geometry = calculateVitalsBarGeometry(item as any, null, sceneDpi);
+          }
         }
 
         nextCachedGeometry.set(item.id, geometry);
@@ -693,10 +698,32 @@ export function setupTokenVitalsSync(): () => void {
     }
   }
 
+const safeRequestAnimationFrame = (callback: () => void): number => {
+  if (typeof requestAnimationFrame === "function") {
+    return requestAnimationFrame(callback);
+  }
+  return setTimeout(callback, 0) as unknown as number;
+};
+
+const safeCancelAnimationFrame = (id: number): void => {
+  if (typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(id);
+  } else {
+    clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+  }
+};
+
+  let fullSyncRafId: number | null = null;
   function queueFullSync() {
     fullSyncPending = true;
     pendingTokenItems.clear();
-    void drainSyncQueue();
+    if (fullSyncRafId !== null) return;
+    fullSyncRafId = safeRequestAnimationFrame(() => {
+      fullSyncRafId = null;
+      if (!unsubscribed) {
+        void drainSyncQueue();
+      }
+    });
   }
 
   getOBR()
@@ -747,6 +774,7 @@ export function setupTokenVitalsSync(): () => void {
 
   return () => {
     unsubscribed = true;
+    if (fullSyncRafId !== null) safeCancelAnimationFrame(fullSyncRafId);
     if (unsubscribeMetadata) unsubscribeMetadata();
     if (unsubscribeItems) unsubscribeItems();
     if (unsubscribePlayer) unsubscribePlayer();
