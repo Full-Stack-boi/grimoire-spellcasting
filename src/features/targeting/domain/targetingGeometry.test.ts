@@ -15,7 +15,13 @@ import {
     snapToCellCenter,
     distancePoint3DToSegment3DFeet,
     doesSegmentIntersectSphere3D,
-    Point3D
+    Point3D,
+    getTokenFootprint,
+    isPointInTokenFootprint,
+    resolveCombatTargetTokenAtPoint,
+    getTokenClosestPointToPoint,
+    calculateTokenEdgeDistanceFeet,
+    isWithinTokenRange
 } from "./targetingGeometry";
 
 describe("Geometry & Grid Utilities", () => {
@@ -310,5 +316,319 @@ describe("Geometry & Grid Utilities", () => {
             expect(doesSegmentIntersectSphere3D(caster, target, sphere, 15, testGrid)).toBe(false);
         });
     });
+
+    describe("Token Footprint & 5e Edge-to-Edge Range Mechanics", () => {
+        const combatGrid: GridInfo = {
+            dpi: 100, // 100px per cell
+            scaleMultiplier: 5, // 5 ft per cell
+            cellCenterOffset: { x: 50, y: 50 }
+        };
+
+        const mediumToken = {
+            id: "token-medium",
+            layer: "CHARACTER",
+            position: { x: 50, y: 50 },
+            image: { width: 100, height: 100 },
+            grid: { dpi: 100 },
+            scale: { x: 1, y: 1 }
+        } as any;
+
+        const largeToken = {
+            id: "token-large-devil",
+            layer: "CHARACTER",
+            position: { x: 200, y: 100 }, // 2x2 cells (bounds [100, 300] x [0, 200])
+            image: { width: 200, height: 200 },
+            grid: { dpi: 100 },
+            scale: { x: 1, y: 1 }
+        } as any;
+
+        it("calculates accurate token footprint bounds and occupied cells", () => {
+            const fpMed = getTokenFootprint(mediumToken, combatGrid);
+            expect(fpMed.sizeInSquares).toBe(1);
+            expect(fpMed.bounds.minX).toBe(0);
+            expect(fpMed.bounds.maxX).toBe(100);
+            expect(fpMed.bounds.minY).toBe(0);
+            expect(fpMed.bounds.maxY).toBe(100);
+
+            const fpLarge = getTokenFootprint(largeToken, combatGrid);
+            expect(fpLarge.sizeInSquares).toBe(2);
+            expect(fpLarge.bounds.minX).toBe(100);
+            expect(fpLarge.bounds.maxX).toBe(300);
+            expect(fpLarge.bounds.minY).toBe(0);
+            expect(fpLarge.bounds.maxY).toBe(200);
+            expect(fpLarge.occupiedCells.length).toBeGreaterThanOrEqual(4);
+        });
+
+        it("resolves irregular cutout token when clicking transparent area / wing / horn", () => {
+            // Pointer clicks near the outstretched wing edge of the large horned devil (x=290, y=30)
+            const wingClick = { x: 290, y: 30 };
+            const inside = isPointInTokenFootprint(wingClick, largeToken, combatGrid);
+            expect(inside).toBe(true);
+
+            // Even if OBR event.target is undefined (transparent pixel), resolveCombatTargetTokenAtPoint finds the token!
+            const resolved = resolveCombatTargetTokenAtPoint(wingClick, [mediumToken, largeToken], combatGrid, undefined);
+            expect(resolved?.id).toBe("token-large-devil");
+        });
+
+        it("anchors tether to the closest cell of a large token instead of far center", () => {
+            // Medium token at (50, 50). Large token spans x=[100, 300], y=[0, 200]
+            // Center is at (200, 100), but closest occupied cell to (50, 50) is at (150, 50)
+            const closestAnchor = getTokenClosestPointToPoint(largeToken, mediumToken.position, combatGrid);
+            expect(closestAnchor.x).toBe(150);
+            expect(closestAnchor.y).toBe(50);
+        });
+
+        it("evaluates adjacent tokens as 5 ft distance in 5e rules", () => {
+            // mediumToken is at (50, 50), adjacent to largeToken starting at x=100
+            const dist = calculateTokenEdgeDistanceFeet(mediumToken, largeToken, combatGrid);
+            expect(dist).toBe(5);
+
+            // A 5ft melee attack reaches the large creature
+            const rangeCheck = isWithinTokenRange(mediumToken, largeToken, 5, combatGrid);
+            expect(rangeCheck.withinRange).toBe(true);
+            expect(rangeCheck.currentDistanceFeet).toBe(5);
+        });
+
+        it("evaluates separated tokens correctly (1 square gap = 10 ft away)", () => {
+            const farToken = {
+                id: "token-far",
+                layer: "CHARACTER",
+                position: { x: 250, y: 50 }, // bounds [200, 300], gap between medium [0,100] and far is 100px = 1 square
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 }
+            } as any;
+
+            const dist = calculateTokenEdgeDistanceFeet(mediumToken, farToken, combatGrid);
+            expect(dist).toBe(10);
+
+            // 5ft melee reach fails
+            const meleeCheck = isWithinTokenRange(mediumToken, farToken, 5, combatGrid);
+            expect(meleeCheck.withinRange).toBe(false);
+            expect(meleeCheck.currentDistanceFeet).toBe(10);
+
+            // 10ft reach or ranged attack succeeds
+            const reachCheck = isWithinTokenRange(mediumToken, farToken, 10, combatGrid);
+            expect(reachCheck.withinRange).toBe(true);
+        });
+
+        it("correctly handles Huge (3x3, 15ft) winged monster: adjacent player is always in 5ft melee reach", () => {
+            // Huge Horned Devil centered at cell (col 2, row 1) = (250, 150)
+            // 3x3 combat base covers columns 1, 2, 3 (x in [100, 400]) and rows 0, 1, 2 (y in [0, 300])
+            // Image has wide wingspan: width 500px (spans x in [0, 500], 5 cells wide!)
+            const hugeWingedDevil = {
+                id: "token-huge-devil",
+                layer: "CHARACTER",
+                position: { x: 250, y: 150 },
+                image: { width: 500, height: 300 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                metadata: {
+                    "embers/combatSpace": {
+                        sizeInSquares: 3,
+                        sizeCategory: "Huge",
+                        sizeFeet: 15
+                    }
+                }
+            } as any;
+
+            const footprint = getTokenFootprint(hugeWingedDevil, combatGrid);
+            expect(footprint.sizeInSquares).toBe(3);
+            expect(footprint.occupiedCells.length).toBe(9); // exactly 3x3 = 9 cells
+            expect(footprint.combatBounds.minX).toBe(100);
+            expect(footprint.combatBounds.maxX).toBe(400);
+            expect(footprint.combatBounds.minY).toBe(0);
+            expect(footprint.combatBounds.maxY).toBe(300);
+
+            // Visual bounds include the full 500px wingspan
+            expect(footprint.bounds.minX).toBe(0);
+            expect(footprint.bounds.maxX).toBe(500);
+
+            // 1. Player is in column 0, row 1 (x=50, y=150) - directly adjacent to the Huge monster's left side (col 1, row 1)
+            const adjacentPlayer = {
+                id: "player-leaf",
+                layer: "CHARACTER",
+                position: { x: 50, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 }
+            } as any;
+
+            // Tether anchors to the adjacent cell (col 1, row 1 at x=150, y=150), NOT far center (250, 150)!
+            const anchor = getTokenClosestPointToPoint(hugeWingedDevil, adjacentPlayer.position, combatGrid);
+            expect(anchor.x).toBe(150);
+            expect(anchor.y).toBe(150);
+
+            // Distance is 5 ft (within 5 ft melee reach)
+            const dist = calculateTokenEdgeDistanceFeet(adjacentPlayer, hugeWingedDevil, combatGrid);
+            expect(dist).toBe(5);
+
+            const meleeCheck = isWithinTokenRange(adjacentPlayer, hugeWingedDevil, 5, combatGrid);
+            expect(meleeCheck.withinRange).toBe(true);
+            expect(meleeCheck.currentDistanceFeet).toBe(5);
+
+            // 2. Player is diagonally adjacent at top-left corner (col 0, row -1 at x=50, y=-50)
+            const diagonalPlayer = {
+                id: "player-diagonal",
+                layer: "CHARACTER",
+                position: { x: 50, y: -50 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 }
+            } as any;
+            const diagDist = calculateTokenEdgeDistanceFeet(diagonalPlayer, hugeWingedDevil, combatGrid);
+            expect(diagDist).toBe(5);
+            expect(isWithinTokenRange(diagonalPlayer, hugeWingedDevil, 5, combatGrid).withinRange).toBe(true);
+
+            // 3. Player at col -1 (x=-50, y=150) is directly adjacent to the outstretched wing at col 0 -> 5 ft melee reach!
+            const wingAdjacentPlayer = {
+                id: "player-wing-adjacent",
+                layer: "CHARACTER",
+                position: { x: -50, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 }
+            } as any;
+            const wingDist = calculateTokenEdgeDistanceFeet(wingAdjacentPlayer, hugeWingedDevil, combatGrid);
+            expect(wingDist).toBe(5);
+            expect(isWithinTokenRange(wingAdjacentPlayer, hugeWingedDevil, 5, combatGrid).withinRange).toBe(true);
+
+            // 4. Player at col -2 (x=-150, y=150) is separated by 1 full square gap from the wing -> 10 ft away!
+            const separatedPlayer = {
+                id: "player-separated",
+                layer: "CHARACTER",
+                position: { x: -150, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 }
+            } as any;
+            const sepDist = calculateTokenEdgeDistanceFeet(separatedPlayer, hugeWingedDevil, combatGrid);
+            expect(sepDist).toBe(10);
+            expect(isWithinTokenRange(separatedPlayer, hugeWingedDevil, 5, combatGrid).withinRange).toBe(false);
+
+            // 5. Clicking the outstretched wing at x=480 (outside the 3x3 combat base) resolves the monster
+            const wingClick = { x: 480, y: 150 };
+            const resolved = resolveCombatTargetTokenAtPoint(wingClick, [adjacentPlayer, hugeWingedDevil], combatGrid);
+            expect(resolved?.id).toBe("token-huge-devil");
+        });
+
+        it("resolves PROP and MOUNT layers as valid combat targets with CHARACTER precedence", () => {
+            const propMonster = {
+                id: "token-prop-monster",
+                layer: "PROP",
+                position: { x: 150, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                visible: true,
+            } as any;
+
+            const charMonster = {
+                id: "token-char-monster",
+                layer: "CHARACTER",
+                position: { x: 150, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                visible: true,
+            } as any;
+
+            // Single prop token resolves cleanly
+            const resolvedProp = resolveCombatTargetTokenAtPoint({ x: 150, y: 150 }, [propMonster], combatGrid);
+            expect(resolvedProp?.id).toBe("token-prop-monster");
+
+            // When overlapping, CHARACTER layer takes precedence
+            const resolvedBoth = resolveCombatTargetTokenAtPoint({ x: 150, y: 150 }, [propMonster, charMonster], combatGrid);
+            expect(resolvedBoth?.id).toBe("token-char-monster");
+        });
+
+        it("allows player standing under wings of a wide token to strike in 5ft melee reach", () => {
+            // An unbound winged devil placed on board (1x1 combat base at x=250, y=150, but wingspan [50, 450])
+            const unboundDevil = {
+                id: "token-unbound-devil",
+                layer: "PROP",
+                position: { x: 250, y: 150 },
+                image: { width: 400, height: 200 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                visible: true,
+            } as any;
+
+            // Player Leaf standing at x=150, y=150 (under the devil's left wing)
+            const leafPlayer = {
+                id: "leaf",
+                layer: "CHARACTER",
+                position: { x: 150, y: 150 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                visible: true,
+            } as any;
+
+            // 1. Edge distance is within 5 ft reach because Leaf is inside the visual wingspan
+            const dist = calculateTokenEdgeDistanceFeet(leafPlayer, unboundDevil, combatGrid);
+            expect(dist).toBe(5);
+
+            const meleeCheck = isWithinTokenRange(leafPlayer, unboundDevil, 5, combatGrid);
+            expect(meleeCheck.withinRange).toBe(true);
+            expect(meleeCheck.currentDistanceFeet).toBe(5);
+
+            // 2. Anchor point snaps to the closest space near the player rather than far center
+            const anchor = getTokenClosestPointToPoint(unboundDevil, leafPlayer.position, combatGrid);
+            expect(anchor.x).toBe(150);
+            expect(anchor.y).toBe(150);
+        });
+
+        it("allows player adjacent to the wingtip of a DM-scaled Huge monster to strike in 5ft melee reach", () => {
+            // A Huge monster (3x3 base at x=550, y=550) scaled by DM to have an expansive wingspan
+            // Image width 600, height 300, scale 2.0 -> visualWidth = 1200px (12 squares!), x range [ -50, 1150 ]
+            const dmScaledDevil = {
+                id: "token-huge-devil",
+                layer: "CHARACTER",
+                position: { x: 550, y: 550 },
+                image: { width: 600, height: 300 },
+                grid: { dpi: 100 },
+                scale: { x: 2, y: 2 },
+                metadata: {
+                    "embers/combat-space": {
+                        sizeInSquares: 3,
+                        sizeCategory: "Huge",
+                        sizeFeet: 15,
+                    },
+                },
+                visible: true,
+            } as any;
+
+            // Player Leaf standing at cell x=1250, y=550 (immediately adjacent to the right wingtip at x=1150)
+            const leafPlayer = {
+                id: "leaf-adjacent",
+                layer: "CHARACTER",
+                position: { x: 1250, y: 550 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                visible: true,
+            } as any;
+
+            // 1. Edge distance is 5 ft because Leaf is immediately adjacent to the right wing
+            const dist = calculateTokenEdgeDistanceFeet(leafPlayer, dmScaledDevil, combatGrid);
+            expect(dist).toBe(5);
+
+            // 2. Melee weapon range (5 ft) is in range
+            const meleeCheck = isWithinTokenRange(leafPlayer, dmScaledDevil, 5, combatGrid);
+            expect(meleeCheck.withinRange).toBe(true);
+            expect(meleeCheck.currentDistanceFeet).toBe(5);
+
+            // 3. Clicking directly on the wingtip (x=1140, y=550) resolves the monster as combat target
+            const target = resolveCombatTargetTokenAtPoint({ x: 1140, y: 550 }, [dmScaledDevil], combatGrid);
+            expect(target?.id).toBe("token-huge-devil");
+
+            // 4. Anchor point snaps to the closest occupied combat cell to Leaf (x=650, y=550) rather than far center (x=550)
+            const anchor = getTokenClosestPointToPoint(dmScaledDevil, leafPlayer.position, combatGrid);
+            expect(anchor.x).toBe(650);
+            expect(anchor.y).toBe(550);
+        });
+    });
 });
+
 

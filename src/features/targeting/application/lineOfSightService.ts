@@ -54,9 +54,9 @@ export function readTokenElevation(item: Item | null | undefined): number {
  */
 export function isValidCombatTargetToken(item: Item | undefined | null): boolean {
     if (!item) return false;
-    const isCharacterOrDrawing = item.layer === "CHARACTER" || item.layer === "DRAWING";
+    const isCombatLayer = item.layer === "CHARACTER" || item.layer === "MOUNT" || item.layer === "PROP" || item.layer === "DRAWING";
     const isStandaloneAttachment = item.layer === "ATTACHMENT" && (item as any).attachedTo === undefined && item.type === "IMAGE";
-    if (!isCharacterOrDrawing && !isStandaloneAttachment) return false;
+    if (!isCombatLayer && !isStandaloneAttachment) return false;
     if (item.metadata?.[DARKNESS_ZONE_METADATA_KEY] !== undefined || item.metadata?.[`${LEGACY_APP_KEY}/darkness-zone`] !== undefined) return false;
     if (item.metadata?.[EFFECT_METADATA_KEY] !== undefined || item.metadata?.[`${LEGACY_APP_KEY}/effect-id`] !== undefined) return false;
     if (item.metadata?.[SPELL_METADATA_KEY] !== undefined || item.metadata?.[`${LEGACY_APP_KEY}/spell-id`] !== undefined) return false;

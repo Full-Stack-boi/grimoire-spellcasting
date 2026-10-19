@@ -1,18 +1,23 @@
-import OBR, { Item, Vector2, buildLabel, buildLine, buildShape } from "@owlbear-rodeo/sdk";
-import { GridInfo, feetToPixels, isWithinRange, snapToCellCenter } from "../../domain/targetingGeometry";
+import OBR, { Item, Vector2, buildLabel, buildLine, buildPath, buildShape } from "@owlbear-rodeo/sdk";
+import { GridInfo, feetToPixels, isWithinTokenRange, snapToCellCenter } from "../../domain/targetingGeometry";
 import { VisionCheckResult } from "../../domain/vision";
 import { APP_KEY } from "../../../../config";
+import { extractImageContourCommands } from "./silhouetteContour";
 
 export const AIMING_RANGE_CIRCLE_ID = `${APP_KEY}/aiming-range-circle`;
 export const AIMING_TETHER_LINE_ID = `${APP_KEY}/aiming-tether-line`;
 export const AIMING_DISTANCE_LABEL_ID = `${APP_KEY}/aiming-distance-label`;
 export const AIMING_TARGET_CELL_ID = `${APP_KEY}/aiming-target-cell`;
+export const AIMING_TARGET_GLOW_ID = `${APP_KEY}/aiming-target-glow`;
+
 
 export interface AimingOverlayRenderOptions {
     casterPos: Vector2;
     cursorPos: Vector2;
     maxRangeFeet: number;
     grid: GridInfo;
+    casterItem?: Item;
+    targetItem?: Item;
     rangeMultiplier?: number;
     colorBlindMode?: boolean;
     visionCheck?: VisionCheckResult;
@@ -63,7 +68,13 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         disadvantageReason
     } = state;
 
-    const rangeCheck = isWithinRange(casterPos, cursorPos, maxRangeFeet, grid, rangeMultiplier);
+    const rangeCheck = isWithinTokenRange(
+        state.casterItem || casterPos,
+        state.targetItem || cursorPos,
+        maxRangeFeet,
+        grid,
+        rangeMultiplier
+    );
     const canSee = visionCheck ? visionCheck.canSee : true;
     const canAimUnseen = isWeapon || canAimWithoutSight;
 
@@ -195,26 +206,100 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         .layer("ATTACHMENT")
         .build();
 
-    // 4. Target Cell Highlight (subtle grid cell indicator)
-    const targetCellCenter = snapToCellCenter(cursorPos, grid);
-    const targetCellShape = buildShape()
-        .id(AIMING_TARGET_CELL_ID)
-        .shapeType("RECTANGLE")
-        .position({
-            x: targetCellCenter.x - grid.dpi / 2,
-            y: targetCellCenter.y - grid.dpi / 2
-        })
-        .width(grid.dpi)
-        .height(grid.dpi)
-        .strokeColor(strokeColor)
-        .strokeWidth(2)
-        .strokeOpacity(0.7)
-        .fillColor(strokeColor)
-        .fillOpacity(0.12)
-        .disableHit(true)
-        .locked(true)
-        .layer("ATTACHMENT")
-        .build();
+    // 4. Target Cell Highlight (subtle square grid cell indicator on ground when NOT targeting a creature)
+    const isTargetingCreature = Boolean(state.targetItem);
+    let targetCellShape: Item | null = null;
+
+    if (!isTargetingCreature) {
+        const targetCellCenter = snapToCellCenter(cursorPos, grid);
+        targetCellShape = buildShape()
+            .id(AIMING_TARGET_CELL_ID)
+            .shapeType("RECTANGLE")
+            .position({ x: targetCellCenter.x - grid.dpi / 2, y: targetCellCenter.y - grid.dpi / 2 })
+            .width(grid.dpi)
+            .height(grid.dpi)
+            .strokeColor(strokeColor)
+            .strokeWidth(2)
+            .strokeOpacity(0.7)
+            .fillColor(strokeColor)
+            .fillOpacity(0.12)
+            .disableHit(true)
+            .locked(true)
+            .layer("ATTACHMENT")
+            .build();
+    } else {
+        OBR.scene.local.deleteItems([AIMING_TARGET_CELL_ID]).catch(() => {});
+    }
+
+    // 5. Target Creature Contour Silhouette Glow (local vector path contour tracing token image)
+    let targetGlowItem: Item | null = null;
+    if (state.targetItem) {
+        const item = state.targetItem as any;
+        if (item.image?.url && item.image.width && item.image.height) {
+            const itemGrid = item.grid || { dpi: grid.dpi, offset: { x: item.image.width / 2, y: item.image.height / 2 } };
+            const itemGridDpi = itemGrid.dpi || grid.dpi || 150;
+            const sceneDpi = grid.dpi || 150;
+            const sceneScale = sceneDpi / itemGridDpi;
+
+            const targetWidth = item.image.width * sceneScale;
+            const targetHeight = item.image.height * sceneScale;
+            const targetOffset = {
+                x: itemGrid.offset.x * sceneScale,
+                y: itemGrid.offset.y * sceneScale
+            };
+
+            const commands = await extractImageContourCommands(
+                item.image.url,
+                targetWidth,
+                targetHeight,
+                targetOffset
+            );
+            if (currentToken !== renderToken) return {
+                withinRange: rangeCheck.withinRange,
+                currentDistanceFeet: rangeCheck.currentDistanceFeet,
+                maxRangeFeet: rangeCheck.effectiveMaxRangeFeet,
+                canSee,
+                aimState,
+                reason: visionCheck?.reason
+            };
+
+            targetGlowItem = buildPath()
+                .id(AIMING_TARGET_GLOW_ID)
+                .position(item.position)
+                .scale(item.scale || { x: 1, y: 1 })
+                .rotation(item.rotation || 0)
+                .commands(commands)
+                .strokeColor(strokeColor)
+                .strokeWidth(4)
+                .strokeOpacity(0.9)
+                .fillColor(strokeColor)
+                .fillOpacity(0.12)
+                .disableHit(true)
+                .locked(true)
+                .layer("ATTACHMENT")
+                .build();
+        } else {
+            // Fallback for non-image tokens (vector shapes)
+            targetGlowItem = buildShape()
+                .id(AIMING_TARGET_GLOW_ID)
+                .shapeType("CIRCLE")
+                .position(item.position)
+                .width(grid.dpi)
+                .height(grid.dpi)
+                .strokeColor(strokeColor)
+                .strokeWidth(4)
+                .strokeOpacity(0.85)
+                .fillColor(strokeColor)
+                .fillOpacity(0.15)
+                .disableHit(true)
+                .locked(true)
+                .layer("ATTACHMENT")
+                .build();
+        }
+    } else {
+        // Not targeting a creature - ensure any existing glow item is cleaned up
+        OBR.scene.local.deleteItems([AIMING_TARGET_GLOW_ID]).catch(() => {});
+    }
 
     const result: AimingOverlayRenderResult = {
         withinRange: rangeCheck.withinRange,
@@ -225,7 +310,13 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         reason: visionCheck?.reason
     };
 
-    const candidates = [rangeCircle, tetherLine, distanceLabel, targetCellShape];
+    const candidates: Item[] = [rangeCircle, tetherLine, distanceLabel];
+    if (targetCellShape) {
+        candidates.push(targetCellShape);
+    }
+    if (targetGlowItem) {
+        candidates.push(targetGlowItem);
+    }
 
     if (!isAimingOverlayMounted) {
         const localItems = await OBR.scene.local.getItems();
@@ -301,7 +392,13 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
 export async function clearAimingOverlay(): Promise<void> {
     renderToken++;
     isAimingOverlayMounted = false;
-    const ids = [AIMING_RANGE_CIRCLE_ID, AIMING_TETHER_LINE_ID, AIMING_DISTANCE_LABEL_ID, AIMING_TARGET_CELL_ID];
+    const ids = [
+        AIMING_RANGE_CIRCLE_ID,
+        AIMING_TETHER_LINE_ID,
+        AIMING_DISTANCE_LABEL_ID,
+        AIMING_TARGET_CELL_ID,
+        AIMING_TARGET_GLOW_ID,
+    ];
     try {
         await OBR.scene.local.deleteItems(ids);
     } catch {

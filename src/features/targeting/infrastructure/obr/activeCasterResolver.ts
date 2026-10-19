@@ -71,7 +71,8 @@ export async function resolveActiveCaster(
     const playerMeta = typeof OBR.player?.getMetadata === "function" ? await OBR.player.getMetadata() : {};
     const explicitCasterId = playerMeta[toolMetadataSelectedCaster] as string | undefined;
     if (explicitCasterId) {
-        const boundItem = characterItems.find(item => item.id === explicitCasterId);
+        const boundItem = characterItems.find(item => item.id === explicitCasterId)
+            || sceneItems.find(item => item.id === explicitCasterId);
         if (boundItem) {
             const casterInfo: ActiveCasterInfo = {
                 item: boundItem,
@@ -105,7 +106,8 @@ export async function resolveActiveCaster(
         }
 
         if (lastResolvedCaster?.id) {
-            const refreshed = characterItems.find(item => item.id === lastResolvedCaster?.id);
+            const refreshed = characterItems.find(item => item.id === lastResolvedCaster?.id)
+                || sceneItems.find(item => item.id === lastResolvedCaster?.id);
             if (refreshed) {
                 const refreshedCaster: ActiveCasterInfo = {
                     item: refreshed,
