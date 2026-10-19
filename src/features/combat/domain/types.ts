@@ -45,6 +45,7 @@ export interface TokenVitals {
   pendingConcentrationSaves?: PendingConcentrationSave[];
   disposition?: TokenDisposition;
   hideNumbers?: boolean;
+  resolvedRollKeys?: string[];
   updatedAt?: number;
 }
 

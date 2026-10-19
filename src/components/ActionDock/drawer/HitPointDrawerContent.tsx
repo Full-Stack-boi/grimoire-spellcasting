@@ -156,7 +156,7 @@ export const HitPointDrawerContent: React.FC<HitPointDrawerContentProps> = ({
                     {character.hitDice.map(hitDie => {
                         const used = usedHitDice[hitDie.die] || 0;
                         const remaining = Math.max(0, hitDie.total - used);
-                        const sides = parseInt(hitDie.die.replace("d", ""), 10) || 8;
+                        const sides = parseInt(hitDie.die.replace(/^\d*d/i, ""), 10) || 8;
                         return (
                             <div key={hitDie.die} className="ddb-hit-dice-group">
                                 <span style={{ fontSize: "0.72rem", color: "#cbd5e1" }}>

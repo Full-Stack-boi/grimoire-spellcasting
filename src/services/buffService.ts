@@ -97,16 +97,44 @@ export function isActivatableBuffFeature(name?: string | null, description?: str
     );
 }
 
-/**
- * Extracts active buffs from a token's metadata.
- */
-export function getTokenBuffs(item?: Item | null): ActiveBuff[] {
-    if (!item?.metadata) return [];
-    const raw = item.metadata[ACTIVE_BUFFS_METADATA_KEY] ?? item.metadata[`${LEGACY_APP_KEY}/active-buffs`];
-    if (Array.isArray(raw)) {
-        return raw as ActiveBuff[];
-    }
+function persistBuffsToStorage(tokenId: string, buffs: ActiveBuff[]): void {
+    if (typeof localStorage === "undefined") return;
+    try {
+        localStorage.setItem(`embers:active-buffs:${tokenId}`, JSON.stringify(buffs));
+        localStorage.setItem("embers:active-buffs:latest", JSON.stringify(buffs));
+    } catch {}
+}
+
+function getBuffsFromStorage(tokenId?: string): ActiveBuff[] {
+    if (typeof localStorage === "undefined") return [];
+    try {
+        if (tokenId) {
+            const raw = localStorage.getItem(`embers:active-buffs:${tokenId}`);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        }
+        const latestRaw = localStorage.getItem("embers:active-buffs:latest");
+        if (latestRaw) {
+            const parsed = JSON.parse(latestRaw);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch {}
     return [];
+}
+
+/**
+ * Extracts active buffs from a token's metadata, with localStorage fallback.
+ */
+export function getTokenBuffs(item?: Item | null, tokenId?: string): ActiveBuff[] {
+    if (item?.metadata) {
+        const raw = item.metadata[ACTIVE_BUFFS_METADATA_KEY] ?? item.metadata[`${LEGACY_APP_KEY}/active-buffs`];
+        if (Array.isArray(raw) && raw.length > 0) {
+            return raw as ActiveBuff[];
+        }
+    }
+    return getBuffsFromStorage(item?.id || tokenId);
 }
 
 /**
@@ -150,6 +178,7 @@ export async function addTokenBuff(tokenId: string, buff: ActiveBuff): Promise<A
             item.metadata[ACTIVE_BUFFS_METADATA_KEY] = updated;
         });
     });
+    persistBuffsToStorage(tokenId, updated);
     return updated;
 }
 
@@ -167,6 +196,7 @@ export async function removeTokenBuff(tokenId: string, buffId: string): Promise<
             item.metadata[ACTIVE_BUFFS_METADATA_KEY] = updated;
         });
     });
+    persistBuffsToStorage(tokenId, updated);
     return updated;
 }
 
@@ -194,5 +224,6 @@ export async function toggleTokenBuff(tokenId: string, buff: ActiveBuff): Promis
         });
     });
 
+    persistBuffsToStorage(tokenId, updated);
     return { active: isActive, buffs: updated };
 }

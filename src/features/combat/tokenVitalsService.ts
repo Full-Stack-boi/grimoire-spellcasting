@@ -157,6 +157,7 @@ export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals 
       ? data.disposition
       : undefined,
     hideNumbers: Boolean(data.hideNumbers),
+    resolvedRollKeys: Array.isArray(data.resolvedRollKeys) ? [...data.resolvedRollKeys] : undefined,
     updatedAt: data.updatedAt ?? Date.now(),
   };
 }
@@ -495,7 +496,8 @@ export async function getTokenVitals(tokenId: string): Promise<TokenVitals | nul
  */
 export async function setTokenVitals(
   tokenId: string,
-  patch: Partial<TokenVitals>
+  patch: Partial<TokenVitals>,
+  options?: { actionKey?: string }
 ): Promise<TokenVitals | null> {
   const OBR = await getOBR();
   if (!OBR.isReady) return null;
@@ -518,6 +520,7 @@ export async function setTokenVitals(
         concentration: patch.concentration ?? null,
         pendingConcentrationSaves: patch.pendingConcentrationSaves ?? [],
         hideNumbers: patch.hideNumbers ?? false,
+        resolvedRollKeys: patch.resolvedRollKeys ?? [],
         updatedAt: Date.now(),
       };
     }
@@ -541,17 +544,37 @@ export async function setTokenVitals(
         ? [...patch.pendingConcentrationSaves]
         : [...(current.pendingConcentrationSaves || [])],
       hideNumbers: patch.hideNumbers !== undefined ? patch.hideNumbers : current.hideNumbers,
+      resolvedRollKeys: patch.resolvedRollKeys !== undefined
+        ? [...patch.resolvedRollKeys]
+        : (current.resolvedRollKeys ? [...current.resolvedRollKeys] : undefined),
       updatedAt: Date.now(),
     };
 
+    let abortedDueToDuplicate = false;
     // 1. Write to item metadata on scene
     await OBR.scene.items.updateItems([tokenId], (items) => {
       for (const item of items) {
         if (item.id === tokenId) {
-          item.metadata[VITALS_METADATA_KEY] = updated;
+          const liveData = getScopedMetadata<TokenVitals>(item.metadata, "vitals");
+          if (options?.actionKey && liveData?.resolvedRollKeys?.includes(options.actionKey)) {
+            abortedDueToDuplicate = true;
+            return;
+          }
+          const nextResolvedKeys = options?.actionKey
+            ? [...(liveData?.resolvedRollKeys || []), options.actionKey].slice(-50)
+            : updated.resolvedRollKeys;
+
+          item.metadata[VITALS_METADATA_KEY] = {
+            ...updated,
+            resolvedRollKeys: nextResolvedKeys,
+          };
         }
       }
     });
+
+    if (abortedDueToDuplicate) {
+      return null;
+    }
 
     // 2. Bi-directional sync with active encounter
     try {
@@ -595,6 +618,7 @@ export async function applyDamage(
   amount: number,
   damageType?: string,
   saveDamageMultiplier?: number,
+  options?: { actionKey?: string },
 ): Promise<{
   vitals: TokenVitals;
   absorbedByTemp: number;
@@ -603,9 +627,23 @@ export async function applyDamage(
   defenseNote?: string;
   concentrationSave?: PendingConcentrationSave | null;
   targetDefeated?: boolean;
+  alreadyResolved?: boolean;
 } | null> {
   const current = await getTokenVitals(tokenId);
   if (!current) return null;
+
+  if (options?.actionKey && current.resolvedRollKeys?.includes(options.actionKey)) {
+    return {
+      vitals: current,
+      absorbedByTemp: 0,
+      hpLost: 0,
+      effectiveDamage: 0,
+      defenseNote: "Already resolved",
+      concentrationSave: null,
+      targetDefeated: false,
+      alreadyResolved: true,
+    };
+  }
 
   const isPetrified = (current.conditions ?? []).some(
     (condition) => condition.trim().toLowerCase() === "petrified",
@@ -639,8 +677,23 @@ export async function applyDamage(
     pendingConcentrationSaves: pendingSave
       ? [...(current.pendingConcentrationSaves ?? []), pendingSave]
       : current.pendingConcentrationSaves ?? [],
-  });
-  if (!updated) return null;
+  }, options);
+  if (!updated) {
+    if (options?.actionKey) {
+      const refreshed = await getTokenVitals(tokenId);
+      return {
+        vitals: refreshed || current,
+        absorbedByTemp: 0,
+        hpLost: 0,
+        effectiveDamage: 0,
+        defenseNote: "Already resolved by another DM",
+        concentrationSave: null,
+        targetDefeated: false,
+        alreadyResolved: true,
+      };
+    }
+    return null;
+  }
 
   const OBR = await getOBR();
   if (OBR.isReady) {
@@ -756,14 +809,33 @@ export async function expireTemporaryEffectsAtTurnStart(tokenId: string): Promis
  */
 export async function applyHeal(
   tokenId: string,
-  amount: number
-): Promise<{ vitals: TokenVitals; hpRestored: number } | null> {
+  amount: number,
+  options?: { actionKey?: string }
+): Promise<{ vitals: TokenVitals; hpRestored: number; alreadyResolved?: boolean } | null> {
   const current = await getTokenVitals(tokenId);
   if (!current) return null;
 
+  if (options?.actionKey && current.resolvedRollKeys?.includes(options.actionKey)) {
+    return {
+      vitals: current,
+      hpRestored: 0,
+      alreadyResolved: true,
+    };
+  }
+
   const resolution = calculateHealResolution(current, amount);
-  const updated = await setTokenVitals(tokenId, resolution.nextVitals);
-  if (!updated) return null;
+  const updated = await setTokenVitals(tokenId, resolution.nextVitals, options);
+  if (!updated) {
+    if (options?.actionKey) {
+      const refreshed = await getTokenVitals(tokenId);
+      return {
+        vitals: refreshed || current,
+        hpRestored: 0,
+        alreadyResolved: true,
+      };
+    }
+    return null;
+  }
 
   const OBR = await getOBR();
   if (OBR.isReady) {

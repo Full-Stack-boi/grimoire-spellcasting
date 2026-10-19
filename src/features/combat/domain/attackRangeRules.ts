@@ -5,6 +5,7 @@ import type { Combatant, CombatEncounter, TokenDisposition, TokenVitals } from "
 import { TOKEN_DISPOSITION_METADATA_KEY, LEGACY_TOKEN_DISPOSITION_METADATA_KEY } from "./types";
 import type { D20RollMode } from "./conditionRules";
 import { isValidCombatTargetToken } from "../../targeting/application/lineOfSightService";
+import { calculateTokenEdgeDistanceFeet } from "../../targeting/domain/targetingGeometry";
 import { getLinkedDDBCharacterId } from "../../../services/ddbService";
 import { getScopedMetadata } from "../../../platform/obr/metadataHelper";
 
@@ -340,7 +341,7 @@ export function canTokenSeeCaster(
  * Distance threshold: <= 5.5 ft (covers adjacent orthogonal and diagonal cells on standard grid).
  */
 export function checkCloseCombatThreat(
-  casterPos: Vector2,
+  _casterPos: Vector2,
   sceneItems: Item[],
   grid: { dpi: number; scaleMultiplier: number },
   casterToken: Item,
@@ -359,7 +360,7 @@ export function checkCloseCombatThreat(
     if (!isValidCombatTargetToken(item)) continue;
     if (item.id === casterToken.id) continue;
 
-    const distFeet = (Math.hypot(item.position.x - casterPos.x, item.position.y - casterPos.y) / grid.dpi) * grid.scaleMultiplier;
+    const distFeet = calculateTokenEdgeDistanceFeet(item, casterToken, grid);
     if (distFeet > 5.5) continue;
 
     const itemVitals = vitalsMap?.get(item.id) ?? getScopedMetadata<TokenVitals>(item.metadata, "vitals");

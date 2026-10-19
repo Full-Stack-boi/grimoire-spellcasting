@@ -42,7 +42,7 @@ export function useFeatureFlyoutData({
 
     const featureData = useMemo<BG3FlyoutFeatureData | null>(() => {
         if (!feature) return null;
-        const matchingFormula = findMatchingActionFormula(feature.name) || findMatchingActionFormula(feature.id);
+        const matchingFormula = findMatchingActionFormula(feature.name, character) || findMatchingActionFormula(feature.id, character);
 
         const lowerName = feature.name.toLowerCase().trim();
         const isFont = matchingFormula?.flyoutType === "convert_slots" || lowerName.includes("font of magic");

@@ -69,10 +69,13 @@ export function resolveFeatureResource(params: {
   };
 }
 
-export function getFeatureFlyoutKind(feat: { name: string; id?: string }): FeatureFlyoutKind | null {
+export function getFeatureFlyoutKind(
+  feat: { name: string; id?: string },
+  character?: DDBParsedCharacter | null
+): FeatureFlyoutKind | null {
   if (!feat?.name) return null;
   const lower = feat.name.toLowerCase().trim();
-  const formula = findMatchingActionFormula(feat.name);
+  const formula = findMatchingActionFormula(feat.name, character);
 
   if (formula?.flyoutType === "convert_slots" || lower.includes("font of magic")) return "font_of_magic";
   if (lower.includes("arcane recovery")) return "arcane_recovery";
@@ -91,6 +94,21 @@ export function getFeatureFlyoutKind(feat: { name: string; id?: string }): Featu
   if (lower.includes("lay on hands")) return "lay_on_hands";
   if (lower.includes("metamagic")) return "metamagic";
   if (lower.includes("maneuver") || lower.includes("superiority dice") || lower.includes("combat superiority")) {
+    if (character?.classes && character.classes.length > 0) {
+      const isBattleMaster = character.classes.some(
+        (c) => c.subclass?.toLowerCase().includes("battle") || c.name.toLowerCase().includes("battle master")
+      );
+      const isFighter = character.classes.some((c) => c.name.toLowerCase().includes("fighter"));
+      const isGunslinger = character.classes.some(
+        (c) => c.name.toLowerCase().includes("gunslinger") || c.subclass?.toLowerCase().includes("gunslinger")
+      );
+      if (isGunslinger && !isBattleMaster) {
+        return null;
+      }
+      if (!isBattleMaster && !isFighter) {
+        return null;
+      }
+    }
     return "maneuvers";
   }
   if (lower.includes("cunning strike")) return "cunning_strike";

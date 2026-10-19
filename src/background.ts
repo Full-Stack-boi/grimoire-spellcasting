@@ -13,6 +13,7 @@ import {
   DDB_ROLL_CHANNEL,
   openDDBRollLogPopover,
   saveStoredRollHistory,
+  applyRollLogUpdate,
   syncDDBRollLogViewport,
 } from "./services/rollLogService";
 import { checkAndFireMovementTriggers } from "./services/conditionalTriggerService";
@@ -51,30 +52,15 @@ function setupLocalSpells(role: "GM" | "PLAYER") {
   return null;
 }
 
-async function isDesignatedTriggerArbitrator(): Promise<boolean> {
-  try {
-    const myRole = await OBR.player.getRole();
-    if (myRole === "GM") return true;
-
-    const players = await OBR.party.getPlayers();
-    const hasOnlineGM = players.some((p) => p.role === "GM");
-    if (hasOnlineGM) {
-      return false;
-    }
-
-    const myId = await OBR.player.getId();
-    const allPlayerIds = [myId, ...players.map((p) => p.id)].sort();
-    return allPlayerIds[0] === myId;
-  } catch {
-    return true;
-  }
-}
+import { setupTokenSizeContextMenu } from "./features/targeting/infrastructure/obr/tokenSizeContextMenu";
+import { isDesignatedTriggerArbitrator } from "./services/gmArbitratorService";
 
 function setupScene() {
   setupDefaultCasterMenuOption();
   setupElevationMenuOption();
   setupDDBTokenContextMenuOption();
   setupPlayerCharacterContextMenus();
+  setupTokenSizeContextMenu();
   const unsubscribeDarkness = setupDarknessVisionHandler();
   const unsubscribeTurnIndicator = setupTurnIndicatorSync();
   const unsubscribeVitals = setupTokenVitalsSync();
@@ -86,26 +72,35 @@ function setupScene() {
   }, 1000);
 
   let interval: number | null = null;
-  let lastRole: string, lastId: string;
+  let lastRole: string | null = null;
+  let lastId: string | null = null;
+  let isInitializing = true;
   let unsubscribeTool: (() => void) | null = null;
   let unsubscribeLocalSpells: (() => void) | null = null;
 
   Promise.all([OBR.player.getRole(), OBR.player.getId()]).then(([role, id]) => {
+    lastRole = role;
+    lastId = id;
     unsubscribeTool = setupEffectsTool(role, id);
     unsubscribeLocalSpells = setupLocalSpells(role);
 
     if (role === "GM") {
-      interval = window.setInterval(() => {
-        sendSpellsUpdate("all");
+      interval = window.setInterval(async () => {
+        if (await isDesignatedTriggerArbitrator()) {
+          sendSpellsUpdate("all");
+        }
       }, 30000);
     }
 
-    lastRole = role;
-    lastId = id;
+    isInitializing = false;
   });
 
   const unsubscribePlayer = OBR.player.onChange((player) => {
+    if (isInitializing) return;
     if (player.role === lastRole && player.id === lastId) return;
+
+    lastRole = player.role;
+    lastId = player.id;
 
     if (unsubscribeTool) {
       unsubscribeTool();
@@ -119,8 +114,10 @@ function setupScene() {
 
     unsubscribeTool = setupEffectsTool(player.role, player.id);
     unsubscribeLocalSpells = setupLocalSpells(player.role);
-    interval = window.setInterval(() => {
-      sendSpellsUpdate("all");
+    interval = window.setInterval(async () => {
+      if (await isDesignatedTriggerArbitrator()) {
+        sendSpellsUpdate("all");
+      }
     }, 30000);
   });
 
@@ -258,10 +255,13 @@ function setup() {
     if (payload?.senderId && myId && payload.senderId === myId) {
       return;
     }
+    if (payload?.update) {
+      applyRollLogUpdate(payload.update);
+    }
     if (payload?.cards && Array.isArray(payload.cards) && payload.cards.length > 0) {
       saveStoredRollHistory(payload.cards);
+      openDDBRollLogPopover();
     }
-    openDDBRollLogPopover();
   });
 
   let unsubscribe: (() => void) | null = null;

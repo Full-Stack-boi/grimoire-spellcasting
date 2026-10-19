@@ -115,17 +115,35 @@ export async function endEncounter(): Promise<void> {
 }
 
 /**
+ * Mutates the active combat encounter atomically by re-fetching latest metadata immediately before saving.
+ */
+export async function mutateEncounter(
+  mutator: (current: CombatEncounter) => CombatEncounter | null | Promise<CombatEncounter | null>
+): Promise<CombatEncounter | null> {
+  const current = await getActiveEncounter();
+  if (!current) return null;
+  const next = await mutator(current);
+  if (!next) return current;
+  await saveEncounter(next);
+  return next;
+}
+
+/**
  * Advance turn and save to scene metadata.
  */
 export async function nextCombatTurn(): Promise<CombatEncounter | null> {
-  const current = await getActiveEncounter();
-  if (!current) return null;
-  const next = advanceTurn(current);
-  await saveEncounter(next);
-  const nextCombatant = next.combatants[next.turnIndex];
-  if (nextCombatant) {
+  let transitionedCombatantId: string | null = null;
+  const next = await mutateEncounter((current) => {
+    const updated = advanceTurn(current);
+    const nextCombatant = updated.combatants[updated.turnIndex];
+    if (nextCombatant) {
+      transitionedCombatantId = nextCombatant.id;
+    }
+    return updated;
+  });
+  if (next && transitionedCombatantId) {
     const { expireTemporaryEffectsAtTurnStart } = await import("./tokenVitalsService");
-    await expireTemporaryEffectsAtTurnStart(nextCombatant.id);
+    await expireTemporaryEffectsAtTurnStart(transitionedCombatantId);
   }
   return next;
 }
@@ -134,11 +152,7 @@ export async function nextCombatTurn(): Promise<CombatEncounter | null> {
  * Revert to previous turn and save to scene metadata.
  */
 export async function prevCombatTurn(): Promise<CombatEncounter | null> {
-  const current = await getActiveEncounter();
-  if (!current) return null;
-  const prev = previousTurn(current);
-  await saveEncounter(prev);
-  return prev;
+  return mutateEncounter((current) => previousTurn(current));
 }
 
 /**
@@ -148,28 +162,20 @@ export async function setCombatantInitiative(
   tokenId: string,
   newInitiative: number
 ): Promise<CombatEncounter | null> {
-  const current = await getActiveEncounter();
-  if (!current) return null;
-
-  const currentActiveId = current.combatants[current.turnIndex]?.id;
-
-  const updatedCombatants = current.combatants.map((c) =>
-    c.id === tokenId ? { ...c, initiative: newInitiative } : c
-  );
-  const sorted = sortCombatants(updatedCombatants);
-
-  // Preserve active turn pointer on the currently active combatant
-  const newTurnIndex = sorted.findIndex((c) => c.id === currentActiveId);
-
-  const updated: CombatEncounter = {
-    ...current,
-    combatants: sorted,
-    turnIndex: newTurnIndex >= 0 ? newTurnIndex : 0,
-    updatedAt: Date.now(),
-  };
-
-  await saveEncounter(updated);
-  return updated;
+  return mutateEncounter((current) => {
+    const currentActiveId = current.combatants[current.turnIndex]?.id;
+    const updatedCombatants = current.combatants.map((c) =>
+      c.id === tokenId ? { ...c, initiative: newInitiative } : c
+    );
+    const sorted = sortCombatants(updatedCombatants);
+    const newTurnIndex = sorted.findIndex((c) => c.id === currentActiveId);
+    return {
+      ...current,
+      combatants: sorted,
+      turnIndex: newTurnIndex >= 0 ? newTurnIndex : 0,
+      updatedAt: Date.now(),
+    };
+  });
 }
 
 /**
@@ -505,11 +511,7 @@ export async function updateCombatant(
   tokenId: string,
   patch: Partial<Combatant>
 ): Promise<CombatEncounter | null> {
-  const current = await getActiveEncounter();
-  if (!current) return null;
-  const updated = updateCombatantInEncounter(current, tokenId, patch);
-  await saveEncounter(updated);
-  return updated;
+  return mutateEncounter((current) => updateCombatantInEncounter(current, tokenId, patch));
 }
 
 /**

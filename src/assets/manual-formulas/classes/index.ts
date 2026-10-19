@@ -200,13 +200,56 @@ export const ALL_MANUAL_ACTION_FORMULAS: Record<string, ManualActionFormula> =
       return all;
     }, {});
 
-export function findMatchingActionFormula(featureName: string): ManualActionFormula | undefined {
+export function findMatchingActionFormula(
+  featureName: string,
+  character?: import("../../../types/ddb").DDBParsedCharacter | null
+): ManualActionFormula | undefined {
   if (!featureName) return undefined;
   const norm = featureName.toLowerCase().trim();
-  return Object.values(ALL_MANUAL_ACTION_FORMULAS).find((f) => {
+
+  const charClasses = character?.classes?.map((c) => c.name.toLowerCase().trim()) || [];
+  const charSubclasses = (character?.classes?.map((c) => c.subclass?.toLowerCase().trim()) || []).filter(
+    (s): s is string => Boolean(s)
+  );
+  const hasCharClasses = charClasses.length > 0;
+
+  const matchesCharacterClass = (f: ManualActionFormula): boolean => {
+    if (!hasCharClasses || !f.classes || f.classes.length === 0) return true;
+    return f.classes.some((fc) => {
+      const fcLower = fc.toLowerCase().trim();
+      return (
+        charClasses.some((cc) => cc.includes(fcLower) || fcLower.includes(cc)) ||
+        charSubclasses.some((sc) => sc.includes(fcLower) || fcLower.includes(sc))
+      );
+    });
+  };
+
+  const allFormulas = Object.values(ALL_MANUAL_ACTION_FORMULAS);
+
+  // 1. Exact name match matching character's class first
+  const exactMatch = allFormulas.find((f) => {
     const fName = f.name.toLowerCase().trim();
-    return fName === norm || norm.includes(fName) || fName.includes(norm);
+    return fName === norm && matchesCharacterClass(f);
   });
+  if (exactMatch) return exactMatch;
+
+  // 2. Fuzzy match matching character's class
+  const classFuzzyMatch = allFormulas.find((f) => {
+    if (!matchesCharacterClass(f)) return false;
+    const fName = f.name.toLowerCase().trim();
+    return norm.includes(fName) || fName.includes(norm);
+  });
+  if (classFuzzyMatch) return classFuzzyMatch;
+
+  // 3. Fallback: only if character has no classes specified, or if formula has no class restrictions
+  if (!hasCharClasses) {
+    return allFormulas.find((f) => {
+      const fName = f.name.toLowerCase().trim();
+      return fName === norm || norm.includes(fName) || fName.includes(norm);
+    });
+  }
+
+  return undefined;
 }
 
 export {

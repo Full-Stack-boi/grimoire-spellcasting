@@ -3,7 +3,7 @@ import { IconCastLightning, IconDiceD20, IconDragon, IconFire, IconHeart } from 
 import type { ActiveBuff } from "../../../services/buffService";
 import { isActivatableBuffFeature } from "../../../services/buffService";
 import { findMatchingActionFormula } from "../../../assets/manual-formulas/index";
-import type { DDBInventoryItem, DDBWeaponAttack } from "../../../types/ddb";
+import type { DDBInventoryItem, DDBParsedCharacter, DDBWeaponAttack } from "../../../types/ddb";
 import type { DetailDrawerItem, DockSpell } from "../domain/types";
 
 type DrawerItem = NonNullable<DetailDrawerItem>;
@@ -12,6 +12,7 @@ type SpellItem = Extract<DrawerItem, { type: "spell" }>;
 
 interface DetailDrawerActionsProps {
     item: DrawerItem;
+    character?: DDBParsedCharacter | null;
     activeRider?: string | null;
     activeBuffs: ActiveBuff[];
     castLevel: number;
@@ -41,6 +42,7 @@ interface DetailDrawerActionsProps {
 
 export const DetailDrawerActions: React.FC<DetailDrawerActionsProps> = ({
     item,
+    character,
     activeRider,
     activeBuffs,
     castLevel,
@@ -178,7 +180,7 @@ export const DetailDrawerActions: React.FC<DetailDrawerActionsProps> = ({
                 <button type="button" className="ddb-drawer-action-btn primary" onClick={() => { onBonusUnarmedStrike(); onClose(); }}><IconDragon size={12} /><span>Bonus Strike (1 Strike)</span></button>
             )}
             {item.type === "feature" && (() => {
-                const formula = findMatchingActionFormula(item.name);
+                const formula = findMatchingActionFormula(item.name, character);
                 if (!formula?.options || formula.options.length === 0) return null;
                 return (
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>

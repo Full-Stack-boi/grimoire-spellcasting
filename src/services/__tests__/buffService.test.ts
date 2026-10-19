@@ -65,5 +65,28 @@ describe("buffService", () => {
             expect(modifiers.hasAttackAdvantage).toBe(false);
             expect(modifiers.damageBonus).toBe(0);
         });
+
+        it("Innate Sorcery grants Advantage on spell attacks but not weapon attacks", () => {
+            const buffs: ActiveBuff[] = [{
+                ...KNOWN_BUFFS.innate_sorcery,
+                activatedAt: Date.now()
+            }];
+            const buffMods = getComputedBuffModifiers(buffs);
+            expect(buffMods.hasSpellAdvantage).toBe(true);
+            expect(buffMods.hasAttackAdvantage).toBe(false);
+
+            const resolveHasBuffAdv = (isAttack: boolean, isWeapon: boolean) => {
+                return isAttack
+                    ? (isWeapon ? buffMods.hasAttackAdvantage : (buffMods.hasSpellAdvantage || buffMods.hasAttackAdvantage))
+                    : false;
+            };
+
+            // Spell attacks (Fire Bolt, Eldritch Blast, Chaos Bolt) get Advantage
+            expect(resolveHasBuffAdv(true, false)).toBe(true);
+            // Weapon attacks (Dagger, Crossbow) do not get spell Advantage
+            expect(resolveHasBuffAdv(true, true)).toBe(false);
+            // Non-attack spells (Fireball, Sacred Flame) do not get attack Advantage
+            expect(resolveHasBuffAdv(false, false)).toBe(false);
+        });
     });
 });

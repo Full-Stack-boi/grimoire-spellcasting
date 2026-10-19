@@ -1,10 +1,11 @@
 import { getFeatureFlyoutKind, findMatchingActionFormula } from "../../../assets/manual-formulas/index";
 import { isActivatableBuffFeature } from "../../../services/buffService";
-import type { DDBFeatureAction } from "../../../types/ddb";
+import type { DDBFeatureAction, DDBParsedCharacter } from "../../../types/ddb";
 import type { DetailDrawerItem, DockSpell } from "../domain/types";
 
 export interface FeatureActionCardProps {
     feature: DDBFeatureAction;
+    character?: DDBParsedCharacter | null;
     usedCount: number;
     activeBuff: boolean;
     activeFlyout: boolean;
@@ -35,6 +36,7 @@ function toDrawerItem(feature: DDBFeatureAction): NonNullable<DetailDrawerItem> 
 
 export const FeatureActionCard: React.FC<FeatureActionCardProps> = ({
     feature,
+    character,
     usedCount,
     activeBuff,
     activeFlyout,
@@ -50,10 +52,10 @@ export const FeatureActionCard: React.FC<FeatureActionCardProps> = ({
 }) => {
     const featureName = feature.name.toLowerCase();
     const canActivate = isActivatableBuffFeature(feature.name);
-    const flyoutKind = getFeatureFlyoutKind(feature);
+    const flyoutKind = getFeatureFlyoutKind(feature, character);
     const isFlurry = featureName.includes("flurry of blows");
     const isBonusStrike = featureName.includes("bonus unarmed strike") || (featureName.includes("martial arts") && feature.activationType === "bonus");
-    const matchingFormula = findMatchingActionFormula(feature.name);
+    const matchingFormula = findMatchingActionFormula(feature.name, character);
     const linkedSpells = spells.filter(spell => {
         if (spell.rawDdbSpell?.componentId && feature.componentId && spell.rawDdbSpell.componentId === feature.componentId) return true;
         const featureDescription = (feature.description || "").toLowerCase();

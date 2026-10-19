@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import OBR from "@owlbear-rodeo/sdk";
 import { extractBuffEffects } from "../../../services/descriptionParser";
-import { KNOWN_BUFFS, toggleTokenBuff, type ActiveBuff } from "../../../services/buffService";
+import { KNOWN_BUFFS, toggleTokenBuff, getTokenBuffs, isActivatableBuffFeature, type ActiveBuff } from "../../../services/buffService";
 import type { DDBParsedCharacter } from "../../../types/ddb";
 interface ActivatableFeature {
     id: string;
@@ -113,12 +113,30 @@ export function useFeatureActivation({
         }
     };
 
-    const handleToggleFeatureBox = (feature: { id: string; limitedUse?: { used?: number } }, boxIndex: number) => {
+    const handleToggleFeatureBox = async (
+        feature: { id: string; name?: string; description?: string; snippet?: string; limitedUse?: { used?: number; max?: number } },
+        boxIndex: number
+    ) => {
         const currentUsed = featureUses[feature.id] ?? (feature.limitedUse?.used ?? 0);
         const nextUsed = currentUsed < 0
             ? currentUsed + 1
             : (currentUsed === boxIndex + 1) ? boxIndex : boxIndex + 1;
         setFeatureUses(prev => ({ ...prev, [feature.id]: nextUsed }));
+
+        if (nextUsed > currentUsed && feature.name && isActivatableBuffFeature(feature.name, feature.description || feature.snippet)) {
+            const isAlreadyActive = casterId
+                ? getTokenBuffs(null, casterId).some(b => b.name.toLowerCase() === feature.name!.toLowerCase() || b.id === feature.id || (b.id === "innate_sorcery" && feature.name!.toLowerCase().includes("innate sorcery")))
+                : false;
+            if (!isAlreadyActive) {
+                await handleActivateFeature({
+                    id: feature.id,
+                    name: feature.name,
+                    description: feature.description,
+                    snippet: feature.snippet,
+                    limitedUse: feature.limitedUse,
+                });
+            }
+        }
     };
 
     return { handleActivateFeature, handleToggleFeatureBox };
