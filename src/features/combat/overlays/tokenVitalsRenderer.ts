@@ -485,16 +485,11 @@ export function setupTokenVitalsSync(): () => void {
         if (!vitals) return null;
 
         let geometry: VitalsBarGeometry;
-        const rawImage = (item as unknown as { image?: { width?: number } }).image;
-        if (rawImage && typeof rawImage.width === "number" && rawImage.width > 0) {
+        try {
+          const bounds = await OBR.scene.items.getItemBounds([item.id]);
+          geometry = calculateVitalsBarGeometry(item as any, bounds, sceneDpi);
+        } catch {
           geometry = calculateVitalsBarGeometry(item as any, null, sceneDpi);
-        } else {
-          try {
-            const bounds = await OBR.scene.items.getItemBounds([item.id]);
-            geometry = calculateVitalsBarGeometry(item as any, bounds, sceneDpi);
-          } catch {
-            geometry = calculateVitalsBarGeometry(item as any, null, sceneDpi);
-          }
         }
 
         nextCachedGeometry.set(item.id, geometry);
