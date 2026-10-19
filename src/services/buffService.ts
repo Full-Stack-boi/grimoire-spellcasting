@@ -97,27 +97,31 @@ export function isActivatableBuffFeature(name?: string | null, description?: str
     );
 }
 
-function persistBuffsToStorage(tokenId: string, buffs: ActiveBuff[]): void {
-    if (typeof localStorage === "undefined") return;
+// Clean up obsolete global latest key that may leak buffs between tokens across sessions
+if (typeof localStorage !== "undefined") {
     try {
-        localStorage.setItem(`embers:active-buffs:${tokenId}`, JSON.stringify(buffs));
-        localStorage.setItem("embers:active-buffs:latest", JSON.stringify(buffs));
+        localStorage.removeItem("embers:active-buffs:latest");
+    } catch {}
+}
+
+function persistBuffsToStorage(tokenId: string, buffs: ActiveBuff[]): void {
+    if (typeof localStorage === "undefined" || !tokenId) return;
+    try {
+        if (buffs.length > 0) {
+            localStorage.setItem(`embers:active-buffs:${tokenId}`, JSON.stringify(buffs));
+        } else {
+            localStorage.removeItem(`embers:active-buffs:${tokenId}`);
+        }
+        localStorage.removeItem("embers:active-buffs:latest");
     } catch {}
 }
 
 function getBuffsFromStorage(tokenId?: string): ActiveBuff[] {
-    if (typeof localStorage === "undefined") return [];
+    if (typeof localStorage === "undefined" || !tokenId) return [];
     try {
-        if (tokenId) {
-            const raw = localStorage.getItem(`embers:active-buffs:${tokenId}`);
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-            }
-        }
-        const latestRaw = localStorage.getItem("embers:active-buffs:latest");
-        if (latestRaw) {
-            const parsed = JSON.parse(latestRaw);
+        const raw = localStorage.getItem(`embers:active-buffs:${tokenId}`);
+        if (raw) {
+            const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) return parsed;
         }
     } catch {}
@@ -125,16 +129,20 @@ function getBuffsFromStorage(tokenId?: string): ActiveBuff[] {
 }
 
 /**
- * Extracts active buffs from a token's metadata, with localStorage fallback.
+ * Extracts active buffs from a token's metadata, with token-scoped localStorage fallback.
  */
 export function getTokenBuffs(item?: Item | null, tokenId?: string): ActiveBuff[] {
     if (item?.metadata) {
         const raw = item.metadata[ACTIVE_BUFFS_METADATA_KEY] ?? item.metadata[`${LEGACY_APP_KEY}/active-buffs`];
-        if (Array.isArray(raw) && raw.length > 0) {
+        if (Array.isArray(raw)) {
             return raw as ActiveBuff[];
         }
     }
-    return getBuffsFromStorage(item?.id || tokenId);
+    const resolvedId = item?.id || tokenId;
+    if (resolvedId) {
+        return getBuffsFromStorage(resolvedId);
+    }
+    return [];
 }
 
 /**

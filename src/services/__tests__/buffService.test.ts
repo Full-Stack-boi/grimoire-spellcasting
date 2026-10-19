@@ -89,4 +89,37 @@ describe("buffService", () => {
             expect(resolveHasBuffAdv(false, false)).toBe(false);
         });
     });
+
+    describe("getTokenBuffs token isolation", () => {
+        it("strictly scopes buffs to the token and never leaks to other tokens", async () => {
+            const { getTokenBuffs, ACTIVE_BUFFS_METADATA_KEY } = await import("../buffService");
+            const sorcererToken = {
+                id: "token-sorcerer",
+                metadata: {
+                    [ACTIVE_BUFFS_METADATA_KEY]: [
+                        { ...KNOWN_BUFFS.innate_sorcery, activatedAt: Date.now() }
+                    ]
+                }
+            } as any;
+
+            const fighterToken = {
+                id: "token-fighter",
+                metadata: {}
+            } as any;
+
+            const emptyBuffToken = {
+                id: "token-druid",
+                metadata: {
+                    [ACTIVE_BUFFS_METADATA_KEY]: []
+                }
+            } as any;
+
+            expect(getTokenBuffs(sorcererToken)).toHaveLength(1);
+            expect(getTokenBuffs(sorcererToken)[0].id).toBe("innate_sorcery");
+
+            // Fighter and Druid tokens must NOT inherit Sorcerer buffs!
+            expect(getTokenBuffs(fighterToken)).toHaveLength(0);
+            expect(getTokenBuffs(emptyBuffToken)).toHaveLength(0);
+        });
+    });
 });
