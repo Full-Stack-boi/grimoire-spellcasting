@@ -1457,7 +1457,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         }
     }
 
-    if (typeof window !== "undefined") {
+    if (import.meta.env.DEV) {
         console.log(`[DDB Debug] Parsed ${spellsMap.size} spells:`, Array.from(spellsMap.values()).map(s => `${s.name} (lv${s.level}, ${s.source})`));
     }
 
@@ -3205,7 +3205,7 @@ export async function fetchDDBCharacter(characterId: number): Promise<DDBParsedC
     // ─── DEBUG: dump raw DDB modifier structure to console ────────────────────
     // Remove this block once all modifier subTypes are confirmed working.
     // Open browser DevTools → Console when syncing a character to inspect.
-    if (typeof window !== "undefined") {
+    if (import.meta.env.DEV) {
         console.group(`[DDB Debug] Raw JSON for character ${raw.id} — ${raw.name}`);
         console.log("📊 modifiers.class:", raw.modifiers?.class?.slice(0, 40));
         console.log("📊 modifiers.race:", raw.modifiers?.race?.slice(0, 20));
