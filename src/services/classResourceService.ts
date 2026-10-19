@@ -119,3 +119,54 @@ export function getFeatureFlyoutKind(
   if (formula?.options && formula.options.length > 0) return "options_grid";
   return null;
 }
+
+/**
+ * Resolves selectable action options for a feature flyout.
+ * Filters the exhaustive catalog options to only the options selected by the character
+ * on D&D Beyond (e.g. Eldritch Invocations, Metamagic, Battle Master Maneuvers).
+ * If no character choices are found (or for GM / unassigned sheets), falls back to the catalog options.
+ */
+export function resolveFeatureActionOptions(params: {
+  feature: { name: string; id?: string };
+  formula?: ManualActionFormula | null;
+  character?: DDBParsedCharacter | null;
+}): ManualActionFormula["options"] {
+  const { feature, formula, character } = params;
+  if (!formula?.options || formula.options.length === 0) return undefined;
+
+  const featureNameLower = feature.name.toLowerCase();
+  const isEldritchInvocations = featureNameLower.includes("invocation");
+  const isMetamagic = featureNameLower.includes("metamagic");
+  const isManeuvers = featureNameLower.includes("maneuver") || featureNameLower.includes("superiority");
+
+  if (character && (isEldritchInvocations || isMetamagic || isManeuvers)) {
+    const charOptions = character.options || [];
+    const charActions = character.actions || [];
+
+    const filtered = formula.options.filter(opt => {
+      const optNameLower = opt.name.toLowerCase().trim();
+
+      // 1. Check in character.options
+      const matchesOption = charOptions.some(o => {
+        const on = o.name.toLowerCase().trim();
+        return on === optNameLower || on.includes(optNameLower) || optNameLower.includes(on);
+      });
+      if (matchesOption) return true;
+
+      // 2. Check in character.actions
+      const matchesAction = charActions.some(a => {
+        const an = a.name.toLowerCase().trim();
+        return an === optNameLower || an.startsWith(`${optNameLower}:`) || an.startsWith(`${optNameLower} -`) || an.includes(optNameLower);
+      });
+      if (matchesAction) return true;
+
+      return false;
+    });
+
+    if (filtered.length > 0) {
+      return filtered;
+    }
+  }
+
+  return formula.options;
+}

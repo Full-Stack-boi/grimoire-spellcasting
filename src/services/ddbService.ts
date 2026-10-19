@@ -18,7 +18,7 @@ import { TokenVisionRules } from "../features/targeting/domain/vision";
 import { APP_KEY, LEGACY_APP_KEY } from "../config";
 import type { Item } from "@owlbear-rodeo/sdk";
 import { ALL_MANUAL_OVERRIDES } from "../assets/manual-formulas/index";
-import { SPELL_INFO_MAP } from "../assets/spellInfo";
+import { getSpellMetadata } from "../assets/spellInfo";
 
 export const DDB_CHARACTER_METADATA_KEY = `${APP_KEY}/ddb-character-id`;
 // Bump CACHE_VERSION whenever the parsing output format changes significantly.
@@ -666,6 +666,41 @@ function parseDDBSpell(
     const hasFreeCast = !usesSpellSlot && Boolean(limitedUse);
     const freeCast = hasFreeCast ? limitedUse : undefined;
     const canCastWithSlot = usesSpellSlot;
+
+    // Enrich with Single Source of Truth metadata (healing detection, missing damage/damageType/saveOrAttack)
+    const meta = getSpellMetadata(id, name);
+    if (!damage && meta?.damage) {
+        damage = meta.damage;
+    }
+    if (!damageType && meta?.damageType) {
+        damageType = meta.damageType;
+    }
+    if (!saveOrAttack && meta?.saveOrAttack) {
+        saveOrAttack = meta.saveOrAttack;
+    }
+
+    const isHealing =
+        damageType?.toLowerCase() === "healing" ||
+        meta?.damageType?.toLowerCase() === "healing" ||
+        name.toLowerCase().includes("cure wounds") ||
+        name.toLowerCase().includes("healing word") ||
+        name.toLowerCase().includes("mass cure") ||
+        name.toLowerCase().includes("mass healing") ||
+        name.toLowerCase().includes("prayer of healing") ||
+        name.toLowerCase().includes("power word heal") ||
+        name.toLowerCase().includes("revivify") ||
+        name.toLowerCase().includes("aid") ||
+        name.toLowerCase() === "heal";
+
+    if (isHealing) {
+        damageType = "healing";
+        if (!damage && meta?.damage) {
+            damage = meta.damage;
+        }
+        if (!saveOrAttack || saveOrAttack === "None") {
+            saveOrAttack = "None (Healing)";
+        }
+    }
 
     return {
         id,
@@ -1471,7 +1506,18 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                                     if (!cleanedName) return;
                                     const spellId = cleanedName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
                                     if (!spellsMap.has(spellId)) {
-                                        const meta = SPELL_INFO_MAP[spellId];
+                                        const meta = getSpellMetadata(spellId, cleanedName);
+                                        const isHealing =
+                                            meta?.damageType?.toLowerCase() === "healing" ||
+                                            cleanedName.toLowerCase().includes("cure wounds") ||
+                                            cleanedName.toLowerCase().includes("healing word") ||
+                                            cleanedName.toLowerCase().includes("mass cure") ||
+                                            cleanedName.toLowerCase().includes("mass healing") ||
+                                            cleanedName.toLowerCase().includes("aid") ||
+                                            cleanedName.toLowerCase().includes("prayer of healing") ||
+                                            cleanedName.toLowerCase().includes("revivify") ||
+                                            cleanedName.toLowerCase().includes("heal");
+
                                         spellsMap.set(spellId, {
                                             id: spellId,
                                             name: meta?.name || cleanedName,
@@ -1485,7 +1531,8 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                                             concentration: Boolean(meta?.concentration),
                                             ritual: Boolean(meta?.ritual),
                                             damage: meta?.damage,
-                                            saveOrAttack: meta?.saveOrAttack,
+                                            damageType: meta?.damageType || (isHealing ? "healing" : undefined),
+                                            saveOrAttack: meta?.saveOrAttack || (isHealing ? "None (Healing)" : undefined),
                                             description: meta?.description || `${featName} granted spell`,
                                             higherLevels: meta?.higherLevels,
                                             rulesEdition: "2024",
@@ -1545,7 +1592,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
 
         // Data-driven usePrimaryStat / statId / addSpellcastingModifier resolution (e.g. Healing Word, Mass Healing Word)
         const manualFormula = ALL_MANUAL_OVERRIDES[spell.id] || ALL_MANUAL_OVERRIDES[key];
-        const manualHasMod = Boolean(manualFormula?.damage.find(d => d.isBase)?.addSpellcastingModifier);
+        const manualHasMod = Boolean(manualFormula?.damage.find((d: any) => d.isBase)?.addSpellcastingModifier);
         if (spell.usePrimaryStat || spell.statId || manualHasMod) {
             let abilityKey: "str" | "dex" | "con" | "int" | "wis" | "cha" | undefined;
             if (spell.statId && ABILITY_ID_MAP[spell.statId]) {
@@ -2849,7 +2896,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         })).filter((f: any) => f.name.length > 0)
         : undefined;
 
-    const parsedOptions: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string }> = [];
+    const parsedOptions: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string; componentId?: number }> = [];
     ["class", "race", "feat"].forEach(src => {
         const list = (data.options as any)?.[src];
         if (Array.isArray(list)) {
@@ -2858,6 +2905,7 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                 if (def.name) {
                     parsedOptions.push({
                         id: def.id ?? opt.componentId ?? 0,
+                        componentId: typeof opt.componentId === "number" ? opt.componentId : undefined,
                         name: def.name,
                         description: stripHtml(resolveDDBSnippet(def.description || def.snippet || "", snippetCtx)),
                         snippet: stripHtml(resolveDDBSnippet(def.snippet || def.description || "", snippetCtx)),

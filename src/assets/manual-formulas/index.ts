@@ -118,6 +118,7 @@ export {
 export {
   getFeatureFlyoutKind,
   resolveFeatureResource,
+  resolveFeatureActionOptions,
 } from "../../services/classResourceService";
 export type {
   FeatureFlyoutKind,

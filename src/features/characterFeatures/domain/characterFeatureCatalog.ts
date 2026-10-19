@@ -9,11 +9,43 @@ type FeatureFallback = {
     create: (character: DDBParsedCharacter) => DDBFeatureAction;
 };
 
-function hasFeatOrAction(character: DDBParsedCharacter, name: string): boolean {
-    const lower = name.toLowerCase();
-    const inFeats = character.feats?.some(f => f.name.toLowerCase().includes(lower)) ?? false;
-    const inActions = character.actions?.some(a => a.name.toLowerCase().includes(lower)) ?? false;
-    return inFeats || inActions;
+function hasFeat(
+    character: DDBParsedCharacter,
+    featName: string,
+    specificActionNames: string[] = []
+): boolean {
+    const lower = featName.toLowerCase().trim();
+
+    // 1. Check in character.feats
+    if (character.feats?.some(f => {
+        const fn = f.name.toLowerCase().trim();
+        return fn === lower || fn.startsWith(`${lower}:`) || fn.startsWith(`${lower} (`) || fn.includes(lower);
+    })) {
+        return true;
+    }
+
+    // 2. Check in character.options where source === "feat"
+    if (character.options?.some(o => {
+        if (o.source && o.source !== "feat") return false;
+        const on = o.name.toLowerCase().trim();
+        return on === lower || on.startsWith(`${lower}:`) || on.startsWith(`${lower} (`) || on.includes(lower);
+    })) {
+        return true;
+    }
+
+    // 3. Check explicit action names ONLY if action is NOT a class feature!
+    if (specificActionNames.length > 0) {
+        return character.actions?.some(a => {
+            if (a.source === "class") return false; // Class features (e.g. Dark One's Own Luck) are NEVER feats!
+            const an = a.name.toLowerCase().trim();
+            return specificActionNames.some(san => {
+                const target = san.toLowerCase().trim();
+                return an === target || an.startsWith(`${target}:`) || an.startsWith(`${target} (`);
+            });
+        }) ?? false;
+    }
+
+    return false;
 }
 
 function hasClassSubclassOrAction(
@@ -22,20 +54,30 @@ function hasClassSubclassOrAction(
     subclassKeyword: string,
     actionKeywords: string[],
 ): boolean {
-    const classLower = className.toLowerCase();
-    const subLower = subclassKeyword.toLowerCase();
-    const inClassSubclass =
-        character.classes?.some(
-            c =>
-                c.level > 0 &&
-                c.name.toLowerCase().includes(classLower) &&
-                Boolean(c.subclass && c.subclass.toLowerCase().includes(subLower)),
-        ) ?? false;
-    if (inClassSubclass) return true;
+    const classLower = className.toLowerCase().trim();
+    const subLower = subclassKeyword.toLowerCase().trim();
+
+    // 1. Mandatory Class Check: Must possess levels in this exact class!
+    const matchingClass = character.classes?.find(
+        c => c.level > 0 && c.name.toLowerCase().includes(classLower)
+    );
+    if (!matchingClass) return false;
+
+    // 2. Direct Subclass Match on class definition
+    if (matchingClass.subclass && matchingClass.subclass.toLowerCase().includes(subLower)) {
+        return true;
+    }
+
+    // 3. Fallback: Only if DDB omitted subclass string, check for exact class-action prefixes
     return (
         character.actions?.some(a => {
-            const actionName = a.name.toLowerCase();
-            return actionKeywords.some(k => actionName.includes(k.toLowerCase()));
+            // Action must be from class, not from a feat or item!
+            if (a.source && a.source !== "class") return false;
+            const actionName = a.name.toLowerCase().trim();
+            return actionKeywords.some(k => {
+                const kw = k.toLowerCase().trim();
+                return actionName === kw || actionName.startsWith(`${kw}:`) || actionName.startsWith(`${kw} -`);
+            });
         }) ?? false
     );
 }
@@ -673,7 +715,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Player's Handbook (2024) Feats ─────────────────────────────────────────
     {
-        matches: character => hasFeatOrAction(character, "lucky") || hasFeatOrAction(character, "luck points"),
+        matches: character => hasFeat(character, "lucky", ["luck points"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("lucky") || f.name.toLowerCase().includes("luck points")),
         create: character => ({
             id: "feat:lucky",
@@ -690,7 +732,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "telekinetic"),
+        matches: character => hasFeat(character, "telekinetic", ["telekinetic shove"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("telekinetic")),
         create: character => ({
             id: "feat:telekinetic",
@@ -702,7 +744,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "shield master"),
+        matches: character => hasFeat(character, "shield master", ["shield bash"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("shield master") || f.name.toLowerCase().includes("shield bash")),
         create: character => ({
             id: "feat:shield-master",
@@ -714,7 +756,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "healer"),
+        matches: character => hasFeat(character, "healer", ["battle medic"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("healer") || f.name.toLowerCase().includes("battle medic")),
         create: character => ({
             id: "feat:healer",
@@ -726,7 +768,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "musician"),
+        matches: character => hasFeat(character, "musician", ["inspiring song"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("musician")),
         create: character => ({
             id: "feat:musician",
@@ -738,7 +780,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "inspiring leader"),
+        matches: character => hasFeat(character, "inspiring leader"),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("inspiring leader")),
         create: character => ({
             id: "feat:inspiring-leader",
@@ -752,7 +794,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Grim Hollow: Player's Guide Feats ──────────────────────────────────────
     {
-        matches: character => hasFeatOrAction(character, "sangromantic initiate"),
+        matches: character => hasFeat(character, "sangromantic initiate", ["blood reserve"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("sangromantic")),
         create: () => ({
             id: "feat:sangromantic-initiate",
@@ -769,7 +811,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "fortune of the thaumaturge"),
+        matches: character => hasFeat(character, "fortune of the thaumaturge"),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("fortune of the thaumaturge")),
         create: character => ({
             id: "feat:fortune-of-the-thaumaturge",
@@ -786,7 +828,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "lightning caster"),
+        matches: character => hasFeat(character, "lightning caster", ["fork cantrip"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("lightning caster")),
         create: () => ({
             id: "feat:lightning-caster",
@@ -798,7 +840,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "witch hunter"),
+        matches: character => hasFeat(character, "witch hunter", ["counter magic"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("witch hunter")),
         create: () => ({
             id: "feat:witch-hunter",
@@ -810,7 +852,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "thrown weapon master"),
+        matches: character => hasFeat(character, "thrown weapon master", ["rapid volley"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("thrown weapon master")),
         create: () => ({
             id: "feat:thrown-weapon-master",
@@ -824,7 +866,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Arcana Unleashed Feats ─────────────────────────────────────────────────
     {
-        matches: character => hasFeatOrAction(character, "portal jumper"),
+        matches: character => hasFeat(character, "portal jumper", ["phase step"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("portal jumper") || f.name.toLowerCase().includes("phase step")),
         create: character => ({
             id: "feat:portal-jumper",
@@ -841,7 +883,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "arcane infiltrator"),
+        matches: character => hasFeat(character, "arcane infiltrator", ["elusive dodge"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("arcane infiltrator") || f.name.toLowerCase().includes("elusive dodge")),
         create: character => ({
             id: "feat:arcane-infiltrator",
@@ -858,7 +900,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "arcane safeguard"),
+        matches: character => hasFeat(character, "arcane safeguard", ["ward ally"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("arcane safeguard")),
         create: character => ({
             id: "feat:arcane-safeguard",
@@ -875,7 +917,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "arcane omens"),
+        matches: character => hasFeat(character, "arcane omens", ["fateful guidance"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("arcane omens") || f.name.toLowerCase().includes("fateful guidance")),
         create: character => ({
             id: "feat:arcane-omens",
@@ -892,7 +934,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "iron mind"),
+        matches: character => hasFeat(character, "iron mind", ["unshakable focus"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("iron mind")),
         create: () => ({
             id: "feat:boon-of-the-iron-mind",
@@ -906,7 +948,7 @@ const featureFallbacks: FeatureFallback[] = [
 
     // ── Valda's Spire of Secrets: Player Pack 2 Feats ──────────────────────────
     {
-        matches: character => hasFeatOrAction(character, "spellblade"),
+        matches: character => hasFeat(character, "spellblade", ["channeled attack"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("spellblade") || f.name.toLowerCase().includes("channeled attack")),
         create: character => ({
             id: "feat:spellblade",
@@ -923,7 +965,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "familiar keeper"),
+        matches: character => hasFeat(character, "familiar keeper", ["familiar distraction"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("familiar distraction") || f.name.toLowerCase().includes("familiar keeper")),
         create: character => ({
             id: "feat:familiar-keeper",
@@ -940,7 +982,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "flex caster"),
+        matches: character => hasFeat(character, "flex caster"),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("flex caster")),
         create: () => ({
             id: "feat:flex-caster",
@@ -952,7 +994,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "magitechnician"),
+        matches: character => hasFeat(character, "magitechnician", ["magic item recharge"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("magitechnician") || f.name.toLowerCase().includes("magic item recharge")),
         create: () => ({
             id: "feat:magitechnician",
@@ -969,7 +1011,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "metabolistic magic"),
+        matches: character => hasFeat(character, "metabolistic magic", ["vital fuel"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("metabolistic magic") || f.name.toLowerCase().includes("vital fuel")),
         create: character => ({
             id: "feat:metabolistic-magic",
@@ -986,7 +1028,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "pyromaniac"),
+        matches: character => hasFeat(character, "pyromaniac", ["flare damage"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("pyromaniac") || f.name.toLowerCase().includes("flare damage")),
         create: character => ({
             id: "feat:pyromaniac",
@@ -998,7 +1040,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "shock trooper"),
+        matches: character => hasFeat(character, "shock trooper", ["first strike"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("shock trooper") || f.name.toLowerCase().includes("first strike")),
         create: () => ({
             id: "feat:shock-trooper",
@@ -1010,7 +1052,7 @@ const featureFallbacks: FeatureFallback[] = [
         })
     },
     {
-        matches: character => hasFeatOrAction(character, "showman"),
+        matches: character => hasFeat(character, "showman", ["taunt"]),
         findExisting: features => features.find(f => f.name.toLowerCase().includes("showman") || f.name.toLowerCase().includes("taunt")),
         create: character => ({
             id: "feat:showman",

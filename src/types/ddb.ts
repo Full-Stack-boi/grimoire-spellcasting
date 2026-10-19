@@ -213,7 +213,7 @@ export interface DDBParsedCharacter {
     import("../services/ddbService").ClassLevelFeatures
   >;
   /** Selected class/race/feat options (e.g. Eldritch Invocations, Battle Master Maneuvers, Metamagic) */
-  options?: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string }>;
+  options?: Array<{ id: number; name: string; description?: string; snippet?: string; source?: string; componentId?: number }>;
   /** Raw character modifiers from D&D Beyond */
   characterModifiers?: any[];
   lastSynced: string;

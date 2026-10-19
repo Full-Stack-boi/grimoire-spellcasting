@@ -343,6 +343,60 @@ describe("getCharacterFeatures", () => {
         const result = getCharacterFeatures(warlockChar);
         expect(result.find(f => f.id === "feat:lucky")).toBeUndefined();
     });
+
+    it("prevents Thrown Weapon Master feat on Fighter from leaking Monster Hunter's Guild of the Weapon Master", () => {
+        const fighterChar = {
+            ...character(
+                [{ name: "Fighter", level: 5 }],
+                [
+                    {
+                        id: "twm-action",
+                        name: "Thrown Weapon Master",
+                        source: "feat" as const,
+                        activationType: "bonus" as const,
+                        description: "Rapid Volley",
+                    },
+                ],
+            ),
+            feats: [{ id: 99, name: "Thrown Weapon Master" }],
+        };
+        const result = getCharacterFeatures(fighterChar);
+        expect(result.find(f => f.id.includes("guild-of-the-weapon-master"))).toBeUndefined();
+    });
+
+    it("prevents Heroic Inspiration action on non-Sorcerer from leaking Heroic Sorcery", () => {
+        const paladinChar = character(
+            [{ name: "Paladin", level: 6 }],
+            [
+                {
+                    id: "hi-act",
+                    name: "Heroic Inspiration",
+                    source: "feat" as const,
+                    activationType: "special" as const,
+                    description: "Reroll any d20 test.",
+                },
+            ],
+        );
+        const result = getCharacterFeatures(paladinChar);
+        expect(result.find(f => f.id.includes("heroic-sorcery"))).toBeUndefined();
+    });
+
+    it("prevents Mystic Arcanum on Warlock from leaking Monster Hunter Guild of the Mystic", () => {
+        const warlockChar = character(
+            [{ name: "Warlock", level: 11 }],
+            [
+                {
+                    id: "ma-act",
+                    name: "Mystic Arcanum (6th level)",
+                    source: "class" as const,
+                    activationType: "special" as const,
+                    description: "Cast 6th level arcanum spell.",
+                },
+            ],
+        );
+        const result = getCharacterFeatures(warlockChar);
+        expect(result.find(f => f.id.includes("guild-of-the-mystic"))).toBeUndefined();
+    });
 });
 
 
