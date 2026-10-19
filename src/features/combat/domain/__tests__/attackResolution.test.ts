@@ -4,6 +4,7 @@ import {
   evaluateShieldReaction,
   calculateEffectiveDamage,
   formatHitLabelForViewer,
+  evaluateTargetShieldStatus,
 } from "../attackResolution";
 
 describe("attackResolution", () => {
@@ -136,6 +137,122 @@ describe("attackResolution", () => {
       expect(formatHitLabelForViewer("CRITICAL HIT!", false)).toBe("CRITICAL HIT!");
       expect(formatHitLabelForViewer(undefined, false)).toBeUndefined();
       expect(formatHitLabelForViewer(null, false)).toBeUndefined();
+    });
+  });
+
+  describe("evaluateTargetShieldStatus", () => {
+    it("returns hasShield false for Horned Devil / non-spellcaster monsters", () => {
+      const hornedDevil: any = {
+        name: "Horned Devil Large Fiend 01",
+        armorClass: 18,
+        reactions: [],
+        traits: [{ name: "Devil's Sight", description: "Magical darkness doesn't impede darkvision." }],
+        actions: [{ name: "Fork", description: "Melee Weapon Attack" }],
+      };
+      const res = evaluateTargetShieldStatus({ monster: hornedDevil });
+      expect(res.hasShield).toBe(false);
+      expect(res.canCastFree).toBe(false);
+    });
+
+    it("returns hasShield false for monsters with physical shields, Shield Bash, or Shield of Faith", () => {
+      const gladiator: any = {
+        name: "Gladiator",
+        armorClass: 16,
+        armorDesc: "Studded Leather, Shield",
+        actions: [{ name: "Shield Bash", description: "Melee Weapon Attack" }],
+        traits: [],
+      };
+      expect(evaluateTargetShieldStatus({ monster: gladiator }).hasShield).toBe(false);
+
+      const kuotoa: any = {
+        name: "Kuo-Toa",
+        armorClass: 13,
+        actions: [{ name: "Shield of Faith (2/Day)", description: "Casts Shield of Faith" }],
+      };
+      expect(evaluateTargetShieldStatus({ monster: kuotoa }).hasShield).toBe(false);
+    });
+
+    it("returns hasShield true for monsters with Shield reaction or Spellcasting trait", () => {
+      const mageLegacy: any = {
+        name: "Mage",
+        reactions: [{ name: "Shield", description: "An invisible barrier of magical force protects..." }],
+      };
+      expect(evaluateTargetShieldStatus({ monster: mageLegacy }).hasShield).toBe(true);
+
+      const archmage2024: any = {
+        name: "Archmage",
+        reactions: [{ name: "Counterspell or Shield", description: "The archmage casts Counterspell or Shield in response to the spell's trigger." }],
+      };
+      expect(evaluateTargetShieldStatus({ monster: archmage2024 }).hasShield).toBe(true);
+
+      const mageSpellcasting: any = {
+        name: "Mage",
+        traits: [{ name: "Spellcasting", description: "1st level (4 slots): detect magic, mage armor, magic missile, shield" }],
+      };
+      expect(evaluateTargetShieldStatus({ monster: mageSpellcasting }).hasShield).toBe(true);
+    });
+
+    it("returns hasShield false for PC without Shield spell (e.g. Kazmalia)", () => {
+      const kazmalia: any = {
+        name: "Kazmalia",
+        spells: [
+          { name: "Burning Hands", level: 1 },
+          { name: "False Life", level: 1, usesSpellSlot: false },
+          { name: "Command", level: 1 },
+        ],
+        spellSlots: {},
+        pactMagic: { max: 2, used: 0 },
+      };
+      const res = evaluateTargetShieldStatus({ character: kazmalia });
+      expect(res.hasShield).toBe(false);
+    });
+
+    it("returns hasShield true with slotsExhausted false when PC has Shield and available slots", () => {
+      const wizard: any = {
+        name: "Gale",
+        spells: [{ name: "Shield", level: 1, isPrepared: true }],
+        spellSlots: { 1: { max: 4, used: 2 } },
+      };
+      const res = evaluateTargetShieldStatus({ character: wizard });
+      expect(res.hasShield).toBe(true);
+      expect(res.slotsExhausted).toBe(false);
+      expect(res.slotCount).toBe(2);
+    });
+
+    it("returns hasShield true with slotsExhausted true when PC has Shield but 0 slots", () => {
+      const exhaustedWizard: any = {
+        name: "Gale",
+        spells: [{ name: "Shield", level: 1, isPrepared: true, usesSpellSlot: true }],
+        spellSlots: {
+          1: { max: 4, used: 4 },
+          2: { max: 3, used: 3 },
+        },
+      };
+      const res = evaluateTargetShieldStatus({ character: exhaustedWizard });
+      expect(res.hasShield).toBe(true);
+      expect(res.slotsExhausted).toBe(true);
+      expect(res.slotCount).toBe(0);
+      expect(res.reason).toContain("0 spell slots recorded on sheet");
+    });
+
+    it("does NOT grant free Shield when character has free cast of False Life", () => {
+      const charWithFalseLife: any = {
+        name: "Kazmalia",
+        spells: [
+          { name: "False Life", level: 1, usesSpellSlot: false },
+          { name: "Shield", level: 1, isPrepared: true, usesSpellSlot: true },
+        ],
+        spellSlots: { 1: { max: 4, used: 4 } },
+      };
+      const res = evaluateTargetShieldStatus({ character: charWithFalseLife });
+      expect(res.hasShield).toBe(true);
+      expect(res.canCastFree).toBe(false);
+      expect(res.slotsExhausted).toBe(true);
+    });
+
+    it("returns hasShield false for unlinked tokens", () => {
+      const res = evaluateTargetShieldStatus({});
+      expect(res.hasShield).toBe(false);
     });
   });
 });

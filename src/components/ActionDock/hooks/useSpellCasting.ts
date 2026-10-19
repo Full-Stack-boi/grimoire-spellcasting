@@ -122,14 +122,15 @@ export function useSpellCasting({
             return;
         }
 
-        if (baseSpellLevel >= 1 && targetLevel >= 1 && targetLevel <= 9 && !(isHexSpell && isAlreadyHex) && matchedSpell?.usesSpellSlot !== false) {
+        const isSlotCast = baseSpellLevel >= 1 && targetLevel >= 1 && targetLevel <= 9 && !(isHexSpell && isAlreadyHex) && (matchedSpell?.usesSpellSlot !== false || Boolean(matchedSpell?.canCastWithSlot));
+        if (isSlotCast) {
             const currentSlot = spellSlots[targetLevel];
             if (currentSlot && currentSlot.used < currentSlot.max) {
                 setSpellSlots(previous => ({ ...previous, [targetLevel]: { ...previous[targetLevel], used: previous[targetLevel].used + 1 } }));
             } else if (pactSlots.max > 0 && pactSlots.used < pactSlots.max) {
                 setPactSlots(previous => ({ ...previous, used: previous.used + 1 }));
             }
-        } else if (matchedSpell?.usesSpellSlot === false) {
+        } else if (matchedSpell?.usesSpellSlot === false || (matchedSpell?.hasFreeCast && targetLevel === 0)) {
             const requiresFocus = targetId.toLowerCase() === "darkness" || (matchedSpell.notes?.toLowerCase().includes("focus") ?? false);
             if (requiresFocus && character) {
                 const focusFeature = characterFeatures.find(feature => {
@@ -146,6 +147,18 @@ export function useSpellCasting({
                     focusFeature.limitedUse.used = used + 1;
                     cacheDDBCharacter(character);
                     OBR.notification.show(`Expended 1 Focus Point to cast ${spellDisplayName}`, "INFO");
+                }
+            } else if (matchedSpell?.freeCast || matchedSpell?.limitedUse) {
+                const lim = matchedSpell.freeCast || matchedSpell.limitedUse;
+                if (lim) {
+                    const currentUsed = lim.used ?? 0;
+                    if (currentUsed >= lim.max) {
+                        OBR.notification.show(`No free uses remaining for ${spellDisplayName} (${currentUsed}/${lim.max} ${lim.resetType})!`, "WARNING");
+                        return;
+                    }
+                    lim.used = currentUsed + 1;
+                    if (character) cacheDDBCharacter(character);
+                    OBR.notification.show(`Cast ${spellDisplayName} using free special feature (${lim.used}/${lim.max} ${lim.resetType})`, "INFO");
                 }
             }
         }

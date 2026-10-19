@@ -29,6 +29,7 @@ export function useCharacterTabData({
     strength,
 }: UseCharacterTabDataOptions) {
     const filteredAllSpells = useMemo(() => spells.filter(spell => {
+        if (spellsFilter === "SPECIAL" && !spell.hasFreeCast && (spell.usesSpellSlot !== false || spell.level === 0)) return false;
         if (spellsFilter === "0" && spell.level !== 0) return false;
         if (spellsFilter === "1" && spell.level !== 1) return false;
         if (spellsFilter === "2" && spell.level !== 2) return false;
@@ -38,12 +39,26 @@ export function useCharacterTabData({
     }), [spells, spellsFilter, spellSearch, pactMagicLevel]);
 
     const spellGroups = useMemo(() => {
-        const groups: Array<{ label: string; level: number; spells: DockSpell[] }> = [];
+        const groups: Array<{ label: string; level: number; spells: DockSpell[]; isSpecial?: boolean }> = [];
+        
+        // 1. Special & Innate Spells (Free casts, racial/feat limited uses, etc.)
+        const specialSpells = filteredAllSpells.filter(spell => spell.hasFreeCast || (spell.usesSpellSlot === false && spell.level > 0));
+        if (specialSpells.length > 0) {
+            groups.push({ label: "SPECIAL & INNATE SPELLS", level: -1, spells: specialSpells, isSpecial: true });
+        }
+
+        // 2. Cantrips (Level 0)
         const cantrips = filteredAllSpells.filter(spell => spell.level === 0);
         if (cantrips.length > 0) groups.push({ label: "CANTRIP", level: 0, spells: cantrips });
 
+        // 3. Leveled Spell Slots (Levels 1 to 9)
         for (let level = 1; level <= 9; level++) {
-            const levelSpells = filteredAllSpells.filter(spell => spell.level === level);
+            const levelSpells = filteredAllSpells.filter(spell => {
+                if (spell.level !== level) return false;
+                // Pure non-slot spells don't belong in standard slot levels
+                if (spell.usesSpellSlot === false && !spell.canCastWithSlot) return false;
+                return true;
+            });
             if (levelSpells.length > 0) groups.push({ label: `${getOrdinal(level).toUpperCase()} LEVEL`, level, spells: levelSpells });
         }
         return groups;

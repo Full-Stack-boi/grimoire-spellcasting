@@ -5,6 +5,9 @@
  * reaction calculations (e.g. Shield spell +5 AC), and damage modifications.
  */
 
+import type { DDBParsedCharacter } from "../../../types/ddb";
+import type { MonsterStatblock } from "../../monsters/domain/types";
+
 export interface AttackResolutionInput {
   d20: number;
   total: number;
@@ -168,3 +171,117 @@ export function calculateEffectiveDamage(
   if (modifier === "half") return Math.max(0, Math.floor(totalDamage / 2));
   return Math.max(0, Math.floor(totalDamage));
 }
+
+export interface TargetShieldStatus {
+  hasShield: boolean;
+  canCastFree: boolean;
+  slotCount: number;
+  slotsExhausted: boolean;
+  reason?: string;
+}
+
+/**
+ * Evaluates whether a target creature possesses the Shield spell or reaction,
+ * and tracks slot availability while avoiding lockouts from D&D Beyond slot sync desync.
+ */
+export function evaluateTargetShieldStatus(params: {
+  character?: DDBParsedCharacter | null;
+  monster?: MonsterStatblock | null;
+}): TargetShieldStatus {
+  const { character, monster } = params;
+
+  // 1. Monster check
+  if (monster) {
+    const hasShieldReaction = monster.reactions?.some((r) =>
+      r.name.toLowerCase() === "shield" ||
+      /\bcasts?\s+(?:counterspell\s+or\s+)?shield\b/i.test(r.description || "")
+    );
+    const hasShieldTrait = monster.traits?.some((t) => {
+      const name = t.name.toLowerCase();
+      if (!name.includes("spellcasting")) return false;
+      return /(?:^|[,\s(])shield(?=[,\s)]|$)(?!\s+of\b)(?!\s+bash\b)(?!\s+guardian\b)(?!\s+mind\b)/i.test(
+        t.description || ""
+      );
+    });
+
+    if (hasShieldReaction || hasShieldTrait) {
+      return {
+        hasShield: true,
+        canCastFree: true,
+        slotCount: 1,
+        slotsExhausted: false,
+        reason: "Monster possesses Shield reaction or spellcasting",
+      };
+    }
+    return {
+      hasShield: false,
+      canCastFree: false,
+      slotCount: 0,
+      slotsExhausted: false,
+      reason: "Monster does not have Shield",
+    };
+  }
+
+  // 2. Character check
+  if (character) {
+    // Strictly match spells specifically named "Shield"
+    const shieldSpells = (character.spells || []).filter(
+      (s) => s.name.toLowerCase().trim() === "shield"
+    );
+
+    if (shieldSpells.length === 0) {
+      return {
+        hasShield: false,
+        canCastFree: false,
+        slotCount: 0,
+        slotsExhausted: false,
+        reason: "Character does not have the Shield spell",
+      };
+    }
+
+    // Check if specifically Shield has a free cast feature (not another spell like False Life!)
+    const hasSpecificFreeCast = shieldSpells.some(
+      (s) => s.usesSpellSlot === false || Boolean(s.hasFreeCast)
+    );
+
+    let availableSlots = 0;
+    let slotTrackingActive = false;
+
+    if (character.spellSlots && Object.keys(character.spellSlots).length > 0) {
+      slotTrackingActive = true;
+      for (const [lvlStr, slot] of Object.entries(character.spellSlots)) {
+        if (Number(lvlStr) >= 1 && slot.max > 0) {
+          availableSlots += Math.max(0, slot.max - slot.used);
+        }
+      }
+    }
+
+    if (character.pactMagic && character.pactMagic.max > 0) {
+      slotTrackingActive = true;
+      availableSlots += Math.max(0, character.pactMagic.max - character.pactMagic.used);
+    }
+
+    const slotsExhausted = slotTrackingActive && availableSlots === 0 && !hasSpecificFreeCast;
+
+    return {
+      hasShield: true,
+      canCastFree: hasSpecificFreeCast,
+      slotCount: availableSlots,
+      slotsExhausted,
+      reason: slotsExhausted
+        ? "Shield prepared, but 0 spell slots recorded on sheet"
+        : hasSpecificFreeCast
+        ? "Shield available via free feature"
+        : "Shield spell prepared",
+    };
+  }
+
+  return {
+    hasShield: false,
+    canCastFree: false,
+    slotCount: 0,
+    slotsExhausted: false,
+    reason: "No character or monster data linked to token",
+  };
+}
+

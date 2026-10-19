@@ -151,16 +151,35 @@ export const DetailDrawerActions: React.FC<DetailDrawerActionsProps> = ({
                                 </button>
                             );
                         })()}
-                        <button
-                            type="button"
-                            className={`ddb-drawer-action-btn primary ${item.spell.level > 0 && !item.spell.isPrepared ? "disabled" : ""}`}
-                            disabled={item.spell.level > 0 && (!item.spell.isPrepared || (item.spell.usesSpellSlot !== false && getRemainingSlots(castLevel) === 0))}
-                            onClick={() => onCastClick(item.spell.id, castLevel)}
-                            title={item.spell.level > 0 && !item.spell.isPrepared ? "Spell is not prepared" : undefined}
-                        >
-                            <IconCastLightning size={12} />
-                            <span>{item.spell.level > 0 && !item.spell.isPrepared ? "Unprepared" : item.spell.level > 0 && castLevel > item.spell.level ? `Cast at Level ${castLevel}` : "Cast Spell"}</span>
-                        </button>
+                        {Boolean(item.spell.hasFreeCast || (item.spell.usesSpellSlot === false && item.spell.limitedUse)) && (
+                            <button
+                                type="button"
+                                className="ddb-drawer-action-btn free-cast-btn"
+                                style={{
+                                    background: "linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(202, 138, 4, 0.35))",
+                                    border: "1px solid rgba(234, 179, 8, 0.6)",
+                                    color: "#fef08a",
+                                    fontWeight: 700,
+                                }}
+                                onClick={() => onCastClick(item.spell.id, 0)}
+                                title={`Cast using free special feature (${item.spell.freeCast?.max ?? item.spell.limitedUse?.max ?? 1} per ${item.spell.freeCast?.resetType ?? item.spell.limitedUse?.resetType ?? "Long Rest"})`}
+                            >
+                                <IconCastLightning size={12} />
+                                <span>✨ Free Cast ({item.spell.freeCast?.max ?? item.spell.limitedUse?.max ?? 1}/{item.spell.freeCast?.resetType ?? item.spell.limitedUse?.resetType ?? "LR"})</span>
+                            </button>
+                        )}
+                        {(item.spell.usesSpellSlot !== false || item.spell.canCastWithSlot) && (
+                            <button
+                                type="button"
+                                className={`ddb-drawer-action-btn primary ${item.spell.level > 0 && !item.spell.isPrepared ? "disabled" : ""}`}
+                                disabled={item.spell.level > 0 && (!item.spell.isPrepared || getRemainingSlots(castLevel) === 0)}
+                                onClick={() => onCastClick(item.spell.id, castLevel)}
+                                title={item.spell.level > 0 && !item.spell.isPrepared ? "Spell is not prepared" : undefined}
+                            >
+                                <IconCastLightning size={12} />
+                                <span>{item.spell.level > 0 && !item.spell.isPrepared ? "Unprepared" : item.spell.level > 0 && castLevel > item.spell.level ? `Cast at Level ${castLevel}` : "Cast with Slot"}</span>
+                            </button>
+                        )}
                         <button type="button" className={`ddb-drawer-action-btn ${item.spell.level > 0 && !item.spell.isPrepared ? "disabled" : ""}`} disabled={item.spell.level > 0 && !item.spell.isPrepared} onClick={() => onSelectSpell(item.spell.id)} title={item.spell.level > 0 && !item.spell.isPrepared ? "Spell is not prepared" : undefined}>
                             <span>Aim Target</span>
                         </button>

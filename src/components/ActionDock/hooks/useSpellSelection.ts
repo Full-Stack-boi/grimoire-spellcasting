@@ -88,11 +88,11 @@ export function useSpellSelection({
         return spells.find(spell => spell.id === spellId) || null;
     }, [spellId, spells]);
 
-    const handleOpenUpcastPicker = (spell: { id: string; name?: string; level?: number; usesSpellSlot?: boolean }) => {
+    const handleOpenUpcastPicker = (spell: DockSpell | { id: string; name?: string; level?: number; usesSpellSlot?: boolean; canCastWithSlot?: boolean; hasFreeCast?: boolean }) => {
         const fullSpell = spells.find(item => item.id === spell.id) || spell;
         const choices = getSpellChoices(fullSpell);
         const level = typeof fullSpell.level === "number" ? fullSpell.level : 0;
-        const usesSlot = fullSpell.usesSpellSlot !== false;
+        const usesSlot = fullSpell.usesSpellSlot !== false || Boolean(fullSpell.canCastWithSlot);
         const isLeveled = level > 0 && usesSlot;
         const availableLevels = isLeveled ? getAvailableSlotLevels(level) : [];
         const isHex = fullSpell.name?.toLowerCase() === "hex" || fullSpell.id.toLowerCase() === "hex";
@@ -106,7 +106,13 @@ export function useSpellSelection({
         setSpellId(fullSpell.id);
         onSelectSpell(fullSpell.id);
 
-        if (isLeveled) {
+        if (fullSpell.hasFreeCast) {
+            setSelectedLevel(0);
+            setCastLevel(0);
+            OBR.player.setMetadata({
+                [selectedSpellSlotLevelMetadataKey]: { spellId: fullSpell.id, slotLevel: 0 },
+            }).catch(() => {});
+        } else if (isLeveled) {
             const firstAvailable = availableLevels.find(availableLevel => getRemainingSlots(availableLevel) > 0) ?? level;
             setSelectedLevel(firstAvailable);
             setCastLevel(firstAvailable);

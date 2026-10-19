@@ -72,7 +72,7 @@ import { closeActionDock } from "./domain/popover";
 import {
     calculateResponsivePopoverDimensions,
 } from "../../utils/popoverSizing";
-import type { ActionsFilter, DetailDrawerItem, FeaturesFilter, InventoryFilter, MainTab, SpellSlotConfig, SpellsFilter } from "./domain/types";
+import type { ActionsFilter, DetailDrawerItem, DockSpell, FeaturesFilter, InventoryFilter, MainTab, SpellSlotConfig, SpellsFilter } from "./domain/types";
 import { useRollHistory } from "./hooks/useRollHistory";
 import { useDockSizing } from "./hooks/useDockSizing";
 import { InventoryTab } from "./character/InventoryTab";
@@ -477,23 +477,7 @@ export const ActionDock: React.FC = () => {
 
     // Build unified spells list combining D&D Beyond synced character spells with built-in library
     const dockSpells = useMemo(() => {
-        const result: Array<{
-            id: string;
-            name: string;
-            level: number;
-            school: string;
-            castingTime: string;
-            rangeText: string;
-            hitOrDc?: string;
-            damage?: string;
-            damageType?: string;
-            notes?: string;
-            isPrepared: boolean;
-            usesSpellSlot?: boolean;
-            componentId?: number;
-            fromChar: boolean;
-            rawDdbSpell?: DDBParsedSpell;
-        }> = [];
+        const result: DockSpell[] = [];
         const addedKeys = new Set<string>();
 
         // 1. Add character spells first
@@ -548,7 +532,10 @@ export const ActionDock: React.FC = () => {
                         usesSpellSlot: s.usesSpellSlot,
                         componentId: s.componentId,
                         fromChar: true,
-                        rawDdbSpell: s
+                        rawDdbSpell: s,
+                        hasFreeCast: s.hasFreeCast ?? (!s.usesSpellSlot && Boolean(s.limitedUse)),
+                        freeCast: s.freeCast ?? s.limitedUse,
+                        canCastWithSlot: s.canCastWithSlot ?? s.usesSpellSlot
                     });
                 }
             });

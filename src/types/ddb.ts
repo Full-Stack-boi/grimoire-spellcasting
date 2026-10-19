@@ -6,6 +6,12 @@ export interface DDBSpellSlot {
   used: number;
 }
 
+export interface DDBSpellLimitedUse {
+  max: number;
+  used: number;
+  resetType: string;
+}
+
 export interface DDBParsedSpell {
   id: string;
   ddbId?: number;
@@ -42,6 +48,10 @@ export interface DDBParsedSpell {
   castingClass?: string;
   usePrimaryStat?: boolean;
   statId?: number;
+  limitedUse?: DDBSpellLimitedUse;
+  hasFreeCast?: boolean;
+  freeCast?: DDBSpellLimitedUse;
+  canCastWithSlot?: boolean;
 }
 
 export interface DDBCharacterClass {

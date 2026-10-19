@@ -18,6 +18,7 @@ import { TokenVisionRules } from "../features/targeting/domain/vision";
 import { APP_KEY, LEGACY_APP_KEY } from "../config";
 import type { Item } from "@owlbear-rodeo/sdk";
 import { ALL_MANUAL_OVERRIDES } from "../assets/manual-formulas/index";
+import { SPELL_INFO_MAP } from "../assets/spellInfo";
 
 export const DDB_CHARACTER_METADATA_KEY = `${APP_KEY}/ddb-character-id`;
 // Bump CACHE_VERSION whenever the parsing output format changes significantly.
@@ -649,6 +650,23 @@ function parseDDBSpell(
         }
     }
 
+    let limitedUse: DDBParsedSpell["limitedUse"] = undefined;
+    if (spellObj.limitedUse) {
+        const max = spellObj.limitedUse.maxUses || 0;
+        const used = spellObj.limitedUse.numberUsed || 0;
+        const resetFromMap = typeof spellObj.limitedUse.resetType === "string"
+            ? spellObj.limitedUse.resetType
+            : DDB_RESET_TYPE_MAP[spellObj.limitedUse.resetType];
+        const reset = resetFromMap || spellObj.limitedUse.resetTypeDescription || "Long Rest";
+        if (max > 0) {
+            limitedUse = { max, used, resetType: reset };
+        }
+    }
+
+    const hasFreeCast = !usesSpellSlot && Boolean(limitedUse);
+    const freeCast = hasFreeCast ? limitedUse : undefined;
+    const canCastWithSlot = usesSpellSlot;
+
     return {
         id,
         ddbId: def.id,
@@ -680,7 +698,11 @@ function parseDDBSpell(
         alwaysPrepared: Boolean(spellObj.alwaysPrepared),
         usesSpellSlot,
         source,
-        castingClass
+        castingClass,
+        limitedUse,
+        hasFreeCast,
+        freeCast,
+        canCastWithSlot
     };
 }
 
@@ -1336,8 +1358,19 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                     if (!isKnownOrPrepared) return; // skip unprepared/unknown spells
 
                     const parsed = parseDDBSpell(s, "class", className, totalLevel);
-                    if (parsed && !spellsMap.has(parsed.id)) {
-                        spellsMap.set(parsed.id, parsed);
+                    if (parsed) {
+                        const existing = spellsMap.get(parsed.id);
+                        if (!existing) {
+                            spellsMap.set(parsed.id, parsed);
+                        } else {
+                            if (parsed.hasFreeCast || (parsed.usesSpellSlot === false && parsed.limitedUse)) {
+                                existing.hasFreeCast = true;
+                                existing.freeCast = parsed.freeCast || parsed.limitedUse;
+                            }
+                            if (parsed.usesSpellSlot === true || parsed.canCastWithSlot) {
+                                existing.canCastWithSlot = true;
+                            }
+                        }
                     }
                 });
             }
@@ -1370,8 +1403,19 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
                         : undefined;
 
                     const parsed = parseDDBSpell(s, source, spellCastingClass, totalLevel);
-                    if (parsed && !spellsMap.has(parsed.id)) {
-                        spellsMap.set(parsed.id, parsed);
+                    if (parsed) {
+                        const existing = spellsMap.get(parsed.id);
+                        if (!existing) {
+                            spellsMap.set(parsed.id, parsed);
+                        } else {
+                            if (parsed.hasFreeCast || (parsed.usesSpellSlot === false && parsed.limitedUse)) {
+                                existing.hasFreeCast = true;
+                                existing.freeCast = parsed.freeCast || parsed.limitedUse;
+                            }
+                            if (parsed.usesSpellSlot === true || parsed.canCastWithSlot) {
+                                existing.canCastWithSlot = true;
+                            }
+                        }
                     }
                 });
             }
@@ -1387,8 +1431,78 @@ export function parseDDBCharacterData(raw: any): DDBParsedCharacter {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data.customSpells.forEach((s: any) => {
             const parsed = parseDDBSpell(s, "custom", undefined, totalLevel);
-            if (parsed && !spellsMap.has(parsed.id)) {
-                spellsMap.set(parsed.id, parsed);
+            if (parsed) {
+                const existing = spellsMap.get(parsed.id);
+                if (!existing) {
+                    spellsMap.set(parsed.id, parsed);
+                } else {
+                    if (parsed.hasFreeCast || (parsed.usesSpellSlot === false && parsed.limitedUse)) {
+                        existing.hasFreeCast = true;
+                        existing.freeCast = parsed.freeCast || parsed.limitedUse;
+                    }
+                    if (parsed.usesSpellSlot === true || parsed.canCastWithSlot) {
+                        existing.canCastWithSlot = true;
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. Subclass Domain / Circle / Oath Spells (e.g. Life Domain Spells 2024 for Cleric, Circle of the Land Spells, etc.)
+    // In D&D Beyond 2024, domain spells are defined in the HTML table of the subclass feature rather than individual spell items in classSpells.
+    if (Array.isArray(data.classes)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data.classes.forEach((cl: any) => {
+            const clLevel = cl.level || totalLevel;
+            const className = cl.definition?.name || classes[0]?.name || "Cleric";
+            if (Array.isArray(cl.classFeatures)) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                cl.classFeatures.forEach((cf: any) => {
+                    const featName = cf.definition?.name || "";
+                    if (/(?:Domain|Circle|Oath)\s+Spells/i.test(featName)) {
+                        const desc = cf.definition?.description || "";
+                        const rowMatches = [...desc.matchAll(/<tr[^>]*>\s*<td[^>]*>(\d+)<\/td>\s*<td[^>]*>(.*?)<\/td>\s*<\/tr>/gi)];
+                        rowMatches.forEach(m => {
+                            const reqLvl = parseInt(m[1], 10);
+                            if (clLevel >= reqLvl) {
+                                const rawSpells = m[2].replace(/<[^>]+>/g, "").split(",");
+                                rawSpells.forEach((rawName: string) => {
+                                    const cleanedName = rawName.replace(/[*†‡]/g, "").trim();
+                                    if (!cleanedName) return;
+                                    const spellId = cleanedName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+                                    if (!spellsMap.has(spellId)) {
+                                        const meta = SPELL_INFO_MAP[spellId];
+                                        spellsMap.set(spellId, {
+                                            id: spellId,
+                                            name: meta?.name || cleanedName,
+                                            level: meta?.level ?? 1,
+                                            school: meta?.school || "Evocation",
+                                            castingTime: meta?.castingTime || "1 Action",
+                                            range: 30,
+                                            rangeText: meta?.range || "Touch",
+                                            duration: meta?.duration || "Instantaneous",
+                                            components: meta?.components || "V, S",
+                                            concentration: Boolean(meta?.concentration),
+                                            ritual: Boolean(meta?.ritual),
+                                            damage: meta?.damage,
+                                            saveOrAttack: meta?.saveOrAttack,
+                                            description: meta?.description || `${featName} granted spell`,
+                                            higherLevels: meta?.higherLevels,
+                                            rulesEdition: "2024",
+                                            canUpcast: Boolean(meta?.canUpcast || meta?.higherLevels),
+                                            isPrepared: true,
+                                            alwaysPrepared: true,
+                                            usesSpellSlot: true,
+                                            canCastWithSlot: true,
+                                            source: "class",
+                                            castingClass: className,
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
             }
         });
     }

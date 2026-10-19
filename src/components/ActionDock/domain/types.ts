@@ -7,7 +7,7 @@ export interface SpellSlotConfig {
 
 export type MainTab = "ACTIONS" | "SPELLS" | "INVENTORY" | "FEATURES" | "BACKGROUND" | "NOTES" | "EXTRAS" | "BESTIARY";
 export type ActionsFilter = "ALL" | "ATTACK" | "ACTION" | "BONUS ACTION" | "REACTION" | "OTHER" | "LIMITED USE";
-export type SpellsFilter = "ALL" | "0" | "1" | "2" | "PACT" | "3+";
+export type SpellsFilter = "ALL" | "SPECIAL" | "0" | "1" | "2" | "PACT" | "3+";
 export type FeaturesFilter = "ALL" | "CLASS" | "SPECIES" | "FEATS";
 export type InventoryFilter = "ALL" | "EQUIPPED" | "ATTUNED" | "WEAPONS" | "ARMOR" | "GEAR";
 
@@ -27,12 +27,17 @@ export interface DockSpell {
     componentId?: number;
     fromChar: boolean;
     rawDdbSpell?: DDBParsedSpell;
+    hasFreeCast?: boolean;
+    freeCast?: DDBParsedSpell["freeCast"];
+    canCastWithSlot?: boolean;
+    limitedUse?: DDBParsedSpell["limitedUse"];
 }
 
 export interface SpellGroup {
     label: string;
     level: number;
     spells: DockSpell[];
+    isSpecial?: boolean;
 }
 
 export type DetailDrawerItem =
@@ -68,7 +73,12 @@ export type DetailDrawerItem =
               isPrepared?: boolean;
               usesSpellSlot?: boolean;
               componentId?: number;
+              fromChar?: boolean;
               rawDdbSpell?: DDBParsedSpell;
+              hasFreeCast?: boolean;
+              freeCast?: DDBParsedSpell["freeCast"];
+              canCastWithSlot?: boolean;
+              limitedUse?: DDBParsedSpell["limitedUse"];
           };
       }
     | {

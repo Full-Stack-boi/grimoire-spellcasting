@@ -983,6 +983,17 @@
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
 }
 
+.ddb-gm-action-btn.btn-shield-reaction.btn-shield-warning {
+  border-color: rgba(245, 158, 11, 0.7);
+  background: rgba(245, 158, 11, 0.15);
+  color: #fde68a;
+}
+
+.ddb-gm-action-btn.btn-shield-reaction.btn-shield-warning:hover {
+  background: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
 .ddb-gm-action-btn.btn-dismiss {
   background: rgba(30, 41, 59, 0.6);
   border: 1px solid #475569;

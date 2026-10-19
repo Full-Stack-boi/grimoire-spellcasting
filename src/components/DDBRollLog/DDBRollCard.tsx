@@ -6,7 +6,9 @@ import { fireConditionalTrigger } from "../../services/conditionalTriggerService
 import { applyDamage, applyHeal, getTokenVitals } from "../../features/combat/tokenVitalsService";
 import { dispatchCombatFeatureTrigger } from "../../features/combat/domain/combatFeatureHooks";
 import { updateRollCardResolution } from "../../services/rollLogService";
-import { evaluateShieldReaction, formatHitLabelForViewer, resolveAttackHit } from "../../features/combat/domain/attackResolution";
+import { evaluateShieldReaction, evaluateTargetShieldStatus, formatHitLabelForViewer, resolveAttackHit, type TargetShieldStatus } from "../../features/combat/domain/attackResolution";
+import { resolveCasterCharacter } from "../../services/ddbService";
+import { getBoundMonsterFromToken } from "../../features/monsters/monsterService";
 import { aggregateSubRollDamages } from "../../features/combat/domain/multiTargetDamage";
 import { getGlobalSettingsValue, GLOBAL_STORAGE_KEYS, SETTINGS_CHANNEL } from "../Settings/settings";
 import {
@@ -406,6 +408,35 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
         };
     }, [data.targetId, data.damageType, data.damageComponents]);
 
+    const [targetShieldStatus, setTargetShieldStatus] = useState<TargetShieldStatus | null>(null);
+
+    useEffect(() => {
+        if (!data.targetId) {
+            setTargetShieldStatus(null);
+            return;
+        }
+        let mounted = true;
+        const checkShield = async () => {
+            try {
+                const items = await OBR.scene.items.getItems([data.targetId!]);
+                const item = items[0];
+                if (!item || !mounted) return;
+                const char = resolveCasterCharacter(item);
+                const monster = getBoundMonsterFromToken(item);
+                const status = evaluateTargetShieldStatus({ character: char, monster });
+                if (mounted) {
+                    setTargetShieldStatus(status);
+                }
+            } catch {
+                if (mounted) setTargetShieldStatus(null);
+            }
+        };
+        checkShield();
+        return () => {
+            mounted = false;
+        };
+    }, [data.targetId]);
+
     const applyDefensePreview = (amount: number, damageType: string) => {
         const defense = targetDefenses?.[damageType.toLowerCase()];
         if (defense?.immunity) return 0;
@@ -764,21 +795,22 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
             const naturalD20 = data.rollD20 ?? 10;
             const targetAc = data.targetAc ?? 10;
             const reaction = evaluateShieldReaction(attackTotal, naturalD20, targetAc);
+            const slotWarning = targetShieldStatus?.slotsExhausted ? " (Note: 0 slots recorded on sheet)" : "";
             if (reaction.shieldBlocks) {
                 await updateRollCardResolution(data.id, {
                     status: "shielded",
                     appliedAmount: 0,
-                    note: reaction.reason,
+                    note: `${reaction.reason}${slotWarning}`,
                     hitApprovalStatus: data.requiresHitApproval ? "missed" : undefined,
                 });
-                OBR.notification.show(`Shield spell (+5 AC) deflected the attack! (Attack ${attackTotal} vs AC ${targetAc + 5})`, "SUCCESS");
+                OBR.notification.show(`Shield spell (+5 AC) deflected the attack! (Attack ${attackTotal} vs AC ${targetAc + 5})${slotWarning}`, "SUCCESS");
             } else {
                 await updateRollCardResolution(data.id, {
                     status: "pending",
-                    note: reaction.reason,
+                    note: `${reaction.reason}${slotWarning}`,
                     hitApprovalStatus: data.requiresHitApproval ? "pending" : undefined,
                 });
-                OBR.notification.show(`Shield (+5 AC) was not enough! ${reaction.reason}`, "WARNING");
+                OBR.notification.show(`Shield (+5 AC) was not enough! ${reaction.reason}${slotWarning}`, "WARNING");
             }
         } finally {
             setIsResolving(false);
@@ -1451,16 +1483,36 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 <HalfDamageIcon />
                                                 <span>Half (-{effectivePreviewHalfDmg})</span>
                                             </button>
-                                            {data.targetAc && (
+                                            {data.targetAc && targetShieldStatus?.hasShield && (
                                                 <button
                                                     type="button"
-                                                    className="ddb-gm-action-btn btn-shield-reaction"
+                                                    className={`ddb-gm-action-btn btn-shield-reaction ${targetShieldStatus.slotsExhausted ? "btn-shield-warning" : ""}`}
                                                     onClick={handleShieldReaction}
                                                     disabled={isResolving}
-                                                    title="Reaction: Shield spell (+5 AC)"
+                                                    title={
+                                                        targetShieldStatus.slotsExhausted
+                                                            ? "Reaction: Shield spell (+5 AC) — ⚠️ 0 slots recorded on sheet (DM discretion)"
+                                                            : "Reaction: Shield spell (+5 AC)"
+                                                    }
                                                 >
                                                     <ShieldIcon />
                                                     <span>Shield (+5 AC)</span>
+                                                    {targetShieldStatus.slotsExhausted && (
+                                                        <span
+                                                            style={{
+                                                                fontSize: "0.65rem",
+                                                                padding: "1px 4px",
+                                                                borderRadius: "4px",
+                                                                background: "rgba(245, 158, 11, 0.25)",
+                                                                color: "#f59e0b",
+                                                                border: "1px solid rgba(245, 158, 11, 0.5)",
+                                                                fontWeight: 700,
+                                                                marginLeft: "2px",
+                                                            }}
+                                                        >
+                                                            ⚠️ 0 Slots
+                                                        </span>
+                                                    )}
                                                 </button>
                                             )}
                                             <button

@@ -3,7 +3,7 @@ import { getSchoolStyle, getSpellInitials, getSpellMetadata, isSpellUpcastable }
 import { IconCastLightning, IconFire, IconSearch, IconSpellInfo } from "../shared/Bg3Icons";
 import type { DockSpell, SpellGroup, SpellsFilter } from "../domain/types";
 
-const SPELL_FILTERS: SpellsFilter[] = ["ALL", "0", "1", "2", "PACT", "3+"];
+const SPELL_FILTERS: SpellsFilter[] = ["ALL", "SPECIAL", "0", "1", "2", "PACT", "3+"];
 
 export interface SpellsTabProps {
     abilityModifier: number;
@@ -54,7 +54,12 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
     renderUpcastPickerRow,
     hasPactMagic = false,
 }) => {
-    const spellFilters = hasPactMagic ? SPELL_FILTERS : SPELL_FILTERS.filter(value => value !== "PACT");
+    const hasSpecialSpells = groups.some(g => g.isSpecial || g.spells.some(s => s.hasFreeCast || (s.usesSpellSlot === false && s.level > 0)));
+    const spellFilters = SPELL_FILTERS.filter(value => {
+        if (value === "PACT" && !hasPactMagic) return false;
+        if (value === "SPECIAL" && !hasSpecialSpells) return false;
+        return true;
+    });
     return (
     <div className="ddb-tab-panel spells-panel">
         <div className="ddb-spells-top-stats-banner">
@@ -87,7 +92,7 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
                         className={`ddb-subfilter-btn ${filter === value ? "active" : ""}`}
                         onClick={() => onFilterChange(value)}
                     >
-                        {value === "0" ? "- 0 -" : value === "1" ? "1ST" : value === "2" ? "2ND" : value}
+                        {value === "SPECIAL" ? "SPECIAL" : value === "0" ? "- 0 -" : value === "1" ? "1ST" : value === "2" ? "2ND" : value}
                     </button>
                 ))}
             </div>
@@ -124,7 +129,11 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
                     ) : groups.map(group => (
                         <React.Fragment key={group.label}>
                             <tr className="ddb-spell-group-row">
-                                <td colSpan={7} className="ddb-spell-group-cell"><div className="ddb-spell-group-label">{group.label}</div></td>
+                                <td colSpan={7} className="ddb-spell-group-cell">
+                                    <div className={`ddb-spell-group-label ${group.isSpecial ? "special-group" : ""}`} style={group.isSpecial ? { color: "#facc15" } : undefined}>
+                                        {group.isSpecial ? "✨ " : ""}{group.label}
+                                    </div>
+                                </td>
                             </tr>
                             {group.spells.map(spell => {
                                 const isSelected = selectedSpellId === spell.id;
@@ -158,6 +167,27 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
                                                     </span>
                                                     <span className="ddb-spell-title">{spell.name}</span>
                                                     {isUpcastable && <span className="ddb-upcast-tag">+</span>}
+                                                    {spell.hasFreeCast && (
+                                                        <span
+                                                            className="ddb-free-cast-pill"
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                                fontSize: "9px",
+                                                                fontWeight: 700,
+                                                                padding: "1px 5px",
+                                                                borderRadius: "4px",
+                                                                background: "rgba(234, 179, 8, 0.15)",
+                                                                color: "#facc15",
+                                                                border: "1px solid rgba(234, 179, 8, 0.4)",
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                gap: "2px",
+                                                            }}
+                                                            title={`Free special casting: ${spell.freeCast?.max ?? 1} per ${spell.freeCast?.resetType ?? "Long Rest"}`}
+                                                        >
+                                                            ✨ FREE {spell.freeCast ? `${spell.freeCast.resetType}` : "CAST"}
+                                                        </span>
+                                                    )}
                                                     {spell.isPrepared && <span className="ddb-prep-pip" title="Prepared">✦</span>}
                                                 </div>
                                             </td>
