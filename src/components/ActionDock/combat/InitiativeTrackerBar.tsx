@@ -112,6 +112,7 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
   useEffect(() => {
     let unsubItems: (() => void) | undefined;
     let unsubMetadata: (() => void) | undefined;
+    let unsubPlayer: (() => void) | undefined;
     const unsubscribe = subscribeToEncounter((enc) => {
       setEncounter(enc);
     });
@@ -128,7 +129,30 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
             }).catch(() => {});
           });
           OBR.scene.items.getItems().then((items) => setSceneItems(items)).catch(() => {});
-          unsubItems = OBR.scene.items.onChange((items) => setSceneItems(items));
+          unsubItems = OBR.scene.items.onChange((items) => {
+            setSceneItems((prev) => {
+              const combatantIds = new Set(encounter?.combatants?.map((c) => c.id) || []);
+              const prevCombatantTokens = prev.filter((p) => combatantIds.has(p.id));
+              const nextCombatantTokens = items.filter((it) => combatantIds.has(it.id));
+              if (
+                prevCombatantTokens.length === nextCombatantTokens.length &&
+                prevCombatantTokens.every((p, i) => {
+                  const n = nextCombatantTokens[i];
+                  return p.id === n.id && p.metadata === n.metadata;
+                })
+              ) {
+                return prev;
+              }
+              return items;
+            });
+          });
+
+          unsubPlayer = OBR.player.onChange((player) => {
+            setRoleIsGM(player.role === "GM");
+            getMyPrimaryCharacterToken(player.id).then((token) => {
+              if (token) setMyPrimaryTokenId(token.id);
+            }).catch(() => {});
+          });
 
           const hpSettingKey = `${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_TO_PLAYERS}`;
           const hpBarSettingKey = `${APP_KEY}/settings/${GLOBAL_STORAGE_KEYS.SHOW_TURN_TRACKER_HP_BAR_TO_PLAYERS}`;
@@ -153,8 +177,9 @@ export const InitiativeTrackerBar: React.FC<InitiativeTrackerBarProps> = ({
       unsubscribe();
       if (unsubItems) unsubItems();
       if (unsubMetadata) unsubMetadata();
+      if (unsubPlayer) unsubPlayer();
     };
-  }, [initialShowHpToPlayers, initialShowHpBarToPlayers, initialShowAcToPlayers]);
+  }, [initialShowHpToPlayers, initialShowHpBarToPlayers, initialShowAcToPlayers, encounter]);
 
   const handleNextTurn = useCallback(async () => {
     await nextCombatTurn();

@@ -53,9 +53,11 @@ function setupLocalSpells(role: "GM" | "PLAYER") {
 }
 
 import { setupTokenSizeContextMenu } from "./features/targeting/infrastructure/obr/tokenSizeContextMenu";
-import { isDesignatedTriggerArbitrator } from "./services/gmArbitratorService";
+import { isCurrentClientArbitrator, setupArbitratorSync } from "./services/gmArbitratorService";
+import { hasActiveMovementTriggers } from "./services/conditionalTriggerService";
 
 function setupScene() {
+  const unsubscribeArbitrator = setupArbitratorSync();
   setupDefaultCasterMenuOption();
   setupElevationMenuOption();
   setupDDBTokenContextMenuOption();
@@ -86,7 +88,7 @@ function setupScene() {
 
     if (role === "GM") {
       interval = window.setInterval(async () => {
-        if (await isDesignatedTriggerArbitrator()) {
+        if (isCurrentClientArbitrator()) {
           sendSpellsUpdate("all");
         }
       }, 30000);
@@ -114,11 +116,13 @@ function setupScene() {
 
     unsubscribeTool = setupEffectsTool(player.role, player.id);
     unsubscribeLocalSpells = setupLocalSpells(player.role);
-    interval = window.setInterval(async () => {
-      if (await isDesignatedTriggerArbitrator()) {
-        sendSpellsUpdate("all");
-      }
-    }, 30000);
+    if (player.role === "GM") {
+      interval = window.setInterval(async () => {
+        if (isCurrentClientArbitrator()) {
+          sendSpellsUpdate("all");
+        }
+      }, 30000);
+    }
   });
 
   const lastBackgroundPositions = new Map<string, { x: number; y: number }>();
@@ -146,14 +150,14 @@ function setupScene() {
     })
     .catch(() => {});
 
-  const unsubItems = OBR.scene.items.onChange(async (items) => {
-    const isArbitrator = await isDesignatedTriggerArbitrator();
-    if (!isArbitrator) return;
+  const unsubItems = OBR.scene.items.onChange((items) => {
+    if (!isCurrentClientArbitrator()) return;
+    if (!hasActiveMovementTriggers()) return;
 
     for (const item of items) {
       const prev = lastBackgroundPositions.get(item.id);
       if (prev && (prev.x !== item.position.x || prev.y !== item.position.y)) {
-        await checkAndFireMovementTriggers(item.id, item.position, bgDpi).catch(
+        void checkAndFireMovementTriggers(item.id, item.position, bgDpi).catch(
           () => {},
         );
       }
@@ -168,6 +172,7 @@ function setupScene() {
     window.clearTimeout(prewarmTimer);
     void destroyActionDock().catch(() => {});
     if (interval !== null) clearInterval(interval);
+    unsubscribeArbitrator();
     unsubscribePlayer();
     unsubscribeTool?.();
     unsubscribeDarkness?.();

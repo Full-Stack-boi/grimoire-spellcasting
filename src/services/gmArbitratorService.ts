@@ -1,5 +1,8 @@
 import OBR from "@owlbear-rodeo/sdk";
 
+let cachedIsArbitrator = false;
+let isInitialized = false;
+
 /**
  * Checks whether the local client is the primary GM arbitrator.
  * When multiple DMs/GMs are online, only the primary GM (first sorted GM ID)
@@ -18,13 +21,50 @@ export async function isDesignatedTriggerArbitrator(): Promise<boolean> {
     }
     const uniqueGMs = [...new Set(gmPlayerIds)].sort();
 
+    let result = false;
     if (uniqueGMs.length > 0) {
-      return myRole === "GM" && uniqueGMs[0] === myId;
+      result = myRole === "GM" && uniqueGMs[0] === myId;
+    } else {
+      const allPlayerIds = [...new Set([myId, ...players.map((p) => p.id)])].sort();
+      result = allPlayerIds[0] === myId;
     }
-
-    const allPlayerIds = [...new Set([myId, ...players.map((p) => p.id)])].sort();
-    return allPlayerIds[0] === myId;
+    cachedIsArbitrator = result;
+    isInitialized = true;
+    return result;
   } catch {
+    cachedIsArbitrator = true;
+    isInitialized = true;
     return true;
   }
+}
+
+/**
+ * Fast, synchronous check for high-frequency loops (e.g. OBR.scene.items.onChange).
+ * Eliminates 3 async IPC bridge calls per frame during token movement.
+ */
+export function isCurrentClientArbitrator(): boolean {
+  if (!isInitialized) {
+    void isDesignatedTriggerArbitrator();
+    return true;
+  }
+  return cachedIsArbitrator;
+}
+
+/**
+ * Subscribes to player and party changes to keep cached arbitrator status fresh.
+ */
+export function setupArbitratorSync(): () => void {
+  void isDesignatedTriggerArbitrator();
+
+  const unsubPlayer = OBR.player.onChange(() => {
+    void isDesignatedTriggerArbitrator();
+  });
+  const unsubParty = OBR.party.onChange(() => {
+    void isDesignatedTriggerArbitrator();
+  });
+
+  return () => {
+    unsubPlayer();
+    unsubParty();
+  };
 }

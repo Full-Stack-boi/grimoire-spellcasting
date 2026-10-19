@@ -90,6 +90,9 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
       .catch((error) => {
         console.error("Failed to resolve role for monster usage controls:", error);
       });
+    const unsubPlayer = OBR.player.onChange((player) => {
+      if (active) setIsGM(player.role === "GM");
+    });
     const refresh = () => {
       loadMonsterUsageCounts(usageScopeId)
         .then((counts) => {
@@ -108,6 +111,7 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
     });
     return () => {
       active = false;
+      unsubPlayer();
       unsubscribe();
     };
   }, [usageScopeId]);

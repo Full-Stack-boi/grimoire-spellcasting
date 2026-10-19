@@ -244,11 +244,32 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
           OBR.onReady(init);
         }
 
+        let darknessDebounceTimeout: number | null = null;
         unsubItems = OBR.scene.items.onChange((items) => {
-          if (mounted) {
-            setSceneItems(items);
-            void refreshDarknessVisibility();
+          if (!mounted) return;
+          setSceneItems((prev) => {
+            const combatantIds = new Set(currentEncounter?.combatants?.map((c) => c.id) || []);
+            const prevCombatantTokens = prev.filter((p) => combatantIds.has(p.id));
+            const nextCombatantTokens = items.filter((it) => combatantIds.has(it.id));
+            if (
+              prevCombatantTokens.length === nextCombatantTokens.length &&
+              prevCombatantTokens.every((p, i) => {
+                const n = nextCombatantTokens[i];
+                return p.id === n.id && p.metadata === n.metadata;
+              })
+            ) {
+              return prev;
+            }
+            return items;
+          });
+
+          if (darknessDebounceTimeout !== null) {
+            window.clearTimeout(darknessDebounceTimeout);
           }
+          darknessDebounceTimeout = window.setTimeout(() => {
+            darknessDebounceTimeout = null;
+            void refreshDarknessVisibility();
+          }, 80);
         });
 
         unsubMetadata = OBR.scene.onMetadataChange((metadata) => {
@@ -260,7 +281,10 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
           if (mounted) setShowAcToPlayers(metadata[acSettingKey] === true);
           void refreshDarknessVisibility();
         });
-        unsubPlayer = OBR.player.onChange(() => {
+        unsubPlayer = OBR.player.onChange((player) => {
+          if (mounted) {
+            setIsGM(player.role === "GM");
+          }
           void refreshDarknessVisibility();
         });
       })

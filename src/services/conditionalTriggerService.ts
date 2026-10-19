@@ -14,6 +14,32 @@ let inMemoryTriggers: ConditionalTrigger[] = [];
 const executingTriggerLocks = new Set<string>();
 
 /**
+ * Fast synchronous check to see if any movement triggers exist.
+ * Allows background movement listeners to short-circuit in 0ms when no triggers are active.
+ */
+export function hasActiveMovementTriggers(): boolean {
+    return inMemoryTriggers.some(t => t.conditionType === "movement");
+}
+
+if (typeof window !== "undefined" && typeof window.location !== "undefined") {
+    getOBR().then(OBR => {
+        if (!OBR) return;
+        const init = () => {
+            OBR.scene.getMetadata().then(metadata => {
+                const raw = metadata?.[CONDITIONAL_TRIGGERS_METADATA_KEY] as ConditionalTrigger[] | undefined;
+                if (Array.isArray(raw)) inMemoryTriggers = raw;
+            }).catch(() => {});
+            OBR.scene.onMetadataChange(metadata => {
+                const raw = metadata?.[CONDITIONAL_TRIGGERS_METADATA_KEY] as ConditionalTrigger[] | undefined;
+                if (Array.isArray(raw)) inMemoryTriggers = raw;
+            });
+        };
+        if (OBR.isReady) init();
+        else OBR.onReady(init);
+    }).catch(() => {});
+}
+
+/**
  * Safely retrieves OBR instance in browser environment without throwing in node/tests.
  */
 async function getOBR() {
