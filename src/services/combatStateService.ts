@@ -52,6 +52,27 @@ export function isTargetHexed(
     return Boolean(state.hexTargetId && state.hexTargetId === targetId);
 }
 
+export function isCombatStateEqual(a: EmbersCombatState, b: EmbersCombatState): boolean {
+    if (a.characterId !== b.characterId) return false;
+    if (a.hpCurrent !== b.hpCurrent || a.hpMax !== b.hpMax || a.hpTemp !== b.hpTemp) return false;
+    if (a.actionUsed !== b.actionUsed || a.bonusActionUsed !== b.bonusActionUsed) return false;
+    if (a.heroicInspiration !== b.heroicInspiration) return false;
+    if (a.concentrationSpellId !== b.concentrationSpellId) return false;
+    if (a.concentrationSpellName !== b.concentrationSpellName) return false;
+    if (a.hexTargetId !== b.hexTargetId) return false;
+    if (a.hexTargetName !== b.hexTargetName) return false;
+    if (a.hexAbility !== b.hexAbility) return false;
+    if (a.pactSlotsUsed !== b.pactSlotsUsed) return false;
+    if (a.exhaustionLevel !== b.exhaustionLevel) return false;
+    if (JSON.stringify(a.spellSlotsUsed || {}) !== JSON.stringify(b.spellSlotsUsed || {})) return false;
+    if (JSON.stringify(a.createdSpellSlots || {}) !== JSON.stringify(b.createdSpellSlots || {})) return false;
+    if (JSON.stringify(a.featureUses || {}) !== JSON.stringify(b.featureUses || {})) return false;
+    if (JSON.stringify(a.deathSaves || {}) !== JSON.stringify(b.deathSaves || {})) return false;
+    if (JSON.stringify(a.hitDiceUsed || {}) !== JSON.stringify(b.hitDiceUsed || {})) return false;
+    if (JSON.stringify(a.conditions || []) !== JSON.stringify(b.conditions || [])) return false;
+    return true;
+}
+
 export function getDefaultCombatState(characterId: number): EmbersCombatState {
     return {
         characterId,
@@ -193,6 +214,10 @@ export async function saveCombatState(characterId: number, patch: Partial<Embers
             if (targetTokenId) {
                 await OBR.scene.items.updateItems([targetTokenId], items => {
                     for (const item of items) {
+                        const existingStored = (item.metadata?.[TOKEN_COMBAT_STATE_KEY] ?? item.metadata?.[LEGACY_TOKEN_COMBAT_STATE_KEY]) as EmbersCombatState | undefined;
+                        if (existingStored && isCombatStateEqual(existingStored, updated)) {
+                            return;
+                        }
                         item.metadata[TOKEN_COMBAT_STATE_KEY] = updated;
                     }
                 });
@@ -206,9 +231,11 @@ export async function saveCombatState(characterId: number, patch: Partial<Embers
     try {
         const OBR = await getOBR();
         if (OBR) {
-            await OBR.player.setMetadata({
-                [key]: updated
-            });
+            if (!existing || !isCombatStateEqual(existing, updated)) {
+                await OBR.player.setMetadata({
+                    [key]: updated
+                });
+            }
         }
     } catch {
         // Fallback if OBR fails

@@ -543,6 +543,9 @@ export async function setTokenVitals(
       pendingConcentrationSaves: patch.pendingConcentrationSaves !== undefined
         ? [...patch.pendingConcentrationSaves]
         : [...(current.pendingConcentrationSaves || [])],
+      disposition: patch.disposition !== undefined
+        ? (patch.disposition ?? undefined)
+        : (current.disposition ?? undefined),
       hideNumbers: patch.hideNumbers !== undefined ? patch.hideNumbers : current.hideNumbers,
       resolvedRollKeys: patch.resolvedRollKeys !== undefined
         ? [...patch.resolvedRollKeys]
@@ -564,10 +567,17 @@ export async function setTokenVitals(
             ? [...(liveData?.resolvedRollKeys || []), options.actionKey].slice(-50)
             : updated.resolvedRollKeys;
 
-          item.metadata[VITALS_METADATA_KEY] = {
+          const rawVitals: Record<string, unknown> = {
             ...updated,
             resolvedRollKeys: nextResolvedKeys,
           };
+          Object.keys(rawVitals).forEach((k) => {
+            if (rawVitals[k] === undefined) {
+              delete rawVitals[k];
+            }
+          });
+
+          item.metadata[VITALS_METADATA_KEY] = rawVitals;
         }
       }
     });

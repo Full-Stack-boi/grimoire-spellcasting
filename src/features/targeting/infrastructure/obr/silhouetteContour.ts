@@ -9,7 +9,69 @@ export const PathCommandType = {
     CLOSE: 5
 } as const;
 
+export const EMPTY_PATH_COMMANDS: PathCommand[] = [
+    [PathCommandType.MOVE, 0, 0],
+    [PathCommandType.CLOSE],
+];
+
+export function createCirclePathCommands(radius: number): PathCommand[] {
+    const k = radius * 0.5522847498;
+    return [
+        [PathCommandType.MOVE, 0, -radius],
+        [PathCommandType.CUBIC, k, -radius, radius, -k, radius, 0],
+        [PathCommandType.CUBIC, radius, k, k, radius, 0, radius],
+        [PathCommandType.CUBIC, -k, radius, -radius, k, -radius, 0],
+        [PathCommandType.CUBIC, -radius, -k, -k, -radius, 0, -radius],
+        [PathCommandType.CLOSE],
+    ];
+}
+
 const contourCache = new Map<string, PathCommand[]>();
+const inFlightContourLoads = new Map<string, Promise<PathCommand[]>>();
+
+export function getCachedContourCommands(
+    imageUrl: string,
+    width: number,
+    height: number,
+    offset: { x: number; y: number }
+): PathCommand[] | null {
+    const cacheKey = `${imageUrl}_${width}_${height}_${offset.x}_${offset.y}`;
+    return contourCache.get(cacheKey) ?? null;
+}
+
+export function prefetchImageContour(
+    imageUrl: string,
+    width: number,
+    height: number,
+    offset: { x: number; y: number }
+): void {
+    void extractImageContourCommands(imageUrl, width, height, offset);
+}
+
+export function prefetchTokenContour(item: any, gridDpi: number = 150): void {
+    if (!item?.image?.url || !item.image.width || !item.image.height) return;
+    const itemGrid = item.grid || { dpi: gridDpi, offset: { x: item.image.width / 2, y: item.image.height / 2 } };
+    const itemGridDpi = itemGrid.dpi || gridDpi;
+    const sceneScale = gridDpi / itemGridDpi;
+
+    const targetWidth = item.image.width * sceneScale;
+    const targetHeight = item.image.height * sceneScale;
+    const targetOffset = {
+        x: (itemGrid.offset?.x ?? item.image.width / 2) * sceneScale,
+        y: (itemGrid.offset?.y ?? item.image.height / 2) * sceneScale
+    };
+
+    prefetchImageContour(item.image.url, targetWidth, targetHeight, targetOffset);
+}
+
+export function prefetchSceneTokenContours(items: any[], gridDpi: number = 150): void {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+        if (item?.layer === "CHARACTER" && item.visible !== false) {
+            prefetchTokenContour(item, gridDpi);
+        }
+    }
+}
 
 const ALPHA_THRESHOLD = 28;
 
@@ -87,13 +149,17 @@ export async function extractImageContourCommands(
     const cached = contourCache.get(cacheKey);
     if (cached) return cached;
 
-    if (typeof window === "undefined" || !window.document?.createElement) {
-        const fallback = createFallbackBoxCommands(width, height, offset);
-        contourCache.set(cacheKey, fallback);
-        return fallback;
-    }
+    const inFlight = inFlightContourLoads.get(cacheKey);
+    if (inFlight) return inFlight;
 
-    try {
+    const loadPromise = (async () => {
+        if (typeof window === "undefined" || !window.document?.createElement) {
+            const fallback = createFallbackBoxCommands(width, height, offset);
+            contourCache.set(cacheKey, fallback);
+            return fallback;
+        }
+
+        try {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.src = imageUrl;
@@ -102,15 +168,15 @@ export async function extractImageContourCommands(
             if (img.complete && img.naturalWidth !== 0) return resolve();
             img.onload = () => resolve();
             img.onerror = () => reject(new Error("Image load failed"));
-            setTimeout(() => resolve(), 1500);
+            setTimeout(() => resolve(), 120);
         });
 
         if (!img.naturalWidth || !img.naturalHeight) {
             return createFallbackBoxCommands(width, height, offset);
         }
 
-        // High-definition grid for smooth, crisp curves
-        const targetMax = 350;
+        // Lightweight grid (100px max) for ultra-fast marching squares and smooth curves
+        const targetMax = 100;
         const scale = Math.min(1, targetMax / Math.max(img.naturalWidth, img.naturalHeight));
         const gw = Math.max(10, Math.round(img.naturalWidth * scale));
         const gh = Math.max(10, Math.round(img.naturalHeight * scale));
@@ -271,7 +337,7 @@ export async function extractImageContourCommands(
         const commands: PathCommand[] = [];
 
         for (const loop of rawLoops) {
-            const simplified = simplifyDP(loop, 0.35);
+            const simplified = simplifyDP(loop, 0.8);
             const smoothed = chaikinSmooth(simplified);
             if (smoothed.length < 3) continue;
 
@@ -295,7 +361,13 @@ export async function extractImageContourCommands(
         const fallback = createFallbackBoxCommands(width, height, offset);
         contourCache.set(cacheKey, fallback);
         return fallback;
+    } finally {
+        inFlightContourLoads.delete(cacheKey);
     }
+    })();
+
+    inFlightContourLoads.set(cacheKey, loadPromise);
+    return loadPromise;
 }
 
 function createFallbackBoxCommands(width: number, height: number, offset: { x: number; y: number }): PathCommand[] {
@@ -315,4 +387,5 @@ function createFallbackBoxCommands(width: number, height: number, offset: { x: n
 
 export function clearContourCache(): void {
     contourCache.clear();
+    inFlightContourLoads.clear();
 }

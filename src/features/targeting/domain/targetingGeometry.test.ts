@@ -17,6 +17,7 @@ import {
     doesSegmentIntersectSphere3D,
     Point3D,
     getTokenFootprint,
+    getTokenSizeInSquares,
     isPointInTokenFootprint,
     resolveCombatTargetTokenAtPoint,
     getTokenClosestPointToPoint,
@@ -627,6 +628,49 @@ describe("Geometry & Grid Utilities", () => {
             const anchor = getTokenClosestPointToPoint(dmScaledDevil, leafPlayer.position, combatGrid);
             expect(anchor.x).toBe(650);
             expect(anchor.y).toBe(550);
+        });
+
+        it("does not force Large 2x2 size on a 1x1 token when bound-monster metadata has size: Large", () => {
+            const tokenBoundToLargeMonster = {
+                id: "token-dire-wolf",
+                layer: "CHARACTER",
+                position: { x: 104, y: 159.5 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+                metadata: {
+                    "embers/bound-monster": {
+                        name: "Dire Wolf",
+                        size: "Large"
+                    }
+                }
+            } as any;
+
+            const sizeInSquares = getTokenSizeInSquares(tokenBoundToLargeMonster, combatGrid);
+            expect(sizeInSquares).toBe(1);
+
+            const footprint = getTokenFootprint(tokenBoundToLargeMonster, combatGrid);
+            expect(footprint.sizeInSquares).toBe(1);
+            expect(footprint.occupiedCells.length).toBe(1);
+            // Center stays aligned with the cell center of the token, preventing 1-square drift
+            expect(footprint.center.x).toBe(150);
+            expect(footprint.center.y).toBe(150);
+        });
+
+        it("safely falls back to token position if calculated anchor drifts outside token visual bounds", () => {
+            const token = {
+                id: "token-test",
+                layer: "CHARACTER",
+                position: { x: 100, y: 100 },
+                image: { width: 100, height: 100 },
+                grid: { dpi: 100 },
+                scale: { x: 1, y: 1 },
+            } as any;
+
+            const anchor = getTokenClosestPointToPoint(token, { x: 9999, y: 9999 }, combatGrid);
+            expect(anchor).toBeDefined();
+            expect(anchor.x).toBeGreaterThanOrEqual(token.position.x - 100);
+            expect(anchor.x).toBeLessThanOrEqual(token.position.x + 100);
         });
     });
 });

@@ -48,6 +48,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
             strokeOpacity(val: number) { (this as any)._strokeOpacity = val; return this; },
             fillColor() { return this; },
             fillOpacity(val: number) { (this as any)._fillOpacity = val; return this; },
+            visible(val: boolean) { (this as any)._visible = val; return this; },
             disableHit() { return this; },
             locked() { return this; },
             layer() { return this; },
@@ -57,7 +58,8 @@ vi.mock("@owlbear-rodeo/sdk", () => {
                     type: "SHAPE",
                     position: (this as any)._pos,
                     strokeOpacity: (this as any)._strokeOpacity,
-                    fillOpacity: (this as any)._fillOpacity
+                    fillOpacity: (this as any)._fillOpacity,
+                    visible: (this as any)._visible !== undefined ? (this as any)._visible : true,
                 };
             },
         }),
@@ -69,10 +71,11 @@ vi.mock("@owlbear-rodeo/sdk", () => {
             strokeWidth() { return this; },
             strokeOpacity() { return this; },
             strokeDash() { return this; },
+            visible(val: boolean) { (this as any)._visible = val; return this; },
             disableHit() { return this; },
             locked() { return this; },
             layer() { return this; },
-            build() { return { id: (this as any)._id, type: "LINE", startPosition: (this as any)._start, endPosition: (this as any)._end }; },
+            build() { return { id: (this as any)._id, type: "LINE", startPosition: (this as any)._start, endPosition: (this as any)._end, visible: (this as any)._visible !== undefined ? (this as any)._visible : true }; },
         }),
         buildLabel: () => ({
             id(val: string) { (this as any)._id = val; return this; },
@@ -84,10 +87,11 @@ vi.mock("@owlbear-rodeo/sdk", () => {
             fillColor() { return this; },
             backgroundColor() { return this; },
             backgroundOpacity() { return this; },
+            visible(val: boolean) { (this as any)._visible = val; return this; },
             disableHit() { return this; },
             locked() { return this; },
             layer() { return this; },
-            build() { return { id: (this as any)._id, type: "LABEL", position: (this as any)._pos, plainText: (this as any)._text }; },
+            build() { return { id: (this as any)._id, type: "LABEL", position: (this as any)._pos, plainText: (this as any)._text, visible: (this as any)._visible !== undefined ? (this as any)._visible : true }; },
         }),
         buildPath: () => ({
             id(val: string) { (this as any)._id = val; return this; },
@@ -100,6 +104,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
             strokeOpacity(val: number) { (this as any)._strokeOpacity = val; return this; },
             fillColor(val: string) { (this as any)._fillColor = val; return this; },
             fillOpacity(val: number) { (this as any)._fillOpacity = val; return this; },
+            visible(val: boolean) { (this as any)._visible = val; return this; },
             disableHit() { return this; },
             locked() { return this; },
             layer() { return this; },
@@ -116,6 +121,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
                     strokeOpacity: (this as any)._strokeOpacity,
                     fillColor: (this as any)._fillColor,
                     fillOpacity: (this as any)._fillOpacity,
+                    visible: (this as any)._visible !== undefined ? (this as any)._visible : true,
                 };
             },
         }),
@@ -124,6 +130,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
             position(val: any) { (this as any)._pos = val; return this; },
             scale(val: any) { (this as any)._scale = val; return this; },
             rotation(val: number) { (this as any)._rot = val; return this; },
+            visible(val: boolean) { (this as any)._visible = val; return this; },
             disableHit() { return this; },
             locked() { return this; },
             layer() { return this; },
@@ -136,6 +143,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
                     rotation: (this as any)._rot,
                     image: img,
                     grid: imgGrid,
+                    visible: (this as any)._visible !== undefined ? (this as any)._visible : true,
                 };
             },
         }),
@@ -216,7 +224,7 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
             maxRangeFeet: 60,
             grid,
         });
-        expect(mockLocalItems.length).toBe(4);
+        expect(mockLocalItems.length).toBe(5);
 
         // Clear
         await clearAimingOverlay();
@@ -293,10 +301,10 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
         expect(labelItem.plainText).not.toContain("🎯");
     });
 
-    it("only renders AIMING_TARGET_CELL_ID on ground targets, suppressing circle when targeting creature", async () => {
+    it("toggles target cell shape visibility, hiding cell shape when targeting creature", async () => {
         const dummyMonster = { id: "monster-1", position: { x: 300, y: 300 } } as any;
 
-        // 1. With targetItem: AIMING_TARGET_CELL_ID circle is suppressed in favor of creature contour glow
+        // 1. With targetItem: targetCellShape is hidden (visible: false)
         await renderAimingOverlay({
             casterPos: { x: 150, y: 150 },
             cursorPos: { x: 300, y: 300 },
@@ -306,7 +314,8 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
         });
 
         const cellItemWithTarget = mockLocalItems.find(i => i.id === AIMING_TARGET_CELL_ID);
-        expect(cellItemWithTarget).toBeUndefined();
+        expect(cellItemWithTarget).toBeDefined();
+        expect(cellItemWithTarget.visible).toBe(false);
 
         // 2. Clear and re-render without targetItem (ground target): targetCellShape should be visible
         await clearAimingOverlay();
@@ -320,11 +329,12 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
 
         const cellItemGround = mockLocalItems.find(i => i.id === AIMING_TARGET_CELL_ID);
         expect(cellItemGround).toBeDefined();
+        expect(cellItemGround.visible).toBe(true);
         expect(cellItemGround.strokeOpacity).toBe(0.7);
         expect(cellItemGround.fillOpacity).toBe(0.12);
     });
 
-    it("mounts AIMING_TARGET_GLOW_ID when aiming at an image-based creature token without selecting it", async () => {
+    it("mounts AIMING_TARGET_GLOW_ID when aiming at an image-based creature token and hides on ground without deleting", async () => {
         const dummyFiend = {
             id: "fiend-1",
             position: { x: 300, y: 300 },
@@ -352,6 +362,7 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
 
         const glowItem = mockLocalItems.find(i => i.id === AIMING_TARGET_GLOW_ID);
         expect(glowItem).toBeDefined();
+        expect(glowItem.visible).toBe(true);
         expect(glowItem.type).toBe("PATH");
         expect(glowItem.commands).toBeDefined();
         expect(glowItem.commands.length).toBeGreaterThan(0);
@@ -359,7 +370,8 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
         expect(glowItem.strokeOpacity).toBe(0.9);
         expect(glowItem.fillOpacity).toBe(0.12);
 
-        // Move to ground: glow item should be deleted
+        // Move to ground: glow item stays mounted but visible is toggled to false without calling deleteItems!
+        mockDeleteItems.mockClear();
         await renderAimingOverlay({
             casterPos: { x: 150, y: 150 },
             cursorPos: { x: 450, y: 450 },
@@ -368,7 +380,63 @@ describe("aimingOverlayRenderer - Flicker-free Mount & Update Lifecycle", () => 
             targetItem: undefined,
         });
 
+        expect(mockDeleteItems).not.toHaveBeenCalled();
+        const updatedGlow = mockLocalItems.find(i => i.id === AIMING_TARGET_GLOW_ID);
+        expect(updatedGlow).toBeDefined();
+        expect(updatedGlow.visible).toBe(false);
+        expect(updatedGlow.type).toBe("PATH");
+    });
+
+    it("guarantees AIMING_TARGET_GLOW_ID is ALWAYS of type PATH (never SHAPE)", async () => {
+        // Ground target
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            targetItem: undefined,
+        });
+
+        const groundGlow = mockLocalItems.find(i => i.id === AIMING_TARGET_GLOW_ID);
+        expect(groundGlow).toBeDefined();
+        expect(groundGlow.type).toBe("PATH");
+
+        // Non-image creature token (fallback vector shape)
+        const nonImageCreature = { id: "non-image-1", position: { x: 300, y: 300 } } as any;
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            targetItem: nonImageCreature,
+        });
+
+        const nonImageGlow = mockLocalItems.find(i => i.id === AIMING_TARGET_GLOW_ID);
+        expect(nonImageGlow).toBeDefined();
+        expect(nonImageGlow.type).toBe("PATH");
+    });
+
+    it("safely recovers and deletes stale items with type mismatch from previous sessions", async () => {
+        // Simulate a stale SHAPE item lingering in local items from an older session
+        mockLocalItems.push({
+            id: AIMING_TARGET_GLOW_ID,
+            type: "SHAPE",
+            shapeType: "CIRCLE",
+        });
+
+        await renderAimingOverlay({
+            casterPos: { x: 150, y: 150 },
+            cursorPos: { x: 300, y: 300 },
+            maxRangeFeet: 60,
+            grid,
+            targetItem: undefined,
+        });
+
+        // Stale SHAPE item should have been deleted and replaced with a PATH item
         expect(mockDeleteItems).toHaveBeenCalledWith([AIMING_TARGET_GLOW_ID]);
+        const currentGlow = mockLocalItems.find(i => i.id === AIMING_TARGET_GLOW_ID);
+        expect(currentGlow).toBeDefined();
+        expect(currentGlow.type).toBe("PATH");
     });
 
     it("verifies zero emojis in aimingOverlayRenderer.ts", async () => {

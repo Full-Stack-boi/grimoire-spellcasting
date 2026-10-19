@@ -569,10 +569,12 @@ export interface TokenFootprint {
 
 /**
  * Resolves the 5e combat size (in grid squares) for a token.
- * Checks explicit metadata first, then bound monster statblock, then falls back to image scale.
+ * Checks explicit combat space metadata first, then falls back to image scale / grid dimensions.
+ * Note: Does NOT force size from bound monster statblock text to avoid overriding on-map token scale
+ * or creating phantom grid offset cells when a Medium-sized token is bound to a Large statblock.
  */
 export function getTokenSizeInSquares(item: Item, grid?: GridInfo): number {
-    // 1. Explicit combat space metadata
+    // 1. Explicit combat space metadata (e.g. set via context menu)
     const combatSpace = getScopedMetadata<TokenCombatSpace>(item.metadata, "combat-space")
         ?? (item.metadata?.["embers/combatSpace"] as TokenCombatSpace | undefined)
         ?? (item.metadata?.["embers/combat-space"] as TokenCombatSpace | undefined);
@@ -580,18 +582,7 @@ export function getTokenSizeInSquares(item: Item, grid?: GridInfo): number {
         return Math.max(1, Math.round(combatSpace.sizeInSquares));
     }
 
-    // 2. Bound monster statblock size
-    const boundMonster = getScopedMetadata<{ size?: string }>(item.metadata, "bound-monster")
-        ?? (item.metadata?.["embers/bound-monster"] as { size?: string } | undefined);
-    if (boundMonster?.size) {
-        const s = boundMonster.size.toLowerCase();
-        if (s.includes("large")) return 2;
-        if (s.includes("huge")) return 3;
-        if (s.includes("gargantuan")) return 4;
-        if (s.includes("tiny") || s.includes("small") || s.includes("medium")) return 1;
-    }
-
-    // 3. Fall back to image scale / grid dimensions
+    // 2. Fall back to image scale / grid dimensions from the scene map
     const dpi = grid?.dpi && grid.dpi > 0 ? grid.dpi : 150;
     const img = (item as any).image;
     const itemGrid = (item as any).grid;
@@ -602,7 +593,8 @@ export function getTokenSizeInSquares(item: Item, grid?: GridInfo): number {
         const gridFactorH = (img.height || img.width) / itemGrid.dpi;
         const widthPixels = gridFactorW * dpi * Math.abs(scale.x || 1);
         const heightPixels = gridFactorH * dpi * Math.abs(scale.y || 1);
-        return Math.max(1, Math.round(Math.max(widthPixels, heightPixels) / dpi));
+        const rawSquares = Math.max(widthPixels, heightPixels) / dpi;
+        return Math.max(1, Math.floor(rawSquares + 0.25));
     } else {
         const rawScale = Math.max(Math.abs(scale.x || 1), Math.abs(scale.y || 1));
         return Math.max(1, Math.round(rawScale));
@@ -835,6 +827,7 @@ export function getTokenClosestPointToPoint(
     grid: GridInfo
 ): Vector2 {
     const footprint = getTokenFootprint(targetItem, grid);
+    const tokenPos = targetItem.position ?? footprint.center;
     if (footprint.occupiedCells.length <= 1) {
         return footprint.center;
     }
@@ -849,6 +842,16 @@ export function getTokenClosestPointToPoint(
             minDistance = dist;
             closestCell = cell;
         }
+    }
+
+    // Safety check: ensure anchor point does not drift outside the token's visual footprint
+    if (
+        closestCell.center.x < footprint.bounds.minX ||
+        closestCell.center.x > footprint.bounds.maxX ||
+        closestCell.center.y < footprint.bounds.minY ||
+        closestCell.center.y > footprint.bounds.maxY
+    ) {
+        return tokenPos;
     }
 
     return closestCell.center;

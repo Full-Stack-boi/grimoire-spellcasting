@@ -35,6 +35,7 @@ import {
   clearAimingOverlay,
   renderAimingOverlay,
 } from "./features/targeting/infrastructure/obr/aimingOverlayRenderer";
+import { prefetchSceneTokenContours } from "./features/targeting/infrastructure/obr/silhouetteContour";
 import {
   clearAoePreview,
   renderAoePreview,
@@ -47,7 +48,6 @@ import {
   isWithinRange,
   isWithinTokenRange,
   resolveCombatTargetTokenAtPoint,
-  getTokenClosestPointToPoint,
   snapAoECenter,
   snapToCellCenter,
 } from "./features/targeting/domain/targetingGeometry";
@@ -658,6 +658,15 @@ export async function setSelectedSpell(
   }
   invalidateAimingEnvironmentCache();
   activeOverlayMode = "none";
+  if (spellName || weaponId) {
+    void (async () => {
+      try {
+        const items = cachedSceneItems?.data || (await OBR.scene.items.getItems());
+        const grid = cachedGridInfo ? cachedGridInfo.data : (await getSceneGridInfo());
+        prefetchSceneTokenContours(items, grid.dpi);
+      } catch {}
+    })();
+  }
   await Promise.all([
     OBR.player.setMetadata({
       [toolMetadataSelectedSpell]: spellName || undefined,
@@ -798,6 +807,15 @@ export function setupEffectsTool(
     },
   );
   const toolChangeUnsub = OBR.tool.onToolChange((tool) => {
+    if (tool === toolID) {
+      void (async () => {
+        try {
+          const items = cachedSceneItems?.data || (await OBR.scene.items.getItems());
+          const grid = cachedGridInfo ? cachedGridInfo.data : (await getSceneGridInfo());
+          prefetchSceneTokenContours(items, grid.dpi);
+        } catch {}
+      })();
+    }
     if (
       tool == toolID &&
       getSettingsValue(LOCAL_STORAGE_KEYS.KEEP_SELECTED_TARGETS)
@@ -1358,7 +1376,7 @@ async function processAimingMove(
 
     const isTargetToken = Boolean(resolvedTargetToken && canSeeHoveredToken);
     const targetPos = isTargetToken
-      ? getTokenClosestPointToPoint(resolvedTargetToken!, activeCaster.position, grid)
+      ? resolvedTargetToken!.position
       : !event.shiftKey
         ? snapToCellCenter(event.pointerPosition, grid)
         : event.pointerPosition;
@@ -1576,8 +1594,8 @@ async function handleToolMoveWorker(
     return;
   }
 
-  const runWorker = async () => {
-    isAimingWorkerRunning = true;
+  isAimingWorkerRunning = true;
+  void (async () => {
     try {
       while (pendingAimingEvent) {
         const current = pendingAimingEvent;
@@ -1593,20 +1611,8 @@ async function handleToolMoveWorker(
       log_error(err);
     } finally {
       isAimingWorkerRunning = false;
-      aimingRafId = null;
     }
-  };
-
-  if (typeof requestAnimationFrame === "function") {
-    if (aimingRafId === null) {
-      aimingRafId = requestAnimationFrame(() => {
-        aimingRafId = null;
-        void runWorker();
-      });
-    }
-  } else {
-    await runWorker();
-  }
+  })();
 }
 
 async function setupTargetToolModes(
@@ -1908,7 +1914,7 @@ async function setupTargetToolModes(
           }
 
           const targetPos = isTargetToken
-            ? getTokenClosestPointToPoint(event.target!, activeCaster.position, grid)
+            ? (event.target?.position || event.pointerPosition)
             : !event.shiftKey
               ? snapToCellCenter(event.pointerPosition, grid)
               : event.pointerPosition;

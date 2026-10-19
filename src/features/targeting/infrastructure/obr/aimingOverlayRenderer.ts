@@ -2,7 +2,7 @@ import OBR, { Item, Vector2, buildLabel, buildLine, buildPath, buildShape } from
 import { GridInfo, feetToPixels, isWithinTokenRange, snapToCellCenter } from "../../domain/targetingGeometry";
 import { VisionCheckResult } from "../../domain/vision";
 import { APP_KEY } from "../../../../config";
-import { extractImageContourCommands } from "./silhouetteContour";
+import { extractImageContourCommands, createCirclePathCommands, EMPTY_PATH_COMMANDS } from "./silhouetteContour";
 
 export const AIMING_RANGE_CIRCLE_ID = `${APP_KEY}/aiming-range-circle`;
 export const AIMING_TETHER_LINE_ID = `${APP_KEY}/aiming-tether-line`;
@@ -208,31 +208,26 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
 
     // 4. Target Cell Highlight (subtle square grid cell indicator on ground when NOT targeting a creature)
     const isTargetingCreature = Boolean(state.targetItem);
-    let targetCellShape: Item | null = null;
-
-    if (!isTargetingCreature) {
-        const targetCellCenter = snapToCellCenter(cursorPos, grid);
-        targetCellShape = buildShape()
-            .id(AIMING_TARGET_CELL_ID)
-            .shapeType("RECTANGLE")
-            .position({ x: targetCellCenter.x - grid.dpi / 2, y: targetCellCenter.y - grid.dpi / 2 })
-            .width(grid.dpi)
-            .height(grid.dpi)
-            .strokeColor(strokeColor)
-            .strokeWidth(2)
-            .strokeOpacity(0.7)
-            .fillColor(strokeColor)
-            .fillOpacity(0.12)
-            .disableHit(true)
-            .locked(true)
-            .layer("ATTACHMENT")
-            .build();
-    } else {
-        OBR.scene.local.deleteItems([AIMING_TARGET_CELL_ID]).catch(() => {});
-    }
+    const targetCellCenter = snapToCellCenter(cursorPos, grid);
+    const targetCellShape = buildShape()
+        .id(AIMING_TARGET_CELL_ID)
+        .shapeType("RECTANGLE")
+        .position({ x: targetCellCenter.x - grid.dpi / 2, y: targetCellCenter.y - grid.dpi / 2 })
+        .width(grid.dpi)
+        .height(grid.dpi)
+        .strokeColor(strokeColor)
+        .strokeWidth(2)
+        .strokeOpacity(isTargetingCreature ? 0 : 0.7)
+        .fillColor(strokeColor)
+        .fillOpacity(isTargetingCreature ? 0 : 0.12)
+        .visible(!isTargetingCreature)
+        .disableHit(true)
+        .locked(true)
+        .layer("ATTACHMENT")
+        .build();
 
     // 5. Target Creature Contour Silhouette Glow (local vector path contour tracing token image)
-    let targetGlowItem: Item | null = null;
+    let targetGlowItem: Item;
     if (state.targetItem) {
         const item = state.targetItem as any;
         if (item.image?.url && item.image.width && item.image.height) {
@@ -274,31 +269,50 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
                 .strokeOpacity(0.9)
                 .fillColor(strokeColor)
                 .fillOpacity(0.12)
+                .visible(true)
                 .disableHit(true)
                 .locked(true)
                 .layer("ATTACHMENT")
                 .build();
         } else {
-            // Fallback for non-image tokens (vector shapes)
-            targetGlowItem = buildShape()
+            // Fallback for non-image tokens (vector shapes) - draw smooth circle using Path to maintain constant PATH item type
+            const circleRadius = (grid.dpi || 150) / 2;
+            const circleCommands = createCirclePathCommands(circleRadius);
+            targetGlowItem = buildPath()
                 .id(AIMING_TARGET_GLOW_ID)
-                .shapeType("CIRCLE")
                 .position(item.position)
-                .width(grid.dpi)
-                .height(grid.dpi)
+                .scale(item.scale || { x: 1, y: 1 })
+                .rotation(item.rotation || 0)
+                .commands(circleCommands)
                 .strokeColor(strokeColor)
                 .strokeWidth(4)
                 .strokeOpacity(0.85)
                 .fillColor(strokeColor)
                 .fillOpacity(0.15)
+                .visible(true)
                 .disableHit(true)
                 .locked(true)
                 .layer("ATTACHMENT")
                 .build();
         }
     } else {
-        // Not targeting a creature - ensure any existing glow item is cleaned up
-        OBR.scene.local.deleteItems([AIMING_TARGET_GLOW_ID]).catch(() => {});
+        // Not targeting a creature - keep invisible placeholder Path to maintain stable 5-item mount with constant item type
+        targetGlowItem = buildPath()
+            .id(AIMING_TARGET_GLOW_ID)
+            .position({ x: 0, y: 0 })
+            .scale({ x: 1, y: 1 })
+            .rotation(0)
+            .commands(EMPTY_PATH_COMMANDS)
+            .strokeColor(strokeColor)
+            .strokeWidth(0)
+            .strokeOpacity(0)
+            .fillColor(strokeColor)
+            .fillOpacity(0)
+            .visible(false)
+            .disableHit(true)
+            .locked(true)
+            .layer("ATTACHMENT")
+            .build();
     }
 
     const result: AimingOverlayRenderResult = {
@@ -310,28 +324,32 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         reason: visionCheck?.reason
     };
 
-    const candidates: Item[] = [rangeCircle, tetherLine, distanceLabel];
-    if (targetCellShape) {
-        candidates.push(targetCellShape);
-    }
-    if (targetGlowItem) {
-        candidates.push(targetGlowItem);
-    }
+    const candidates: Item[] = [rangeCircle, tetherLine, distanceLabel, targetCellShape, targetGlowItem];
 
     if (!isAimingOverlayMounted) {
         const localItems = await OBR.scene.local.getItems();
         if (currentToken !== renderToken) return result;
 
-        const existingIds = new Set(localItems.map(item => item.id));
+        const existingMap = new Map(localItems.map(item => [item.id, item]));
         const itemsToUpdate: Item[] = [];
         const itemsToAdd: Item[] = [];
+        const staleTypeIdsToDelete: string[] = [];
 
         for (const item of candidates) {
-            if (existingIds.has(item.id)) {
+            const existing = existingMap.get(item.id);
+            if (existing && existing.type === item.type) {
                 itemsToUpdate.push(item);
             } else {
+                if (existing) {
+                    staleTypeIdsToDelete.push(item.id);
+                }
                 itemsToAdd.push(item);
             }
+        }
+
+        if (staleTypeIdsToDelete.length > 0) {
+            await OBR.scene.local.deleteItems(staleTypeIdsToDelete);
+            if (currentToken !== renderToken) return result;
         }
 
         if (itemsToAdd.length > 0) {
@@ -354,27 +372,43 @@ export async function renderAimingOverlay(state: AimingOverlayRenderOptions): Pr
         }
         isAimingOverlayMounted = true;
     } else {
-        let missingItemsCount = 0;
         await OBR.scene.local.updateItems(
             candidates.map(i => i.id),
             items => {
                 if (items.length < candidates.length) {
                     isAimingOverlayMounted = false;
-                    missingItemsCount = candidates.length - items.length;
                 }
                 for (let i = 0; i < items.length; i++) {
                     const newItem = candidates.find(u => u.id === items[i].id);
                     if (newItem) {
+                        if (items[i].type !== newItem.type) {
+                            isAimingOverlayMounted = false;
+                            return;
+                        }
                         Object.assign(items[i], newItem);
                     }
                 }
             }
         );
-        if (missingItemsCount > 0) {
+        if (!isAimingOverlayMounted) {
             const localItems = await OBR.scene.local.getItems();
             if (currentToken !== renderToken) return result;
-            const existingIds = new Set(localItems.map(item => item.id));
-            const itemsToAdd = candidates.filter(c => !existingIds.has(c.id));
+            const existingMap = new Map(localItems.map(item => [item.id, item]));
+            const staleIds: string[] = [];
+            const itemsToAdd: Item[] = [];
+            for (const c of candidates) {
+                const existing = existingMap.get(c.id);
+                if (!existing) {
+                    itemsToAdd.push(c);
+                } else if (existing.type !== c.type) {
+                    staleIds.push(c.id);
+                    itemsToAdd.push(c);
+                }
+            }
+            if (staleIds.length > 0) {
+                await OBR.scene.local.deleteItems(staleIds);
+                if (currentToken !== renderToken) return result;
+            }
             if (itemsToAdd.length > 0) {
                 await OBR.scene.local.addItems(itemsToAdd);
                 if (currentToken !== renderToken) return result;

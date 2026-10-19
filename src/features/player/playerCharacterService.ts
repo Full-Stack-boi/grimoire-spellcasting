@@ -426,10 +426,15 @@ export async function setTokenDisposition(
 ): Promise<void> {
     await OBR.scene.items.updateItems([tokenId], items => {
         items.forEach(item => {
+            const currentDisp = item.metadata?.[TOKEN_DISPOSITION_METADATA_KEY];
             if (disposition) {
+                if (currentDisp === disposition) return;
                 item.metadata[TOKEN_DISPOSITION_METADATA_KEY] = disposition;
                 item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY] = disposition;
             } else {
+                if (!item.metadata || (currentDisp === undefined && item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY] === undefined && item.metadata["disposition"] === undefined)) {
+                    return;
+                }
                 delete item.metadata[TOKEN_DISPOSITION_METADATA_KEY];
                 delete item.metadata[LEGACY_TOKEN_DISPOSITION_METADATA_KEY];
                 delete item.metadata["disposition"];
@@ -439,7 +444,7 @@ export async function setTokenDisposition(
 
     try {
         const vitals = await getTokenVitals(tokenId);
-        if (vitals) {
+        if (vitals && vitals.disposition !== (disposition ?? undefined)) {
             await setTokenVitals(tokenId, { disposition: disposition ?? undefined });
         }
     } catch {}
