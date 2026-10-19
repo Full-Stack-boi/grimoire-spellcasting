@@ -1,7 +1,7 @@
 import { useMemo, type Dispatch, type SetStateAction } from "react";
 import OBR from "@owlbear-rodeo/sdk";
 import { findMatchingActionFormula } from "../../../assets/manual-formulas/index";
-import { resolveFeatureResource } from "../../../services/classResourceService";
+import { resolveFeatureResource, resolveFeatureActionOptions } from "../../../services/classResourceService";
 import type { DDBFeatureAction, DDBParsedCharacter } from "../../../types/ddb";
 import type { BG3FlyoutFeatureData, FeatureFlyoutKind } from "../overlays/BG3FlyoutBar";
 import type { SpellSlotConfig } from "../domain/types";
@@ -84,7 +84,11 @@ export function useFeatureFlyoutData({
             level: character.pactMagic.level,
         } : undefined;
 
-        const options = matchingFormula?.options;
+        const options = resolveFeatureActionOptions({
+            feature,
+            formula: matchingFormula,
+            character,
+        });
 
         if (lowerName.includes("metamagic")) {
             const fontFeature = features.find(item => item.name.toLowerCase().includes("font of magic"));

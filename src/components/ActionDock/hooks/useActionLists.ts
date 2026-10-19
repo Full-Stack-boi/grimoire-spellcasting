@@ -10,9 +10,10 @@ interface UseActionListsOptions {
     weapons: DDBWeaponAttack[];
     spells: DockSpell[];
     features: DDBFeatureAction[];
+    character?: import("../../../types/ddb").DDBParsedCharacter | null;
 }
 
-export function useActionLists({ search, weapons, spells, features }: UseActionListsOptions) {
+export function useActionLists({ search, weapons, spells, features, character }: UseActionListsOptions) {
     return useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
         const matchesSearch = (text?: string) => !normalizedSearch || Boolean(text?.toLowerCase().includes(normalizedSearch));
@@ -55,7 +56,7 @@ export function useActionLists({ search, weapons, spells, features }: UseActionL
             !isSpellName(feature.name) && !isDivineFury(feature.name) && matchesFeature(feature));
         const isActionableFeature = (feature: DDBFeatureAction) => {
             if (feature.limitedUse && feature.limitedUse.max > 0) return true;
-            if (getFeatureFlyoutKind(feature) !== null) return true;
+            if (getFeatureFlyoutKind(feature, character) !== null) return true;
             if (isActivatableBuffFeature(feature.name, feature.description)) return true;
             return false;
         };
@@ -83,5 +84,5 @@ export function useActionLists({ search, weapons, spells, features }: UseActionL
             limitedUseFeatures,
             filteredCombatActions,
         };
-    }, [search, weapons, spells, features]);
+    }, [search, weapons, spells, features, character]);
 }

@@ -14,6 +14,7 @@ interface TurnResourceBarProps {
     spellSlots: Record<number, SpellSlotConfig>;
     pactSlots: SpellSlotConfig;
     activeFlyoutFeatureId: string | null;
+    character?: import("../../../types/ddb").DDBParsedCharacter | null;
     onActionToggle: () => void;
     onBonusActionToggle: () => void;
     onResourceClick: (feature: DDBFeatureAction) => void;
@@ -33,6 +34,7 @@ export const TurnResourceBar: React.FC<TurnResourceBarProps> = ({
     spellSlots,
     pactSlots,
     activeFlyoutFeatureId,
+    character,
     onActionToggle,
     onBonusActionToggle,
     onResourceClick,
@@ -58,7 +60,7 @@ export const TurnResourceBar: React.FC<TurnResourceBarProps> = ({
                         const used = featureUses[feature.id] ?? (feature.limitedUse?.used || 0);
                         const available = Math.max(0, max - used);
                         const { label, theme } = getResourceBadge(feature.name, feature.source);
-                        const flyoutKind = getFeatureFlyoutKind(feature);
+                        const flyoutKind = getFeatureFlyoutKind(feature, character);
                         return (
                             <button
                                 key={feature.id}

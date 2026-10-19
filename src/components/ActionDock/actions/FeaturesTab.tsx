@@ -17,6 +17,7 @@ export interface FeaturesTabProps {
     expandedFeatures: Record<string, boolean>;
     activeBuffs: ActiveBuff[];
     activeFlyoutFeatureId: string | null;
+    character?: import("../../../types/ddb").DDBParsedCharacter | null;
     onSyncCharacter: (characterId?: string) => void | Promise<void>;
     onOpenDrawer: (item: NonNullable<DetailDrawerItem>) => void;
     onToggleFlyout: (featureId: string) => void;
@@ -48,6 +49,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({
     expandedFeatures,
     activeBuffs,
     activeFlyoutFeatureId,
+    character,
     onSyncCharacter,
     onOpenDrawer,
     onToggleFlyout,
@@ -79,7 +81,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({
                 const isExpanded = Boolean(expandedFeatures[feature.id]);
                 const featureName = feature.name.toLowerCase();
                 const isBuffActive = activeBuffs.some(buff => buff.name.toLowerCase() === featureName || buff.id === feature.id || (buff.id === "innate_sorcery" && featureName.includes("innate sorcery")));
-                const flyoutKind = getFeatureFlyoutKind(feature);
+                const flyoutKind = getFeatureFlyoutKind(feature, character);
                 const openDrawer = () => onOpenDrawer(featureDrawerItem(feature));
 
                 return (

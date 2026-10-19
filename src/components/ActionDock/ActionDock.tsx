@@ -1399,7 +1399,7 @@ export const ActionDock: React.FC = () => {
         otherFeatures,
         limitedUseFeatures,
         filteredCombatActions,
-    } = useActionLists({ search: actionSearch, weapons: weaponsList, spells: dockSpells, features: characterFeatures });
+    } = useActionLists({ search: actionSearch, weapons: weaponsList, spells: dockSpells, features: characterFeatures, character: syncedDdbChar });
 
     const activeFlyoutFeatureData = useFeatureFlyoutData({
         featureId: activeFlyoutFeatureId,
@@ -1723,10 +1723,11 @@ export const ActionDock: React.FC = () => {
             spellSlots={spellSlots}
             pactSlots={pactSlots}
             activeFlyoutFeatureId={activeFlyoutFeatureId}
+            character={syncedDdbChar}
             onActionToggle={() => setActionUsed(!actionUsed)}
             onBonusActionToggle={() => setBonusActionUsed(!bonusActionUsed)}
             onResourceClick={feature => {
-                if (getFeatureFlyoutKind(feature)) {
+                if (getFeatureFlyoutKind(feature, syncedDdbChar)) {
                     setUpcastPickerSpellId(null);
                     setActiveFlyoutFeatureId(previous => previous === feature.id ? null : feature.id);
                 } else if (isActivatableBuffFeature(feature.name, feature.description)) {
@@ -2254,6 +2255,7 @@ export const ActionDock: React.FC = () => {
                     expandedFeatures={expandedFeatures}
                     activeBuffs={activeBuffs}
                     activeFlyoutFeatureId={activeFlyoutFeatureId}
+                    character={syncedDdbChar}
                     onSyncCharacter={openDDBSyncModal}
                     onOpenDrawer={setDrawerItem}
                     onToggleFlyout={featureId => {

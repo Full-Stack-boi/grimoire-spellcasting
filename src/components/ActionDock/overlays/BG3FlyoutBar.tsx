@@ -247,11 +247,17 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                     );
                 default: {
                     const opt = featureData.options?.[selectedActionIndex] || featureData.options?.[0];
+                    const optDesc = opt ? (opt.desc || opt.description || "") : "";
+                    const descSuffix = opt ? ` • ${opt.name}${optDesc ? `: ${optDesc}` : ""}` : "";
+                    const resourceText = featureData.maxPoints > 0
+                        ? <span><strong>{featureData.availablePoints} / {featureData.maxPoints} {featureData.resourceName}</strong> available</span>
+                        : <strong>{featureData.options?.length ?? 0} {featureData.name}</strong>;
+
                     return (
                         <span className="ddb-flyout-header-base">
                             <span className="ddb-flyout-spell-title">{featureData.name}</span>
                             <span className="ddb-flyout-base-meta">
-                                {" "}• <strong>{featureData.availablePoints} / {featureData.maxPoints} {featureData.resourceName}</strong> available{opt ? ` • ${opt.name}: ${opt.desc}` : ""}
+                                {" "}• {resourceText}{descSuffix}
                             </span>
                         </span>
                     );
@@ -660,7 +666,7 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                                             opt.actionType === "action" || opt.actionType === "bonus" || opt.actionType === "reaction"
                                                 ? opt.actionType
                                                 : "none";
-                                        const affordable = featureData.availablePoints >= cost;
+                                        const affordable = featureData.maxPoints === 0 || featureData.availablePoints >= cost;
                                         return (
                                             <button
                                                 key={opt.id}
@@ -671,7 +677,7 @@ export const BG3FlyoutBar: React.FC<BG3FlyoutBarProps> = ({
                                                     featureData.onSpendResourceAction?.(opt.name, cost, desc, actionType);
                                                     onClose();
                                                 }}
-                                                title={`${opt.name} (${cost} ${featureData.resourceName})\n${desc}\nClick to use`}
+                                                title={`${opt.name}${cost > 0 ? ` (${cost} ${featureData.resourceName})` : ""}\n${desc}\nClick to use`}
                                             >
                                                 <span>{opt.name}</span>
                                             </button>
