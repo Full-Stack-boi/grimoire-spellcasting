@@ -6,6 +6,7 @@ import {
     ROLL_HISTORY_KEY,
     getStoredRollHistory,
     saveStoredRollHistory,
+    applyRollLogUpdate,
     subscribeToDDBRolls,
     subscribeToCardUpdates,
 } from "../../../services/rollLogService";
@@ -61,33 +62,7 @@ export function useRollHistory(isObrReady: boolean) {
                     handleNewCards(payload.cards);
                 }
                 if (payload && payload.update) {
-                    const { cardId, damageResolutionStatus, appliedDamageAmount, resolutionNote, subIndex } = payload.update;
-                    setRollHistory(prev => prev.map(c => {
-                        if (c.id === cardId) {
-                            if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
-                                const updatedSubRolls = [...c.subRolls];
-                                updatedSubRolls[subIndex] = {
-                                    ...updatedSubRolls[subIndex],
-                                    damageResolutionStatus,
-                                    appliedDamageAmount,
-                                };
-                                return {
-                                    ...c,
-                                    damageResolutionStatus,
-                                    appliedDamageAmount,
-                                    resolutionNote,
-                                    subRolls: updatedSubRolls,
-                                };
-                            }
-                            return {
-                                ...c,
-                                damageResolutionStatus,
-                                appliedDamageAmount,
-                                resolutionNote,
-                            };
-                        }
-                        return c;
-                    }));
+                    applyRollLogUpdate(payload.update);
                 }
             });
         } catch (err) {

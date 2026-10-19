@@ -236,6 +236,36 @@ export async function updateRollCardResolution(
     }
 }
 
+export function applyRollLogUpdate(update: NonNullable<DDBRollLogPayload["update"]>): void {
+    if (!update || !update.cardId) return;
+    const patch: Partial<DDBRollCardData> = {
+        damageResolutionStatus: update.damageResolutionStatus,
+        appliedDamageAmount: update.appliedDamageAmount,
+        resolutionNote: update.resolutionNote,
+        hitApprovalStatus: update.hitApprovalStatus,
+        targetSaveResolutions: update.targetSaveResolutions,
+    };
+    updateStoredRollCard(update.cardId, patch, update.subIndex);
+    localCardUpdateListeners.forEach((fn) => {
+        try {
+            fn(update.cardId, patch, update.subIndex);
+        } catch (err) {
+            console.error("Error in local card update listener:", err);
+        }
+    });
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(
+            new CustomEvent("embers:ddb-card-update", {
+                detail: {
+                    cardId: update.cardId,
+                    patch,
+                    subIndex: update.subIndex,
+                },
+            }),
+        );
+    }
+}
+
 export function clearStoredRollHistory(): void {
     try {
         localStorage.removeItem(ROLL_HISTORY_KEY);

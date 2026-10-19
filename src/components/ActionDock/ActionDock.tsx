@@ -7,7 +7,7 @@ import {
     getSpellMetadata,
     registerDynamicSpells,
 } from "../../assets/spellInfo";
-import { setSelectedSpell, startMonsterAoeAction, toolID, toolMetadataSelectedSpell, toolMetadataSelectedCaster, targetHighlightMetadataKey, stopAiming, hexChosenAbilityMetadataKey, selectedSpellDamageTypeMetadataKey, selectedSpellSlotLevelMetadataKey } from "../../effectsTool";
+import { setSelectedSpell, startMonsterAoeAction, toolID, toolMetadataSelectedSpell, toolMetadataSelectedCaster, targetHighlightMetadataKey, stopAiming, hexChosenAbilityMetadataKey, selectedSpellDamageTypeMetadataKey, selectedSpellSlotLevelMetadataKey, effectsToolModeID } from "../../effectsTool";
 import { openSpellDetailModal } from "../../views/SpellDetailModal";
 import { spellPopoverId } from "../../views/SpellSelectionPopover";
 import { useOBR } from "../../platform/obr/react/providers/BaseOBRProvider";
@@ -31,7 +31,7 @@ import { clearStoredRollHistory, broadcastDDBRoll } from "../../services/rollLog
 import type { DDBRollCardData } from "../../types/ddbRollLog";
 import { rollFormula, combineDamageBonus } from "../../utils/dice";
 import type { DamageType } from "../../types/spellFormula";
-import { removeTokenBuff, getComputedBuffModifiers } from "../../services/buffService";
+import { removeTokenBuff, getComputedBuffModifiers, isActivatableBuffFeature } from "../../services/buffService";
 const CustomDiceRoller = React.lazy(() =>
     import("./overlays/CustomDiceRoller").then(m => ({ default: m.CustomDiceRoller }))
 );
@@ -105,6 +105,7 @@ import { useSpellDamageRoll } from "./hooks/useSpellDamageRoll";
 import { useSpellAttackRoll } from "./hooks/useSpellAttackRoll";
 import { useFeatureActivation } from "./hooks/useFeatureActivation";
 import { useSpellResourceHandlers } from "./hooks/useSpellResourceHandlers";
+import { SituationalRollBar } from "./shared/SituationalRollBar";
 const GmMonsterDrawer = React.lazy(() =>
     import("../../features/monsters/ui/GmMonsterDrawer").then(m => ({ default: m.GmMonsterDrawer }))
 );
@@ -335,13 +336,24 @@ export const ActionDock: React.FC = () => {
         });
     }, [obr.ready, obr.sceneReady, isGM]);
 
+    const getResolvedCasterId = useCallback(() => {
+        if (caster?.id) return caster.id;
+        const matched = characterTokens.find(t => {
+            const linkedId = getLinkedDDBCharacterId(t);
+            if (linkedId && syncedDdbChar?.id && linkedId === syncedDdbChar.id) return true;
+            if (syncedDdbChar?.name && t.name && t.name.toLowerCase() === syncedDdbChar.name.toLowerCase()) return true;
+            return false;
+        });
+        return matched?.id;
+    }, [caster?.id, characterTokens, syncedDdbChar?.id, syncedDdbChar?.name]);
+
     const handleSelectCaster = useCallback(async (tokenId: string) => {
         if (!tokenId) return;
         await OBR.player.select([tokenId], true);
         if (selectedSpell) {
             await setSelectedSpell(selectedSpell, tokenId);
         } else {
-            await OBR.player.setMetadata({ [toolMetadataSelectedCaster]: undefined });
+            await OBR.player.setMetadata({ [toolMetadataSelectedCaster]: tokenId });
         }
     }, [selectedSpell]);
 
@@ -550,10 +562,12 @@ export const ActionDock: React.FC = () => {
         const meta = getSpellMetadata(spellID, syncedDdbChar?.id);
         const matchedDdbSpell = syncedDdbChar?.spells.find(s => s.id === spellID || s.name.toLowerCase() === spellID.toLowerCase());
         const effectiveLevel = matchedDdbSpell ? matchedDdbSpell.level : (meta.level ?? 0);
-        await setSelectedSpell(spellID, caster?.id);
+        const resolvedCasterId = getResolvedCasterId();
+        await setSelectedSpell(spellID, resolvedCasterId);
         setSelected(spellID);
         setCastLevel(effectiveLevel);
-        OBR.tool.activateTool(toolID);
+        await OBR.tool.activateTool(toolID);
+        await OBR.tool.activateMode(toolID, effectsToolModeID);
     };
 
     // Cancel aiming and exit flyout (via ESC key, Right-Click, or close button)
@@ -859,9 +873,10 @@ export const ActionDock: React.FC = () => {
         const effectiveRange = isRanged
             ? (mode === "thrown" ? (weapon.thrownLongRange || weapon.thrownRange || 20) : (weapon.longRangeFeet || weapon.rangeFeet || 60))
             : (weapon.reachFeet || 5);
+        const resolvedCasterId = getResolvedCasterId();
         await setSelectedSpell(
             spellId,
-            caster?.id,
+            resolvedCasterId,
             weapon.id,
             attackCount,
             riderChoice !== "none" ? riderChoice : undefined,
@@ -873,12 +888,13 @@ export const ActionDock: React.FC = () => {
         setActiveFlyoutFeatureId(null);
         setAimingWeapon(weapon);
         setAimingWeaponMode(mode);
-        OBR.tool.activateTool(toolID);
+        await OBR.tool.activateTool(toolID);
+        await OBR.tool.activateMode(toolID, effectsToolModeID);
         const rangeDisplay = isRanged
             ? (mode === "thrown" ? `${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft Thrown` : `${weapon.rangeFeet || 60}${weapon.longRangeFeet ? `/${weapon.longRangeFeet}` : ""} ft Range`)
             : `${weapon.reachFeet || 5} ft Reach`;
         OBR.notification.show(`Aiming ${weapon.name} (${rangeDisplay}${attackCount > 1 ? ` - ${attackCount} Attacks` : ""})`, "INFO");
-    }, [caster?.id, riderChoice, setSelected]);
+    }, [getResolvedCasterId, riderChoice, setSelected]);
 
     const activeFlyoutWeaponData = useMemo(() => {
         if (!aimingWeapon) return null;
@@ -906,9 +922,10 @@ export const ActionDock: React.FC = () => {
                 if (aimingWeapon) {
                     const isRanged = aimingWeapon.type === "ranged" || aimingWeaponMode === "thrown";
                     const spellId = isRanged ? "ranged_weapon_attack" : "melee_weapon_attack";
+                    const resolvedCasterId = getResolvedCasterId();
                     void setSelectedSpell(
                         spellId,
-                        caster?.id,
+                        resolvedCasterId,
                         aimingWeapon.id,
                         1,
                         choice !== "none" ? choice : undefined,
@@ -1003,7 +1020,7 @@ export const ActionDock: React.FC = () => {
         }
     };
 
-    const handleRollHitDie = (die: string, maxSides: number) => {
+    const handleRollHitDie = async (die: string, maxSides: number) => {
         const currentUsed = hitDiceUsed[die] || 0;
         const total = (syncedDdbChar?.hitDice || []).find(h => h.die === die)?.total || 1;
         if (currentUsed >= total) {
@@ -1015,10 +1032,22 @@ export const ActionDock: React.FC = () => {
         const dieRoll = Math.floor(Math.random() * maxSides) + 1;
         const totalHeal = Math.max(1, dieRoll + conMod);
 
-        const currentHp = currentHpVal;
-        const maxHp = maxHpVal;
+        let currentHp = currentHpVal;
+        let maxHp = maxHpVal;
+        let tempHp = customHp?.temp ?? (syncedDdbChar?.hp?.temp ?? 0);
+
+        if (caster?.id) {
+            try {
+                const liveVitals = await getTokenVitals(caster.id);
+                if (liveVitals) {
+                    if (typeof liveVitals.hpCurrent === "number") currentHp = liveVitals.hpCurrent;
+                    if (typeof liveVitals.hpMax === "number") maxHp = liveVitals.hpMax;
+                    if (typeof liveVitals.hpTemp === "number") tempHp = liveVitals.hpTemp;
+                }
+            } catch {}
+        }
+
         const nextHp = Math.min(maxHp, currentHp + totalHeal);
-        const tempHp = customHp?.temp ?? (syncedDdbChar?.hp?.temp ?? 0);
 
         setCustomHp({
             current: nextHp,
@@ -1026,18 +1055,44 @@ export const ActionDock: React.FC = () => {
             temp: tempHp,
         });
 
+        setDrawerItem(prev => (prev && prev.type === "hp" ? { ...prev, current: nextHp, max: maxHp, temp: tempHp } : prev));
+
         if (caster?.id) {
-            setTokenVitals(caster.id, { hpCurrent: nextHp, hpMax: maxHp, hpTemp: tempHp }).catch(() => {});
+            await setTokenVitals(caster.id, { hpCurrent: nextHp, hpMax: maxHp, hpTemp: tempHp }).catch(() => {});
         }
 
         if (nextHp > 0 && (deathSaves.successes > 0 || deathSaves.failures > 0)) {
             setDeathSaves({ successes: 0, failures: 0 });
         }
 
-        setHitDiceUsed(prev => ({
-            ...prev,
-            [die]: currentUsed + 1
-        }));
+        const nextHitDiceUsed = {
+            ...hitDiceUsed,
+            [die]: currentUsed + 1,
+        };
+        setHitDiceUsed(nextHitDiceUsed);
+
+        if (syncedDdbChar?.id) {
+            saveCombatState(syncedDdbChar.id, {
+                hpCurrent: nextHp,
+                hitDiceUsed: nextHitDiceUsed,
+            }).catch(() => {});
+        }
+
+        const rollCard: DDBRollCardData = {
+            id: `hd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            casterName,
+            casterId: caster?.id || "unknown",
+            actionName: `SHORT REST (${die.toUpperCase()})`,
+            actionType: "HEAL",
+            dieType: maxSides || Number(die.replace(/^\d*d/i, "")) || 8,
+            formula: `${die} + ${conMod}`,
+            total: totalHeal,
+            diceBreakdown: `[${dieRoll}] + ${conMod} (CON)`,
+            subtitle: `Regained ${totalHeal} HP (${nextHp}/${maxHp})`,
+            damageResolutionStatus: "applied",
+            timestamp: Date.now(),
+        };
+        broadcastDDBRoll([rollCard]);
 
         OBR.notification.show(`Short Rest Hit Die (${die}): Rolled ${dieRoll} + ${conMod} CON = healed ${totalHeal} HP (${nextHp}/${maxHp})`, "SUCCESS");
     };
@@ -1192,9 +1247,11 @@ export const ActionDock: React.FC = () => {
 
         setBonusActionUsed(true);
         const spellId = "flurry_of_blows";
-        await setSelectedSpell(spellId, caster?.id, unarmedWeapon.id, 2);
+        const resolvedCasterId = getResolvedCasterId();
+        await setSelectedSpell(spellId, resolvedCasterId, unarmedWeapon.id, 2);
         setSelected(spellId);
         await OBR.tool.activateTool(toolID);
+        await OBR.tool.activateMode(toolID, effectsToolModeID);
         OBR.notification.show("Flurry of Blows: Aiming 2 Unarmed Strikes (1 Focus Point spent)", "INFO");
     };
 
@@ -1215,9 +1272,11 @@ export const ActionDock: React.FC = () => {
 
         setBonusActionUsed(true);
         const spellId = "bonus_unarmed_strike";
-        await setSelectedSpell(spellId, caster?.id, unarmedWeapon.id, 1);
+        const resolvedCasterId = getResolvedCasterId();
+        await setSelectedSpell(spellId, resolvedCasterId, unarmedWeapon.id, 1);
         setSelected(spellId);
         await OBR.tool.activateTool(toolID);
+        await OBR.tool.activateMode(toolID, effectsToolModeID);
         OBR.notification.show("Bonus Unarmed Strike: Aiming 1 strike as a Bonus Action", "INFO");
     };
 
@@ -1487,7 +1546,7 @@ export const ActionDock: React.FC = () => {
     }
 
     const handleFeatureOptionRoll = async (feature: { id: string; name: string }, optionId: string) => {
-        const matching = findMatchingActionFormula(feature.name);
+        const matching = findMatchingActionFormula(feature.name, syncedDdbChar);
         const rider = matching?.weaponRider;
         if (!matching) return;
 
@@ -1556,6 +1615,7 @@ export const ActionDock: React.FC = () => {
         <FeatureActionCard
             key={feature.id}
             feature={feature}
+            character={syncedDdbChar}
             usedCount={featureUses[feature.id] ?? (feature.limitedUse?.used ?? 0)}
             activeBuff={activeBuffs.some(buff => buff.name.toLowerCase() === feature.name.toLowerCase() || buff.id === feature.id || (buff.id === "innate_sorcery" && feature.name.toLowerCase().includes("innate sorcery")))}
             activeFlyout={activeFlyoutFeatureId === feature.id}
@@ -1602,20 +1662,30 @@ export const ActionDock: React.FC = () => {
         />
     );
 
-    const renderBg3FeatureCard = (feature: DDBFeatureAction, index: number) => (
-        <Bg3FeatureCard
-            key={`feat_${feature.id}_${index}`}
-            feature={feature}
-            index={index}
-            usedCount={featureUses[feature.id] ?? (feature.limitedUse?.used || 0)}
-            selected={activeFlyoutFeatureId === feature.id}
-            onToggleFlyout={featureId => {
-                setUpcastPickerSpellId(null);
-                setActiveFlyoutFeatureId(previous => previous === featureId ? null : featureId);
-            }}
-            onOpenDetails={setDrawerItem}
-        />
-    );
+    const renderBg3FeatureCard = (feature: DDBFeatureAction, index: number) => {
+        const isBuffActive = activeBuffs.some(
+            buff => buff.name.toLowerCase() === feature.name.toLowerCase() ||
+                    buff.id === feature.id ||
+                    (buff.id === "innate_sorcery" && feature.name.toLowerCase().includes("innate sorcery"))
+        );
+        return (
+            <Bg3FeatureCard
+                key={`feat_${feature.id}_${index}`}
+                feature={feature}
+                character={syncedDdbChar}
+                index={index}
+                usedCount={featureUses[feature.id] ?? (feature.limitedUse?.used || 0)}
+                selected={activeFlyoutFeatureId === feature.id}
+                activeBuff={isBuffActive}
+                onActivateFeature={handleActivateFeature}
+                onToggleFlyout={featureId => {
+                    setUpcastPickerSpellId(null);
+                    setActiveFlyoutFeatureId(previous => previous === featureId ? null : featureId);
+                }}
+                onOpenDetails={setDrawerItem}
+            />
+        );
+    };
 
     const renderBg3WeaponCard = (weapon: DDBWeaponAttack, index: number, mode?: "melee" | "thrown") => (
         <Bg3WeaponCard
@@ -1663,6 +1733,8 @@ export const ActionDock: React.FC = () => {
                 if (getFeatureFlyoutKind(feature)) {
                     setUpcastPickerSpellId(null);
                     setActiveFlyoutFeatureId(previous => previous === feature.id ? null : feature.id);
+                } else if (isActivatableBuffFeature(feature.name, feature.description)) {
+                    handleActivateFeature(feature);
                 } else {
                     toggleClassResource(feature);
                 }
@@ -1860,8 +1932,9 @@ export const ActionDock: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Top-Right Pinned Controls (Search, Grid/List Switcher, Close Button) */}
+                        {/* Top-Right Pinned Controls (Roll Mod, Search, Grid/List Switcher, Close Button) */}
                         <div className="ddb-top-strip-pinned-right">
+                            <SituationalRollBar compact scope="attack" />
                             <button
                                 type="button"
                                 className={`ddb-resource-tray-toggle ${isResourceTrayOpen ? "active" : ""}`}
@@ -2247,6 +2320,7 @@ export const ActionDock: React.FC = () => {
                                 },
                             });
                             await OBR.tool.activateTool(toolID);
+                            await OBR.tool.activateMode(toolID, effectsToolModeID);
                             OBR.notification.show(`Aiming ${spellId.replace(/_/g, " ")}: select targets on the map.`, "INFO");
                         }}
                     />
@@ -2294,6 +2368,7 @@ export const ActionDock: React.FC = () => {
                         onRiderClick={handleRiderClick}
                         actions={{
                             item: drawerItem,
+                            character: syncedDdbChar,
                             activeRider: drawerItem.type === "weapon" ? activeRiderMap[drawerItem.weapon.id] : undefined,
                             activeBuffs,
                             castLevel,

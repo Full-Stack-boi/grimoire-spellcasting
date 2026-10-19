@@ -5,6 +5,8 @@ export interface DDBSubRollToHit {
   isCrit?: boolean;
   isMiss?: boolean;
   mode?: "normal" | "advantage" | "disadvantage";
+  isAdvantage?: boolean;
+  isDisadvantage?: boolean;
   targetAc?: number;
   isHit?: boolean;
   hitLabel?: string;

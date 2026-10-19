@@ -11,6 +11,7 @@ import {
     getStoredRollHistory,
     saveStoredRollHistory,
     clearStoredRollHistory,
+    applyRollLogUpdate,
     subscribeToDDBRolls,
     subscribeToCardUpdates,
 } from "../services/rollLogService";
@@ -69,45 +70,7 @@ export const DDBRollLogPopover: React.FC = () => {
                         });
                     }
                     if (payload && payload.update) {
-                        const {
-                            cardId,
-                            damageResolutionStatus,
-                            appliedDamageAmount,
-                            resolutionNote,
-                            hitApprovalStatus,
-                            subIndex,
-                            targetSaveResolutions,
-                        } = payload.update;
-                        setCards(prev => prev.map(c => {
-                            if (c.id === cardId) {
-                                if (typeof subIndex === "number" && c.subRolls && c.subRolls[subIndex]) {
-                                    const updatedSubRolls = [...c.subRolls];
-                                    updatedSubRolls[subIndex] = {
-                                        ...updatedSubRolls[subIndex],
-                                        damageResolutionStatus,
-                                        appliedDamageAmount,
-                                    };
-                                    return {
-                                        ...c,
-                                        damageResolutionStatus,
-                                        appliedDamageAmount,
-                                        resolutionNote,
-                                        subRolls: updatedSubRolls,
-                                    };
-                                }
-                                return {
-                                    ...c,
-                                    damageResolutionStatus,
-                                    appliedDamageAmount,
-                                    resolutionNote,
-                                    hitApprovalStatus,
-                                    ...(Array.isArray(targetSaveResolutions)
-                                        ? { targetSaveResolutions }
-                                        : {}),
-                                };
-                            }
-                            return c;
-                        }));
+                        applyRollLogUpdate(payload.update);
                     }
                 });
             } catch (err) {

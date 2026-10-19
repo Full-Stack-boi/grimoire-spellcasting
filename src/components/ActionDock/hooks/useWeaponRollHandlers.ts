@@ -6,7 +6,7 @@ import { addConditionalTrigger, checkAndFireActionTriggers } from "../../../serv
 import { resolveSpellConditionalTrigger } from "../../../services/spellTriggerResolver";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import { resolveWeaponRiders } from "../../../services/weaponDamageRiders";
-import { rollAttack, rollDamageBreakdown, rollDamageDDB, combineDamageBonus } from "../../../utils/dice";
+import { rollAttack, rollDamageBreakdown, rollDamageDDB, combineDamageBonus, formatAttackDiceBreakdown, formatD20Formula } from "../../../utils/dice";
 import type { DDBParsedCharacter, DDBWeaponAttack } from "../../../types/ddb";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
 import { parseRiderString } from "../domain/riders";
@@ -14,8 +14,13 @@ import { parseRiderString } from "../domain/riders";
 import { getTokenVitals, applyDamage } from "../../../features/combat/tokenVitalsService";
 import { getDamageApplicationMode } from "../../../features/combat/damageModeService";
 import { resolveAttackHit } from "../../../features/combat/domain/attackResolution";
-import { combineD20RollModes, resolveConditionRules } from "../../../features/combat/domain/conditionRules";
+import { combineD20RollModes, resolveConditionRules, type D20RollMode } from "../../../features/combat/domain/conditionRules";
 import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
+import {
+    consumeSituationalRollOverride,
+    registerPendingCriticalHit,
+    consumePendingCriticalHit,
+} from "../../../services/situationalRollModifierService";
 
 interface UseWeaponRollHandlersOptions {
     casterId?: string;
@@ -92,12 +97,20 @@ export function useWeaponRollHandlers({
             );
             return;
         }
-        const mode = combineD20RollModes(
-            hasAttackAdvantage ? "advantage" : "normal",
-            conditionRules.mode,
-        );
-        const effectiveToHit = toHitBase + (attackBonus || 0) - conditionRules.d20Penalty;
+        const situational = consumeSituationalRollOverride();
+        let baseMode: D20RollMode = hasAttackAdvantage ? "advantage" : "normal";
+        if (situational.mode !== "normal") {
+            baseMode = combineD20RollModes(baseMode, situational.mode as D20RollMode);
+        }
+        const mode = combineD20RollModes(baseMode, conditionRules.mode);
+        const effectiveToHit = toHitBase + (attackBonus || 0) + situational.totalBonus - conditionRules.d20Penalty;
         const roll = rollAttack(effectiveToHit, "", mode);
+
+        if (roll.isCrit) {
+            registerPendingCriticalHit(weapon.id);
+            registerPendingCriticalHit("__last__");
+        }
+
         if (conditionRules.requiresAdjudication.length > 0) {
             OBR.notification.show(
                 `DM adjudication needed: ${conditionRules.requiresAdjudication.join("; ")}`,
@@ -110,12 +123,13 @@ export function useWeaponRollHandlers({
             ? resolveAttackHit({ d20: roll.d20, total: roll.total, bonus: roll.bonus, mode: roll.mode }, targetAc, { hideAcNumber: targetHideNumbers })
             : undefined;
 
+        const sitNote = situational.hasOverride && situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || (situational.totalBonus >= 0 ? `+${situational.totalBonus}` : `${situational.totalBonus}`)})` : "";
         const conditionNote = [...conditionRules.reasons, ...conditionRules.requiresAdjudication].join(" • ");
         const subtitle = roll.isCrit
             ? "Critical Hit!"
             : roll.isMiss
                 ? "Critical Miss!"
-                : `${actionLabel} Attack Roll${attackBonus > 0 ? ` • Channeled Attack (+${attackBonus})` : ""}${conditionNote ? ` • ${conditionNote}` : ""}`;
+                : `${actionLabel} Attack Roll${attackBonus > 0 ? ` • Channeled Attack (+${attackBonus})` : ""}${sitNote}${conditionNote ? ` • ${conditionNote}` : ""}`;
         const cards: DDBRollCardData[] = [{
             id: `${Date.now()}-dock-atk`,
             casterName,
@@ -129,8 +143,8 @@ export function useWeaponRollHandlers({
             actionName: actionLabel.toUpperCase(),
             actionType: "TO HIT",
             dieType: 20,
-            diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-            formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
+            diceBreakdown: formatAttackDiceBreakdown(roll),
+            formula: formatD20Formula(roll.bonus, roll.mode),
             total: roll.total,
             subtitle,
             isCrit: roll.isCrit,
@@ -263,10 +277,13 @@ export function useWeaponRollHandlers({
         const bonusNum = typeof damageBonus === "number" && damageBonus > 0 ? damageBonus : 0;
         const isThrown = rollMode === "thrown";
         const baseDamageFormula = isThrown ? (weapon.thrownDamage ?? weapon.damage) : weapon.damage;
-        const effectiveBaseDamage = combineDamageBonus(baseDamageFormula, bonusNum);
+        const isCrit = consumePendingCriticalHit(weapon.id) || consumePendingCriticalHit("__last__");
+        const situational = consumeSituationalRollOverride();
+        const totalBonusMod = bonusNum + situational.totalBonus;
+        const effectiveBaseDamage = combineDamageBonus(baseDamageFormula, totalBonusMod);
         const { total, formatted } = rollDamageBreakdown(effectiveBaseDamage, weapon.damageType, "", riderObj ? {
             name: riderObj.name, damage: effectiveRiderDamage, damageType: riderObj.damageType, moveTrigger: undefined
-        } : undefined);
+        } : undefined, isCrit);
         const casterName = character?.name || "Character";
         const isHexActive = concentrationSpell?.id?.toLowerCase() === "hex" || concentrationSpell?.name?.toLowerCase() === "hex";
         let pendingTriggerId: string | undefined;
@@ -291,7 +308,7 @@ export function useWeaponRollHandlers({
             }
         } catch { /* Ignore selection error */ }
 
-        const bonusNote = bonusNum > 0 ? (isRaging ? ` • Rage (+${bonusNum})` : ` • Buff (+${bonusNum})`) : "";
+        const bonusNote = totalBonusMod > 0 ? (isRaging ? ` • Rage (+${totalBonusMod})` : situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || `+${situational.totalBonus}`})` : ` • Buff (+${totalBonusMod})`) : "";
 
         const buffsToPass = activeBuffs || (isRaging ? ["rage"] : []);
         const riders = resolveWeaponRiders({
@@ -304,7 +321,7 @@ export function useWeaponRollHandlers({
         const extraRiderRolls: Array<{ rider: import("../../../services/weaponDamageRiders").ActiveWeaponRider; roll: import("../../../utils/dice").DDBDamageResult }> = [];
         for (const r of riders.activeDiceRiders) {
             const formula = r.bonus ? `${r.dice}+${r.bonus}` : (r.dice || "1d6");
-            const rRoll = rollDamageDDB(formula, r.damageType);
+            const rRoll = rollDamageDDB(formula, r.damageType, "", isCrit);
             extraRiderRolls.push({ rider: r, roll: rRoll });
         }
 
@@ -361,7 +378,9 @@ export function useWeaponRollHandlers({
         }
 
         const riderSubtitles = extraRiderRolls.map(i => ` • ${i.rider.name} (${i.rider.damageType})`).join("");
-        const finalSubtitle = `Damage (${weapon.damageType})${bonusNote}${riderSubtitles}${triggerSubtitle}`;
+        const finalSubtitle = isCrit
+            ? `Critical Hit! • Damage (${weapon.damageType})${bonusNote}${riderSubtitles}${triggerSubtitle}`
+            : `Damage (${weapon.damageType})${bonusNote}${riderSubtitles}${triggerSubtitle}`;
         const actionLabel = isThrown ? `${weapon.name} (Thrown)` : weapon.name;
 
         const cards: DDBRollCardData[] = [{
@@ -384,13 +403,14 @@ export function useWeaponRollHandlers({
             damageType: weapon.damageType,
             damageResolutionStatus,
             subtitle: finalSubtitle,
+            isCrit,
             pendingTriggerId,
             pendingTriggerName: riderObj?.name,
             timestamp: Date.now()
         }];
         const isTargetHexed = Boolean(isHexActive && concentrationSpell?.hexTargetId && targetTokenId && concentrationSpell.hexTargetId === targetTokenId);
         if (isTargetHexed) {
-            const hexDmg = rollDamageDDB("1d6", "Necrotic");
+            const hexDmg = rollDamageDDB("1d6", "Necrotic", "", isCrit);
             let hexAppliedAmount: number | undefined;
             let hexResolutionNote: string | undefined;
             let hexStatus: "pending" | "applied" = "pending";
@@ -410,14 +430,15 @@ export function useWeaponRollHandlers({
                 actionType: "DAMAGE",
                 dieType: 6,
                 diceBreakdown: hexDmg.breakdown.replace(/\+/g, " + "),
-                formula: "1d6 Necrotic",
+                formula: isCrit ? "2d6 Necrotic" : "1d6 Necrotic",
                 total: hexDmg.total,
                 pendingDamage: hexDmg.total,
                 appliedDamageAmount: hexAppliedAmount,
                 resolutionNote: hexResolutionNote,
                 damageType: "Necrotic",
                 damageResolutionStatus: hexStatus,
-                subtitle: "Hex Curse (+1d6 Necrotic)",
+                subtitle: isCrit ? "Hex Critical Hit (+2d6 Necrotic)" : "Hex Curse (+1d6 Necrotic)",
+                isCrit,
                 timestamp: Date.now() + 1
             });
         }

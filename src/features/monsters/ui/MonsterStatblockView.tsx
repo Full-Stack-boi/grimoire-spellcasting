@@ -22,7 +22,7 @@ import {
   extractTokenVitals,
   resolveTokenConcentrationSave,
 } from "../../combat/tokenVitalsService";
-import { rollAttack, rollFormula } from "../../../utils/dice";
+import { rollAttack, rollFormula, formatD20DiceBreakdown, formatD20Formula } from "../../../utils/dice";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
 import { MonsterExportModal } from "./MonsterExportModal";
@@ -275,8 +275,8 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
       actionName: `${statLabel.toUpperCase()} CHECK`,
       actionType: "CHECK",
       dieType: 20,
-      diceBreakdown: `${attackRes.formatted.replace(/^To Hit: \d+ /, "")}`,
-      formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : effectiveBonus}${effectiveRollMode === "advantage" ? " (ADV)" : effectiveRollMode === "disadvantage" ? " (DIS)" : ""}`,
+      diceBreakdown: formatD20DiceBreakdown(attackRes),
+      formula: formatD20Formula(effectiveBonus, effectiveRollMode),
       total: attackRes.total,
       subtitle: `${statLabel.toUpperCase()} Ability Check (Score ${score})${conditionNote ? ` • ${conditionNote}` : ""}`,
       isCrit: attackRes.isCrit,
@@ -327,10 +327,10 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
       dieType: 20,
       diceBreakdown: saveRules.automaticFailure
         ? "Automatic failure from condition"
-        : `${attackRes?.formatted.replace(/^To Hit: \d+ /, "") ?? ""}`,
+        : formatD20DiceBreakdown(attackRes!),
       formula: saveRules.automaticFailure
         ? "Automatic failure from condition"
-        : `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : effectiveBonus}${effectiveRollMode === "advantage" ? " (ADV)" : effectiveRollMode === "disadvantage" ? " (DIS)" : ""}`,
+        : formatD20Formula(effectiveBonus, effectiveRollMode),
       total: saveRules.automaticFailure ? "AUTO FAIL" : (attackRes?.total ?? 0),
       subtitle: `${statLabel.toUpperCase()} Saving Throw (Score ${score})${isProficient ? " • Proficient" : ""}${saveRules.automaticFailure ? " • Automatic Failure" : ""}${conditionNote ? ` • ${conditionNote}` : ""}`,
       isCrit: attackRes?.isCrit,

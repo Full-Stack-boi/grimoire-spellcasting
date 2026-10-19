@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { rollFormula, rollAttack, rollDamageBreakdown, rollCustomDicePool, doubleDiceFormula, rollDamageDDB, rollDamageExplodingAnyDie, rollDamageExploding, combineDamageBonus } from "../dice";
+import { rollFormula, rollAttack, rollDamageBreakdown, rollCustomDicePool, doubleDiceFormula, rollDamageDDB, rollDamageExplodingAnyDie, rollDamageExploding, combineDamageBonus, formatAttackDiceBreakdown, formatD20DiceBreakdown, formatD20Formula } from "../dice";
 
 describe("dice utility", () => {
     it("rolls exploding dice for Sorcerous Burst (e.g. 2d8 with an 8 adds +1d8)", () => {
@@ -88,11 +88,77 @@ describe("dice utility", () => {
         expect(adv.total).toBeGreaterThanOrEqual(6);
         expect(adv.total).toBeLessThanOrEqual(25);
         expect(adv.message).toContain("ADV");
+        expect(adv.rolls).toHaveLength(2);
 
         const dis = rollAttack(5, "Fire Bolt", "disadvantage");
         expect(dis.total).toBeGreaterThanOrEqual(6);
         expect(dis.total).toBeLessThanOrEqual(25);
         expect(dis.message).toContain("DIS");
+        expect(dis.rolls).toHaveLength(2);
+    });
+
+    it("should format attack dice breakdown showing both d20 dice under advantage/disadvantage", () => {
+        const advRoll = {
+            total: 21,
+            message: "Fire Bolt - To Hit: 21 (ADV: [4, 15] -> 15+6)",
+            formatted: "To Hit: 21 (ADV: [4, 15] -> 15+6)",
+            isCrit: false,
+            isMiss: false,
+            d20: 15,
+            bonus: 6,
+            mode: "advantage" as const,
+            rolls: [4, 15],
+        };
+        expect(formatAttackDiceBreakdown(advRoll)).toBe("[4, 15] ➔ 15 + 6");
+
+        const disRoll = {
+            total: 10,
+            message: "Fire Bolt - To Hit: 10 (DIS: [4, 15] -> 4+6)",
+            formatted: "To Hit: 10 (DIS: [4, 15] -> 4+6)",
+            isCrit: false,
+            isMiss: false,
+            d20: 4,
+            bonus: 6,
+            mode: "disadvantage" as const,
+            rolls: [4, 15],
+        };
+        expect(formatAttackDiceBreakdown(disRoll)).toBe("[4, 15] ➔ 4 + 6");
+
+        const normalRoll = {
+            total: 21,
+            message: "Fire Bolt - To Hit: 21 (15+6)",
+            formatted: "To Hit: 21 (15+6)",
+            isCrit: false,
+            isMiss: false,
+            d20: 15,
+            bonus: 6,
+            mode: "normal" as const,
+            rolls: [15],
+        };
+        expect(formatAttackDiceBreakdown(normalRoll)).toBe("15 + 6");
+
+        const negBonusRoll = {
+            total: 13,
+            message: "Club - To Hit: 13 (15-2)",
+            formatted: "To Hit: 13 (15-2)",
+            isCrit: false,
+            isMiss: false,
+            d20: 15,
+            bonus: -2,
+            mode: "normal" as const,
+            rolls: [15],
+        };
+        expect(formatAttackDiceBreakdown(negBonusRoll)).toBe("15 - 2");
+        expect(formatD20DiceBreakdown(advRoll)).toBe("[4, 15] ➔ 15 + 6");
+    });
+
+    it("formats d20 formula using 2d20 for advantage and disadvantage, and 1d20 for normal rolls", () => {
+        expect(formatD20Formula(6, "advantage")).toBe("2d20+6 (ADV)");
+        expect(formatD20Formula(3, "disadvantage")).toBe("2d20+3 (DIS)");
+        expect(formatD20Formula(-2, "advantage")).toBe("2d20-2 (ADV)");
+        expect(formatD20Formula(5, "normal")).toBe("1d20+5");
+        expect(formatD20Formula(0, "normal")).toBe("1d20+0");
+        expect(formatD20Formula(-1, "normal")).toBe("1d20-1");
     });
 
     it("should format damage rolls with cantrip rider", () => {

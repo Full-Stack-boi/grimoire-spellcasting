@@ -220,7 +220,11 @@ export const CustomDiceRoller: React.FC<CustomDiceRollerProps> = ({ onClose, cas
                 actionType: "CHECK",
                 dieType: result.diceGroups[0]?.die || 20,
                 diceBreakdown: result.breakdown.replace(/ = -?\d+$/, ""),
-                formula: modeToRoll !== "normal" ? `${result.formula} (${modeToRoll === "advantage" ? "ADV" : "DIS"})` : result.formula,
+                formula: modeToRoll !== "normal"
+                    ? (result.diceGroups.length === 1 && result.diceGroups[0]?.die === 20 && result.diceGroups[0]?.count === 1
+                        ? `2d20${modToRoll >= 0 ? `+${modToRoll}` : `${modToRoll}`} (${modeToRoll === "advantage" ? "ADV" : "DIS"})`
+                        : `${result.formula} (${modeToRoll === "advantage" ? "ADV" : "DIS"})`)
+                    : result.formula,
                 total: result.total,
                 subtitle: result.isNat20
                     ? "Natural 20!"

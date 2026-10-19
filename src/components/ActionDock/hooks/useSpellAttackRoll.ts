@@ -3,7 +3,7 @@ import { getSpellBeamInfo } from "../../../services/spellBeamService";
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import { checkAndFireActionTriggers } from "../../../services/conditionalTriggerService";
 import { hasPotentCantrip } from "../../../services/ddbService";
-import { rollAttack, rollDamageDDB, doubleDiceFormula } from "../../../utils/dice";
+import { rollAttack, rollDamageDDB, doubleDiceFormula, formatAttackDiceBreakdown, formatD20Formula } from "../../../utils/dice";
 import type { DDBParsedCharacter } from "../../../types/ddb";
 import type { DDBRollCardData, DDBSubRollEntry, DDBSubRollExtraDamage } from "../../../types/ddbRollLog";
 import { applyDamage, applyRayOfFrostSpeedReduction, getTokenVitals } from "../../../features/combat/tokenVitalsService";
@@ -14,6 +14,10 @@ import { calculateDisplayedSpeed } from "../../../features/combat/domain/tempora
 import { isRangedAttackAction, resolveRollMode, checkCloseCombatThreat } from "../../../features/combat/domain/attackRangeRules";
 import { getActiveEncounter } from "../../../features/combat/initiativeService";
 import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
+import {
+    consumeSituationalRollOverride,
+    registerPendingCriticalHit,
+} from "../../../services/situationalRollModifierService";
 
 interface UseSpellAttackRollOptions {
     casterId?: string;
@@ -111,10 +115,13 @@ export function useSpellAttackRoll({
                 } catch {}
             }
 
-            const hasAdv = hasSpellAdvantage || conditionRules.mode === "advantage";
-            const hasDis = hasCloseCombatDisadvantage || conditionRules.mode === "disadvantage";
+            const situational = consumeSituationalRollOverride();
+            let hasAdv = hasSpellAdvantage || conditionRules.mode === "advantage" || situational.mode === "advantage";
+            let hasDis = hasCloseCombatDisadvantage || conditionRules.mode === "disadvantage" || situational.mode === "disadvantage";
             const mode = resolveRollMode(hasAdv, hasDis);
-            const conditionNote = [...conditionRules.reasons, ...conditionRules.requiresAdjudication].join(" • ");
+            bonus += situational.totalBonus;
+            const sitNote = situational.hasOverride && situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || (situational.totalBonus >= 0 ? `+${situational.totalBonus}` : `${situational.totalBonus}`)})` : "";
+            const conditionNote = [...conditionRules.reasons, ...conditionRules.requiresAdjudication].join(" • ") + sitNote;
             const isHexActive = concentrationSpell?.id?.toLowerCase() === "hex" || concentrationSpell?.name?.toLowerCase() === "hex";
             const isTargetHexed = Boolean(isHexActive && concentrationSpell?.hexTargetId && targetId && concentrationSpell.hexTargetId === targetId);
             const damageType = ddbSpell?.damageType || "Force";
@@ -129,7 +136,11 @@ export function useSpellAttackRoll({
 
                 for (let b = 1; b <= beamInfo.totalBeams; b++) {
                     const roll = rollAttack(bonus, "", mode);
-                    if (roll.isCrit) anyCrit = true;
+                    if (roll.isCrit) {
+                        anyCrit = true;
+                        registerPendingCriticalHit(spell.id);
+                        registerPendingCriticalHit("__last__");
+                    }
                     if (!roll.isMiss) allMiss = false;
                     let bDmgResult: ReturnType<typeof rollDamageDDB> | null = null;
                     const extraDamage: DDBSubRollExtraDamage[] = [];
@@ -164,9 +175,13 @@ export function useSpellAttackRoll({
                         targetId,
                         toHit: {
                             total: roll.total,
-                            diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-                            formula: `1d20${bonus >= 0 ? `+${bonus}` : `${bonus}`}${mode === "advantage" ? " (ADV)" : ""}`,
-                            isCrit: roll.isCrit, isMiss: roll.isMiss,
+                            diceBreakdown: formatAttackDiceBreakdown(roll),
+                            formula: formatD20Formula(bonus, mode),
+                            isCrit: roll.isCrit,
+                            isMiss: roll.isMiss,
+                            mode: roll.mode,
+                            isAdvantage: roll.mode === "advantage",
+                            isDisadvantage: roll.mode === "disadvantage",
                         },
                         damage: bDmgResult ? {
                             total: bDmgResult.total, damageType,
@@ -220,7 +235,7 @@ export function useSpellAttackRoll({
                     actionType: "SPELL",
                     dieType: dieFaces,
                     diceBreakdown: subRolls.map(s => `${s.toHit?.total ?? 0}`).join(", "),
-                    formula: `${beamInfo.totalBeams} ${beamInfo.beamUnit}s (${ddbSpell?.damage || ""} ${damageType} each)`,
+                    formula: `${beamInfo.totalBeams} ${beamInfo.beamUnit}s (${ddbSpell?.damage || ""} ${damageType} each)${mode === "advantage" ? " (ADV)" : mode === "disadvantage" ? " (DIS)" : ""}`,
                     total: totalDamageNum,
                     pendingDamage: totalDamageNum > 0 ? totalDamageNum : undefined,
                     appliedDamageAmount,
@@ -230,6 +245,9 @@ export function useSpellAttackRoll({
                     subtitle: `${anyCrit ? `Critical Hit! • ${beamInfo.totalBeams} ${beamInfo.beamUnit}s` : `${beamInfo.totalBeams} ${beamInfo.beamUnit}s • ${damageType}`}${conditionNote ? ` • ${conditionNote}` : ""}`,
                     isCrit: anyCrit,
                     isMiss: allMiss,
+                    rollMode: mode,
+                    isAdvantage: mode === "advantage",
+                    isDisadvantage: mode === "disadvantage",
                     timestamp: Date.now(),
                     subRolls,
                 };
@@ -242,6 +260,10 @@ export function useSpellAttackRoll({
             }
 
             const roll = rollAttack(bonus, "", mode);
+            if (roll.isCrit) {
+                registerPendingCriticalHit(spell.id);
+                registerPendingCriticalHit("__last__");
+            }
             const hitResolution = typeof targetVitals?.armorClass === "number"
                 ? resolveAttackHit(
                     { d20: roll.d20, total: roll.total },
@@ -258,9 +280,12 @@ export function useSpellAttackRoll({
                 actionName: spell.name.toUpperCase(),
                 actionType: "TO HIT",
                 dieType: 20,
-                diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-                formula: `1d20${bonus >= 0 ? `+${bonus}` : `${bonus}`}${mode === "advantage" ? " (ADV)" : ""}`,
+                diceBreakdown: formatAttackDiceBreakdown(roll),
+                formula: formatD20Formula(bonus, mode),
                 total: roll.total,
+                rollMode: mode,
+                isAdvantage: mode === "advantage",
+                isDisadvantage: mode === "disadvantage",
                 subtitle: `${roll.isCrit ? "Critical Hit!" : roll.isMiss ? "Critical Miss!" : "Spell Attack Roll"}${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: roll.isCrit,
                 isMiss: roll.isMiss,

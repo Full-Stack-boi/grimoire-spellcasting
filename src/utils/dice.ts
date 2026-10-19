@@ -286,6 +286,34 @@ export function rollAttack(
     };
 }
 
+/**
+ * Formats d20 dice breakdown showing both d20 dice if rolled with advantage or disadvantage.
+ * E.g. "[4, 15] ➔ 15 + 6" or "15 + 6".
+ */
+export function formatD20DiceBreakdown(roll: AttackRollResult): string {
+    const bonusPart = roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`;
+    if ((roll.mode === "advantage" || roll.mode === "disadvantage") && roll.rolls && roll.rolls.length > 1) {
+        return `[${roll.rolls.join(", ")}] ➔ ${roll.d20} ${bonusPart}`;
+    }
+    return `${roll.d20} ${bonusPart}`;
+}
+
+export const formatAttackDiceBreakdown = formatD20DiceBreakdown;
+
+/**
+ * Formats d20 formula string, using 2d20 for Advantage/Disadvantage and 1d20 for normal rolls.
+ * E.g. "2d20+6 (ADV)", "2d20-1 (DIS)", or "1d20+3".
+ */
+export function formatD20Formula(
+    bonus: number,
+    mode: "normal" | "advantage" | "disadvantage" = "normal"
+): string {
+    const dice = (mode === "advantage" || mode === "disadvantage") ? "2d20" : "1d20";
+    const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
+    const modeTag = mode === "advantage" ? " (ADV)" : mode === "disadvantage" ? " (DIS)" : "";
+    return `${dice}${bonusStr}${modeTag}`;
+}
+
 export interface DDBDamageResult {
     total: number;
     damageType: string;

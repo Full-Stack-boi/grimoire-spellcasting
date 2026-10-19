@@ -1,0 +1,285 @@
+.situational-roll-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+  user-select: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &.has-override {
+    border-color: rgba(245, 158, 11, 0.5);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+  }
+
+  &.stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px 10px;
+    width: 100%;
+    box-sizing: border-box;
+
+    .srb-row {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+
+      &.srb-row-top {
+        justify-content: space-between;
+      }
+
+      &.srb-row-bottom {
+        justify-content: flex-start;
+      }
+    }
+
+    .srb-mode-cluster {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .srb-override-cluster {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .srb-sublabel {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
+
+    .srb-mod-section {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .srb-quick-pills {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 8px;
+    }
+  }
+
+  &.compact {
+    padding: 2px 6px;
+    gap: 5px;
+    background: rgba(15, 23, 42, 0.7);
+    border-radius: 6px;
+
+    .srb-label {
+      font-size: 0.58rem;
+    }
+
+    .srb-mode-group .srb-mode-btn {
+      padding: 1px 5px;
+      font-size: 0.62rem;
+    }
+
+    .srb-mod-section .srb-stepper-btn {
+      width: 17px;
+      height: 17px;
+      font-size: 0.65rem;
+    }
+
+    .srb-mod-section .srb-value-badge {
+      min-width: 22px;
+      font-size: 0.65rem;
+      padding: 1px 3px;
+    }
+
+    .srb-auto-reset-tag {
+      display: none;
+    }
+  }
+
+  .srb-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+
+  .srb-mode-group {
+    display: inline-flex;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+
+    .srb-mode-btn {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #94a3b8;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover:not(.active) {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      &.active.adv {
+        background: #16a34a;
+        color: #ffffff;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+      }
+
+      &.active.norm {
+        background: #475569;
+        color: #ffffff;
+      }
+
+      &.active.dis {
+        background: #dc2626;
+        color: #ffffff;
+        box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+      }
+    }
+  }
+
+  .srb-mod-section {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    .srb-stepper-btn {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      border-radius: 4px;
+      color: #cbd5e1 !important;
+      font-size: 0.8rem;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0;
+      outline: none;
+      box-shadow: none !important;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+      }
+    }
+
+    .srb-value-badge {
+      min-width: 30px;
+      text-align: center;
+      font-weight: 800;
+      font-size: 0.75rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+
+      &.positive {
+        color: #4ade80;
+        border-color: rgba(74, 222, 128, 0.3);
+      }
+
+      &.negative {
+        color: #f87171;
+        border-color: rgba(248, 113, 113, 0.3);
+      }
+
+      &.neutral {
+        color: #94a3b8;
+      }
+    }
+
+    .srb-quick-pills {
+      display: flex;
+      gap: 3px;
+
+      .srb-pill {
+        background: rgba(255, 255, 255, 0.06) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 4px;
+        color: #cbd5e1 !important;
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        cursor: pointer;
+        outline: none;
+        box-shadow: none !important;
+        transition: all 0.12s ease;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.16) !important;
+          color: #f8fafc !important;
+        }
+
+        &.active {
+          background: #d97706 !important;
+          color: #ffffff !important;
+          border-color: #f59e0b !important;
+        }
+      }
+    }
+  }
+
+  .srb-reset-btn {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px;
+    margin-left: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    opacity: 0.8;
+    transition: all 0.15s ease;
+
+    &:hover {
+      opacity: 1;
+      background: rgba(239, 68, 68, 0.15);
+    }
+  }
+
+  .srb-auto-reset-tag {
+    font-size: 0.58rem;
+    color: #f59e0b;
+    font-weight: 600;
+    margin-left: auto;
+    letter-spacing: 0.02em;
+    animation: srbPulse 2s infinite ease-in-out;
+  }
+}
+
+@keyframes srbPulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}

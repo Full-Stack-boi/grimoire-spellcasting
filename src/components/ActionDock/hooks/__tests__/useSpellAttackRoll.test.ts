@@ -205,4 +205,74 @@ describe("useSpellAttackRoll hook", () => {
         expect(multiCard.subRolls).toBeDefined();
         expect(multiCard.subRolls?.length).toBe(2);
     });
+
+    it("includes Advantage metadata, tags, and formatted [d1, d2] dice breakdown for multi-beam spell attacks", async () => {
+        const highLevelChar = {
+            ...mockCharacter,
+            level: 5,
+        };
+        const onSelectSpell = vi.fn();
+        const rollSpell = useSpellAttackRoll({
+            casterId: "caster-1",
+            character: highLevelChar,
+            hasSpellAdvantage: true,
+            conditions: [],
+            exhaustionLevel: 0,
+            concentrationSpell: null,
+            selectedHexAbility: "",
+            onSelectSpell,
+        });
+
+        await rollSpell({
+            id: "eldritch_blast",
+            name: "Eldritch Blast",
+            hitOrDc: "+5",
+        });
+
+        expect(broadcastDDBRoll).toHaveBeenCalledTimes(1);
+        const cards = vi.mocked(broadcastDDBRoll).mock.calls[0][0];
+        expect(cards.length).toBe(1);
+        const multiCard = cards[0];
+        expect(multiCard.rollMode).toBe("advantage");
+        expect(multiCard.isAdvantage).toBe(true);
+        expect(multiCard.formula).toContain("(ADV)");
+        expect(multiCard.subRolls).toBeDefined();
+        expect(multiCard.subRolls?.length).toBe(2);
+
+        for (const sub of multiCard.subRolls!) {
+            expect(sub.toHit?.mode).toBe("advantage");
+            expect(sub.toHit?.isAdvantage).toBe(true);
+            expect(sub.toHit?.formula).toContain("(ADV)");
+            expect(sub.toHit?.diceBreakdown).toMatch(/\[\d+,\s*\d+\] ➔ \d+ \+ 5/);
+        }
+    });
+
+    it("includes Advantage metadata and formatted [d1, d2] dice breakdown for single-target spell attacks", async () => {
+        const onSelectSpell = vi.fn();
+        const rollSpell = useSpellAttackRoll({
+            casterId: "caster-1",
+            character: mockCharacter,
+            hasSpellAdvantage: true,
+            conditions: [],
+            exhaustionLevel: 0,
+            concentrationSpell: null,
+            selectedHexAbility: "",
+            onSelectSpell,
+        });
+
+        await rollSpell({
+            id: "fire_bolt",
+            name: "Fire Bolt",
+            hitOrDc: "+5",
+        });
+
+        expect(broadcastDDBRoll).toHaveBeenCalledTimes(1);
+        const cards = vi.mocked(broadcastDDBRoll).mock.calls[0][0];
+        const attackCard = cards.find(c => c.actionType === "TO HIT");
+        expect(attackCard).toBeDefined();
+        expect(attackCard?.rollMode).toBe("advantage");
+        expect(attackCard?.isAdvantage).toBe(true);
+        expect(attackCard?.formula).toContain("(ADV)");
+        expect(attackCard?.diceBreakdown).toMatch(/\[\d+,\s*\d+\] ➔ \d+ \+ 5/);
+    });
 });

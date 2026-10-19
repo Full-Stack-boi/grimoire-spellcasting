@@ -10,6 +10,11 @@ import {
     getHealResolutionStatus,
 } from "../../../features/combat/damageModeService";
 import { dispatchCombatFeatureTrigger } from "../../../features/combat/domain/combatFeatureHooks";
+import {
+    consumePendingCriticalHit,
+    consumeSituationalRollOverride,
+} from "../../../services/situationalRollModifierService";
+import { combineDamageBonus } from "../../../utils/dice";
 
 interface SpellDamageRollInput {
     id: string;
@@ -83,6 +88,11 @@ export function useSpellDamageRoll({
         const damageTypeLabel = chosenType ? chosenType.charAt(0).toUpperCase() + chosenType.slice(1) : "";
         const casterName = character?.name || "Character";
         const isHealing = chosenType.toLowerCase() === "healing" || spell.damageType?.toLowerCase() === "healing";
+        const isCrit = !isHealing && (consumePendingCriticalHit(spell.id) || consumePendingCriticalHit("__last__"));
+        const situational = consumeSituationalRollOverride();
+        if (situational.totalBonus !== 0) {
+            effectiveDice = combineDamageBonus(effectiveDice, situational.totalBonus);
+        }
 
         const dieFaces = Number(effectiveDice.match(/d(\d+)/i)?.[1] ?? 8);
         const explodingMechanic = formula?.mechanics?.find(m => m.kind === "exploding");
@@ -95,14 +105,14 @@ export function useSpellDamageRoll({
             const maxExplosions = explodingMechanic.maxExtra === "spellcastingMod"
                 ? explosionModCap
                 : (typeof explodingMechanic.maxExtra === "number" ? explodingMechanic.maxExtra : 0);
-            dmgResult = rollDamageExploding(effectiveDice, chosenType, triggerValue, maxExplosions);
+            dmgResult = rollDamageExploding(effectiveDice, chosenType, triggerValue, maxExplosions, "", isCrit);
         } else if (explodingAnyDie) {
             const maxExplosions = explodingAnyDie.maxExtra === "spellcastingMod"
                 ? explosionModCap
                 : (typeof explodingAnyDie.maxExtra === "number" ? explodingAnyDie.maxExtra : 0);
-            dmgResult = rollDamageExplodingAnyDie(effectiveDice, chosenType, maxExplosions);
+            dmgResult = rollDamageExplodingAnyDie(effectiveDice, chosenType, maxExplosions, isCrit);
         } else {
-            dmgResult = rollDamageDDB(effectiveDice, chosenType);
+            dmgResult = rollDamageDDB(effectiveDice, chosenType, "", isCrit);
         }
 
         let targetId: string | undefined;
@@ -179,9 +189,12 @@ export function useSpellDamageRoll({
             damageResolutionStatus,
             subtitle: isHealing
                 ? `Healing (${damageTypeLabel || "Spell"})`
-                : (isExploded
-                    ? `Damage (${damageTypeLabel || "Spell"}) • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
-                    : `Damage (${damageTypeLabel || "Spell"})`),
+                : (isCrit
+                    ? `Critical Hit! • Damage (${damageTypeLabel || "Spell"})`
+                    : (isExploded
+                        ? `Damage (${damageTypeLabel || "Spell"}) • ${explosionCount} Bonus ${explosionCount > 1 ? "Dice" : "Die"}`
+                        : `Damage (${damageTypeLabel || "Spell"})`)),
+            isCrit: isCrit,
             timestamp: Date.now()
         }]);
         OBR.notification.show(`${spell.name} ${isHealing ? "Healing" : "Damage"}: ${dmgResult.formatted}`, "INFO");

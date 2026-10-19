@@ -9,13 +9,15 @@ import {
     fetchDDBCharacter
 } from "../../services/ddbService";
 import { DDBParsedCharacter, DDBSkill, DDBSavingThrow } from "../../types/ddb";
-import { rollAttack } from "../../utils/dice";
+import { rollAttack, formatD20DiceBreakdown, formatD20Formula } from "../../utils/dice";
 import { broadcastDDBRoll } from "../../services/rollLogService";
 import { getTokenVitals, resolveTokenConcentrationSave } from "../../features/combat/tokenVitalsService";
-import { resolveConditionRules } from "../../features/combat/domain/conditionRules";
+import { resolveConditionRules, combineD20RollModes } from "../../features/combat/domain/conditionRules";
 import { loadCombatState, saveCombatState } from "../../services/combatStateService";
 import { IconDragon, IconSearch, IconDiceD20 } from "../ActionDock/shared/Bg3Icons";
 import { openDDBSyncModal } from "../../views/DDBSyncModal";
+import { consumeSituationalRollOverride } from "../../services/situationalRollModifierService";
+import { SituationalRollBar } from "../ActionDock/shared/SituationalRollBar";
 
 export type ChecksTab = "SAVES" | "SKILLS" | "PROFICIENCIES_SENSES";
 
@@ -175,11 +177,16 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
             OBR.notification.show(rules.reasons.join(" • "), "WARNING");
             return;
         }
-        const effectiveBonus = modifiers[ability] - rules.d20Penalty;
-        const res = rollAttack(effectiveBonus, "", rules.mode);
+        const situational = consumeSituationalRollOverride("checks");
+        let effectiveMode = rules.mode;
+        if (situational.mode !== "normal") {
+            effectiveMode = combineD20RollModes(rules.mode, situational.mode);
+        }
+        const effectiveBonus = modifiers[ability] + situational.totalBonus - rules.d20Penalty;
+        const res = rollAttack(effectiveBonus, "", effectiveMode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
-        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
+        const sitNote = situational.hasOverride && situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || (situational.totalBonus >= 0 ? `+${situational.totalBonus}` : `${situational.totalBonus}`)})` : "";
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ") + sitNote;
 
         broadcastDDBRoll([
             {
@@ -189,15 +196,15 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
                 actionName: label.toUpperCase(),
                 actionType: "CHECK",
                 dieType: 20,
-                diceBreakdown: `${res.d20} ${bonusStr}`,
-                formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`,
+                diceBreakdown: formatD20DiceBreakdown(res),
+                formula: formatD20Formula(effectiveBonus, effectiveMode),
                 total: res.total,
                 subtitle: `${label} Ability Check${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: res.isCrit,
                 isMiss: res.isMiss,
-                rollMode: rules.mode,
-                isAdvantage: rules.mode === "advantage",
-                isDisadvantage: rules.mode === "disadvantage",
+                rollMode: effectiveMode,
+                isAdvantage: effectiveMode === "advantage",
+                isDisadvantage: effectiveMode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
@@ -210,11 +217,16 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
             OBR.notification.show(rules.reasons.join(" • "), "WARNING");
             return;
         }
-        const effectiveBonus = save.bonus - rules.d20Penalty;
-        const res = rules.automaticFailure ? null : rollAttack(effectiveBonus, "", rules.mode);
+        const situational = consumeSituationalRollOverride("checks");
+        let effectiveMode = rules.mode;
+        if (situational.mode !== "normal") {
+            effectiveMode = combineD20RollModes(rules.mode, situational.mode);
+        }
+        const effectiveBonus = save.bonus + situational.totalBonus - rules.d20Penalty;
+        const res = rules.automaticFailure ? null : rollAttack(effectiveBonus, "", effectiveMode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
-        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
+        const sitNote = situational.hasOverride && situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || (situational.totalBonus >= 0 ? `+${situational.totalBonus}` : `${situational.totalBonus}`)})` : "";
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ") + sitNote;
 
         broadcastDDBRoll([
             {
@@ -224,17 +236,17 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
                 actionName: save.label.toUpperCase(),
                 actionType: "SAVE",
                 dieType: 20,
-                diceBreakdown: res ? `${res.d20} ${bonusStr}` : "Automatic failure",
+                diceBreakdown: res ? formatD20DiceBreakdown(res) : "Automatic failure",
                 formula: res
-                    ? `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`
+                    ? formatD20Formula(effectiveBonus, effectiveMode)
                     : "Automatic failure from condition",
                 total: res ? res.total : "AUTO FAIL",
                 subtitle: `${save.label} Saving Throw${rules.automaticFailure ? " • Automatic Failure" : ""}${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: res?.isCrit,
                 isMiss: res?.isMiss,
-                rollMode: rules.mode,
-                isAdvantage: rules.mode === "advantage",
-                isDisadvantage: rules.mode === "disadvantage",
+                rollMode: effectiveMode,
+                isAdvantage: effectiveMode === "advantage",
+                isDisadvantage: effectiveMode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
@@ -275,11 +287,16 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
             OBR.notification.show(rules.reasons.join(" • "), "WARNING");
             return;
         }
-        const effectiveBonus = skill.bonus - rules.d20Penalty;
-        const res = rollAttack(effectiveBonus, "", rules.mode);
+        const situational = consumeSituationalRollOverride("checks");
+        let effectiveMode = rules.mode;
+        if (situational.mode !== "normal") {
+            effectiveMode = combineD20RollModes(rules.mode, situational.mode);
+        }
+        const effectiveBonus = skill.bonus + situational.totalBonus - rules.d20Penalty;
+        const res = rollAttack(effectiveBonus, "", effectiveMode);
         const casterName = syncedChar?.name || "Character";
-        const bonusStr = effectiveBonus >= 0 ? `+ ${effectiveBonus}` : `- ${Math.abs(effectiveBonus)}`;
-        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ");
+        const sitNote = situational.hasOverride && situational.totalBonus !== 0 ? ` • Mod (${situational.breakdown || (situational.totalBonus >= 0 ? `+${situational.totalBonus}` : `${situational.totalBonus}`)})` : "";
+        const conditionNote = [...rules.reasons, ...rules.requiresAdjudication].join(" • ") + sitNote;
 
         broadcastDDBRoll([
             {
@@ -289,15 +306,15 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
                 actionName: skill.name.toUpperCase(),
                 actionType: "CHECK",
                 dieType: 20,
-                diceBreakdown: `${res.d20} ${bonusStr}`,
-                formula: `1d20${effectiveBonus >= 0 ? `+${effectiveBonus}` : `${effectiveBonus}`}${rules.mode === "advantage" ? " (ADV)" : rules.mode === "disadvantage" ? " (DIS)" : ""}`,
+                diceBreakdown: formatD20DiceBreakdown(res),
+                formula: formatD20Formula(effectiveBonus, effectiveMode),
                 total: res.total,
                 subtitle: `${skill.name} Ability Check${conditionNote ? ` • ${conditionNote}` : ""}`,
                 isCrit: res.isCrit,
                 isMiss: res.isMiss,
-                rollMode: rules.mode,
-                isAdvantage: rules.mode === "advantage",
-                isDisadvantage: rules.mode === "disadvantage",
+                rollMode: effectiveMode,
+                isAdvantage: effectiveMode === "advantage",
+                isDisadvantage: effectiveMode === "disadvantage",
                 timestamp: Date.now()
             }
         ]);
@@ -332,6 +349,11 @@ export const CharacterChecks: React.FC<{ passedChar?: DDBParsedCharacter | null;
                         <span>Link Character</span>
                     </button>
                 )}
+            </div>
+
+            {/* Situational Modifier & ADV/DIS Bar */}
+            <div className="ddb-checks-roll-mod-wrap">
+                <SituationalRollBar layout="stacked" scope="checks" />
             </div>
 
             {/* Quick Ability Scores Strip (Always available at the top for 1-click rolling) */}

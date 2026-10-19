@@ -111,6 +111,13 @@
     border-color: #ef4444;
 }
 
+/* ── Situational Roll Mod Bar Wrap ──────────────────────── */
+.ddb-checks-roll-mod-wrap {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 1px;
+}
+
 /* ── Quick Ability Scores Strip ─────────────────────────── */
 .ddb-abilities-strip {
     display: grid;

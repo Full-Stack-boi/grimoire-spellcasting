@@ -14,7 +14,7 @@ import {
   buildCombatantFromItem,
 } from "../combat/initiativeService";
 import { broadcastDDBRoll } from "../../services/rollLogService";
-import { rollAttack, rollDamageDDB, rollFormula } from "../../utils/dice";
+import { rollAttack, rollDamageDDB, rollFormula, formatD20DiceBreakdown, formatD20Formula } from "../../utils/dice";
 import type {
   DDBDamageComponent,
   DDBRollCardData,
@@ -391,6 +391,24 @@ export async function bindMonsterToToken(
         if (item.id === tokenId) {
           item.name = finalTokenName;
           item.metadata[BOUND_MONSTER_METADATA_KEY] = monster;
+
+          // Auto-set 5e Combat Space size based on monster size
+          const sizeLower = (monster.size || "").toLowerCase();
+          let targetSquares = 1;
+          if (sizeLower.includes("large")) targetSquares = 2;
+          else if (sizeLower.includes("huge")) targetSquares = 3;
+          else if (sizeLower.includes("gargantuan")) targetSquares = 4;
+
+          item.metadata[getMetadataKey("combat-space")] = {
+            sizeInSquares: targetSquares,
+            sizeCategory: monster.size,
+            sizeFeet: targetSquares * 5
+          };
+          item.metadata["embers/combatSpace"] = {
+            sizeInSquares: targetSquares,
+            sizeCategory: monster.size,
+            sizeFeet: targetSquares * 5
+          };
         }
       }
     });
@@ -779,8 +797,8 @@ export async function rollMonsterAction(
       actionName: action.name.toUpperCase(),
       actionType: "ATTACK",
       dieType: 20,
-      diceBreakdown: attackRes.formatted,
-      formula: `1d20${attackBonus >= 0 ? `+${attackBonus}` : attackBonus}`,
+      diceBreakdown: formatD20DiceBreakdown(attackRes),
+      formula: formatD20Formula(attackBonus, rollMode),
       total: attackRes.total,
       subtitle: damageTotal > 0
         ? `${requiresHitApproval ? "Pending DM hit approval • " : ""}Damage: ${damageTotal} (${damageBreakdown})`
@@ -899,8 +917,12 @@ export async function rollMonsterInitiative(
     actionName: "INITIATIVE",
     actionType: "CHECK",
     dieType: 20,
-    diceBreakdown: res ? `[${res.selectedD20}] ${dexMod >= 0 ? `+ ${dexMod}` : `- ${Math.abs(dexMod)}`}` : `${total}`,
-    formula: `1d20${dexMod >= 0 ? `+${dexMod}` : dexMod}`,
+    diceBreakdown: res
+      ? (mode !== "normal" && res.d20_2 !== undefined
+          ? `[${res.d20_1}, ${res.d20_2}] ➔ ${res.selectedD20} ${dexMod >= 0 ? `+ ${dexMod}` : `- ${Math.abs(dexMod)}`}`
+          : `${res.selectedD20} ${dexMod >= 0 ? `+ ${dexMod}` : `- ${Math.abs(dexMod)}`}`)
+      : `${total}`,
+    formula: formatD20Formula(dexMod, mode),
     total,
     subtitle: `Initiative Roll (${mode})`,
     timestamp: Date.now(),

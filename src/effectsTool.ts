@@ -45,6 +45,9 @@ import {
   getAffectedGridCells,
   isTokenInAffectedCells,
   isWithinRange,
+  isWithinTokenRange,
+  resolveCombatTargetTokenAtPoint,
+  getTokenClosestPointToPoint,
   snapAoECenter,
   snapToCellCenter,
 } from "./features/targeting/domain/targetingGeometry";
@@ -87,6 +90,8 @@ import {
   rollDamageExplodingAnyDie,
   combineDamageBonus,
   doubleDiceFormula,
+  formatAttackDiceBreakdown,
+  formatD20Formula,
   DDBDamageResult,
 } from "./utils/dice";
 import {
@@ -156,6 +161,10 @@ import type { SpellFormula } from "./types/spellFormula";
 import type { MonsterAction } from "./features/monsters/domain/types";
 import { rollMonsterSaveAction } from "./features/monsters/monsterService";
 import { parseMonsterSaveMechanics } from "./features/monsters/domain/monsterSaveMechanics";
+import {
+  getSituationalRollState,
+  consumeSituationalRollOverride,
+} from "./services/situationalRollModifierService";
 
 export const toolID = `${APP_KEY}/effect-tool`;
 export const toolMetadataSelectedSpell = `${APP_KEY}/selected-spell`;
@@ -479,6 +488,7 @@ let pendingAimingEvent: {
   playerRole: "GM" | "PLAYER";
   playerID: string;
 } | null = null;
+let aimingRafId: number | null = null;
 
 let cachedGridInfo: { data: GridInfo; timestamp: number } | null = null;
 let cachedActiveCaster: { data: Awaited<ReturnType<typeof resolveActiveCaster>>; timestamp: number; key: string } | null = null;
@@ -524,6 +534,11 @@ function deactivateTool() {
 }
 
 export async function stopAiming(): Promise<void> {
+  if (aimingRafId !== null && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(aimingRafId);
+    aimingRafId = null;
+  }
+  pendingAimingEvent = null;
   activeOverlayMode = "none";
   invalidateAimingEnvironmentCache();
   clearAimingOverlay();
@@ -1309,11 +1324,21 @@ async function processAimingMove(
       : {};
     const casterElevation = readTokenElevation(activeCaster.item);
 
+    const resolvedTargetToken = !event.shiftKey
+      ? resolveCombatTargetTokenAtPoint(
+          event.pointerPosition,
+          sceneItems,
+          grid,
+          event.target,
+          isValidCombatTargetToken,
+        )
+      : undefined;
+
     let canSeeHoveredToken = true;
-    if (darknessZones.length > 0 && isValidCombatTargetToken(event.target) && event.target?.position) {
+    if (darknessZones.length > 0 && resolvedTargetToken && resolvedTargetToken.position) {
       const hoveredLos = evaluateLineOfSight(
         activeCaster.position,
-        event.target.position,
+        resolvedTargetToken.position,
         darknessZones,
         grid,
         {
@@ -1325,20 +1350,19 @@ async function processAimingMove(
             : undefined,
           visionRules,
           casterElevation,
-          targetElevation: readTokenElevation(event.target),
+          targetElevation: readTokenElevation(resolvedTargetToken),
         },
       );
       canSeeHoveredToken = hoveredLos.canSee;
     }
 
-    const isTargetToken =
-      !event.shiftKey && isValidCombatTargetToken(event.target) && canSeeHoveredToken;
+    const isTargetToken = Boolean(resolvedTargetToken && canSeeHoveredToken);
     const targetPos = isTargetToken
-      ? event.target!.position
+      ? getTokenClosestPointToPoint(resolvedTargetToken!, activeCaster.position, grid)
       : !event.shiftKey
         ? snapToCellCenter(event.pointerPosition, grid)
         : event.pointerPosition;
-    const targetElevation = isTargetToken ? readTokenElevation(event.target) : 0;
+    const targetElevation = isTargetToken ? readTokenElevation(resolvedTargetToken) : 0;
     const visionCheck = evaluateLineOfSight(
       activeCaster.position,
       targetPos,
@@ -1379,16 +1403,34 @@ async function processAimingMove(
     let advantageReason: string | undefined;
     let disadvantageReason: string | undefined;
 
+    const isWeapon =
+      selectedSpell === "melee_weapon_attack" ||
+      selectedSpell === "ranged_weapon_attack" ||
+      selectedSpell === "flurry_of_blows" ||
+      selectedSpell === "bonus_unarmed_strike" ||
+      selectedSpell?.startsWith("monster_weapon_") ||
+      selectedSpell?.includes("unarmed_strike");
+
     if (activeCaster.item) {
       const buffs = getTokenBuffs(activeCaster.item);
       const buffMods = getComputedBuffModifiers(buffs);
-      if (isAttack && buffMods.hasAttackAdvantage) {
-        hasAdvantage = true;
-        advantageReason = "Advantage (Buff)";
-      } else if (!isAttack && buffMods.hasSpellAdvantage) {
+      const hasBuffAdv = isAttack
+        ? (isWeapon ? buffMods.hasAttackAdvantage : (buffMods.hasSpellAdvantage || buffMods.hasAttackAdvantage))
+        : false;
+
+      if (hasBuffAdv) {
         hasAdvantage = true;
         advantageReason = "Advantage (Buff)";
       }
+    }
+
+    const situational = getSituationalRollState();
+    if (situational.mode === "advantage") {
+      hasAdvantage = true;
+      advantageReason = advantageReason ? `${advantageReason} • Roll Mod` : "Advantage (Roll Mod)";
+    } else if (situational.mode === "disadvantage") {
+      hasDisadvantage = true;
+      disadvantageReason = disadvantageReason ? `${disadvantageReason} • Roll Mod` : "Disadvantage (Roll Mod)";
     }
 
     if (darknessZones.length > 0) {
@@ -1510,6 +1552,8 @@ async function processAimingMove(
       cursorPos: targetPos,
       maxRangeFeet: maxRange,
       grid,
+      casterItem: activeCaster.item,
+      targetItem: isTargetToken ? resolvedTargetToken : undefined,
       visionCheck,
       isWeapon: isAttack,
       canAimWithoutSight: !requiresSight,
@@ -1527,38 +1571,41 @@ async function handleToolMoveWorker(
   playerRole: "GM" | "PLAYER",
   playerID: string,
 ) {
+  pendingAimingEvent = { context, event, playerRole, playerID };
   if (isAimingWorkerRunning) {
-    pendingAimingEvent = { context, event, playerRole, playerID };
     return;
   }
 
-  isAimingWorkerRunning = true;
-  let nextToProcess: {
-    context: ToolContext;
-    event: ToolEvent;
-    playerRole: "GM" | "PLAYER";
-    playerID: string;
-  } | null = { context, event, playerRole, playerID };
-
-  try {
-    while (nextToProcess) {
-      const current = nextToProcess;
-      nextToProcess = null;
-      await processAimingMove(
-        current.context,
-        current.event,
-        current.playerRole,
-        current.playerID,
-      );
-      if (pendingAimingEvent) {
-        nextToProcess = pendingAimingEvent;
+  const runWorker = async () => {
+    isAimingWorkerRunning = true;
+    try {
+      while (pendingAimingEvent) {
+        const current = pendingAimingEvent;
         pendingAimingEvent = null;
+        await processAimingMove(
+          current.context,
+          current.event,
+          current.playerRole,
+          current.playerID,
+        );
       }
+    } catch (err) {
+      log_error(err);
+    } finally {
+      isAimingWorkerRunning = false;
+      aimingRafId = null;
     }
-  } catch (err) {
-    log_error(err);
-  } finally {
-    isAimingWorkerRunning = false;
+  };
+
+  if (typeof requestAnimationFrame === "function") {
+    if (aimingRafId === null) {
+      aimingRafId = requestAnimationFrame(() => {
+        aimingRafId = null;
+        void runWorker();
+      });
+    }
+  } else {
+    await runWorker();
   }
 }
 
@@ -1604,6 +1651,22 @@ async function setupTargetToolModes(
       let targetIsUnseenInDarkness = false;
       let casterHasDarknessAdvantage = false;
       let isMutualDarknessCancelled = false;
+
+      // Smart Footprint Targeting: resolve creature token if clicked on wings/trident or within footprint
+      if (!event.shiftKey && !isValidCombatTargetToken(event.target)) {
+        const sceneItems = await OBR.scene.items.getItems();
+        const grid = await getSceneGridInfo();
+        const resolved = resolveCombatTargetTokenAtPoint(
+          event.pointerPosition,
+          sceneItems,
+          grid,
+          event.target,
+          isValidCombatTargetToken,
+        );
+        if (resolved) {
+          event.target = resolved;
+        }
+      }
 
       // Check single-target range clamping & darkness vision if a spell is selected
       const metadata = await OBR.player.getMetadata();
@@ -1677,7 +1740,7 @@ async function setupTargetToolModes(
         const isSelfCentered = Boolean(aoe && aoe.shape === "Sphere" && maxRange === 0);
 
         if (isSelfCentered) {
-          const castContext = await captureCastContext(playerRole, playerID);
+          const castContext = await captureCastContext(playerRole, playerID, preferredCasterId);
           if (!castContext) {
             if (playerRole === "GM") {
               OBR.notification.show("Please select a character token on the map to cast as.", "WARNING");
@@ -1760,8 +1823,19 @@ async function setupTargetToolModes(
             : getSpellRange(spell, selectedSpell);
           const sceneItems = await OBR.scene.items.getItems();
           const darknessZones = extractDarknessZones(sceneItems);
-
-          let isTargetToken = Boolean(!event.shiftKey && isValidCombatTargetToken(event.target));
+          let targetToken = !event.shiftKey
+            ? resolveCombatTargetTokenAtPoint(
+                event.pointerPosition,
+                sceneItems,
+                grid,
+                event.target,
+                isValidCombatTargetToken,
+              )
+            : undefined;
+          if (targetToken) {
+            event.target = targetToken;
+          }
+          let isTargetToken = Boolean(targetToken);
 
           // Blind Fire resolution: if player clicked an empty grid cell inside darkness with an attack
           if (!isTargetToken && darknessZones.length > 0) {
@@ -1813,7 +1887,7 @@ async function setupTargetToolModes(
                         actionType: "TO HIT",
                         dieType: 20,
                         diceBreakdown: "Blind shot into shadows",
-                        formula: "1d20 (DIS)",
+                        formula: "2d20 (DIS)",
                         total: "MISSED",
                         subtitle: "Attack vanished harmlessly into the dark void",
                         isMiss: true,
@@ -1834,13 +1908,13 @@ async function setupTargetToolModes(
           }
 
           const targetPos = isTargetToken
-            ? event.target!.position
+            ? getTokenClosestPointToPoint(event.target!, activeCaster.position, grid)
             : !event.shiftKey
               ? snapToCellCenter(event.pointerPosition, grid)
               : event.pointerPosition;
-          const rangeCheck = isWithinRange(
-            activeCaster.position,
-            targetPos,
+          const rangeCheck = isWithinTokenRange(
+            activeCaster.item || activeCaster.position,
+            isTargetToken ? event.target! : targetPos,
             maxRangeFeet,
             grid,
           );
@@ -1986,30 +2060,8 @@ async function setupTargetToolModes(
             name: castContext.casterName,
             isDM: castContext.isDM,
           };
-          const buffs = getTokenBuffs(castContext.casterItem);
+          const buffs = getTokenBuffs(castContext.casterItem, castContext.casterTokenId);
           const buffMods = getComputedBuffModifiers(buffs);
-
-          let rollMode: "normal" | "advantage" | "disadvantage" = "normal";
-          if (event.ctrlKey || event.altKey || event.metaKey) {
-            rollMode = "disadvantage";
-          } else if (event.shiftKey) {
-            rollMode = "advantage";
-          } else if (isMutualDarknessCancelled) {
-            rollMode = "normal";
-          } else {
-            const isAttackActionForBuff = isAttackAction({
-              selectedSpell,
-              spell: getSpell(selectedSpell, playerRole === "GM"),
-              ddbSpell: findDdbSpellSafely(castContext.ddbCharacter?.spells, selectedSpell),
-            });
-            const hasBuffAdv = Boolean(
-              (isAttackActionForBuff && buffMods.hasAttackAdvantage) ||
-              (!isAttackActionForBuff && buffMods.hasSpellAdvantage),
-            );
-            const hasAdv = casterHasDarknessAdvantage || hasBuffAdv;
-            const hasDis = targetIsUnseenInDarkness;
-            rollMode = resolveRollMode(hasAdv, hasDis);
-          }
 
           const charId = castContext.ddbCharacterId;
           const ddbChar = castContext.ddbCharacter;
@@ -2074,7 +2126,6 @@ async function setupTargetToolModes(
 
             const ddbSpell = findDdbSpellSafely(ddbChar?.spells, selectedSpell);
             const spell = getSpell(selectedSpell, playerRole === "GM");
-            const spellAttackBonus = ddbChar?.spellAttackBonus ?? 5;
             const spellName = ddbSpell?.name || spell?.name || selectedSpell;
 
             const isCastingHex =
@@ -2090,6 +2141,60 @@ async function setupTargetToolModes(
             });
             const isWeaponBasedSpell =
               spellFormula.interaction?.type === "weapon_based";
+
+            const situational = consumeSituationalRollOverride();
+            if (situational.hasOverride) {
+              const modSummaryParts: string[] = [];
+              if (situational.mode !== "normal") {
+                modSummaryParts.push(situational.mode === "advantage" ? "ADV" : "DIS");
+              }
+              if (situational.totalBonus !== 0) {
+                modSummaryParts.push(
+                  situational.totalBonus > 0
+                    ? `+${situational.totalBonus}`
+                    : `${situational.totalBonus}`
+                );
+              }
+              if (situational.diceBonus) {
+                modSummaryParts.push(situational.diceBonus);
+              }
+              const summaryStr = modSummaryParts.join(" ");
+              if (summaryStr) {
+                OBR.notification.show(`Roll Mod applied: ${summaryStr}`, "INFO");
+              }
+            }
+
+            let rollMode: "normal" | "advantage" | "disadvantage" = "normal";
+            if (event.ctrlKey || event.altKey || event.metaKey) {
+              rollMode = "disadvantage";
+            } else if (event.shiftKey) {
+              rollMode = "advantage";
+            } else {
+              const isAttackActionForBuff = isAttackAction({
+                selectedSpell,
+                spell,
+                ddbSpell,
+                spellFormula,
+              });
+              const isWeapon =
+                selectedSpell === "melee_weapon_attack" ||
+                selectedSpell === "ranged_weapon_attack" ||
+                selectedSpell === "flurry_of_blows" ||
+                selectedSpell === "bonus_unarmed_strike" ||
+                selectedSpell?.startsWith("monster_weapon_") ||
+                selectedSpell?.includes("unarmed_strike");
+
+              const hasBuffAdv = isAttackActionForBuff
+                ? (isWeapon ? buffMods.hasAttackAdvantage : (buffMods.hasSpellAdvantage || buffMods.hasAttackAdvantage))
+                : false;
+              const hasSitAdv = situational.mode === "advantage";
+              const hasSitDis = situational.mode === "disadvantage";
+              const hasAdv = (casterHasDarknessAdvantage && !isMutualDarknessCancelled) || Boolean(hasBuffAdv) || hasSitAdv;
+              const hasDis = (targetIsUnseenInDarkness && !isMutualDarknessCancelled) || hasSitDis;
+              rollMode = resolveRollMode(hasAdv, hasDis);
+            }
+
+            const spellAttackBonus = (ddbChar?.spellAttackBonus ?? 5) + situational.totalBonus;
             const slotChoice = metadata?.[selectedSpellSlotLevelMetadataKey] as
               | { spellId?: unknown; casterId?: unknown; slotLevel?: unknown }
               | undefined;
@@ -2295,7 +2400,7 @@ async function setupTargetToolModes(
                 const hasDis = rollMode === "disadvantage" || disadvantageReasons.length > 0;
                 const effectiveRollMode = resolveRollMode(hasAdv, hasDis);
 
-                const attackBonus = buffMods.attackBonus || 0;
+                const attackBonus = (buffMods.attackBonus || 0) + situational.totalBonus;
                 const effectiveToHit = (isThrown && weapon.thrownToHit != null ? weapon.thrownToHit : weapon.toHit) + attackBonus;
 
                 const targetVitals = targetTokenId ? await getTokenVitals(targetTokenId) : null;
@@ -2352,8 +2457,8 @@ async function setupTargetToolModes(
                     actionName: actionLabel,
                     actionType: "TO HIT",
                     dieType: 20,
-                    diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-                    formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
+                    diceBreakdown: formatAttackDiceBreakdown(roll),
+                    formula: formatD20Formula(roll.bonus, roll.mode),
                     total: roll.total,
                     subtitle: cardSubtitle,
                     isCrit: roll.isCrit,
@@ -2648,9 +2753,9 @@ async function setupTargetToolModes(
                 const damageMode = (await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.DAMAGE_APPLICATION_MODE).catch(() => "gm_approval")) ?? "gm_approval";
 
                 const roll = rollAttack(
-                  ddbChar?.modifiers?.str
+                  (ddbChar?.modifiers?.str
                     ? ddbChar.modifiers.str + ddbChar.proficiencyBonus
-                    : 5,
+                    : 5) + situational.totalBonus,
                   "",
                   rollMode,
                 );
@@ -2673,8 +2778,8 @@ async function setupTargetToolModes(
                     actionName: "UNARMED STRIKE",
                     actionType: "TO HIT",
                     dieType: 20,
-                    diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-                    formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
+                    diceBreakdown: formatAttackDiceBreakdown(roll),
+                    formula: formatD20Formula(roll.bonus, roll.mode),
                     total: roll.total,
                     subtitle: roll.isCrit
                       ? "Critical Hit!"
@@ -2829,7 +2934,8 @@ async function setupTargetToolModes(
                 const weaponSpellAttackBonus =
                   spellcastingModifier +
                   (ddbChar?.proficiencyBonus ?? 0) +
-                  (weapon.magicDamageBonus ?? 0);
+                  (weapon.magicDamageBonus ?? 0) +
+                  situational.totalBonus;
                 const usesWeaponDamageType = selectedDamageType === "weapon";
                 const weaponDamageType = isRangedDelivery
                   ? rangedDelivery!.damageType
@@ -2921,8 +3027,8 @@ async function setupTargetToolModes(
                     actionName: spellName.toUpperCase(),
                     actionType: "TO HIT",
                     dieType: 20,
-                    diceBreakdown: `${attack.d20} ${attack.bonus >= 0 ? `+ ${attack.bonus}` : `- ${Math.abs(attack.bonus)}`}`,
-                    formula: `1d20${attack.bonus >= 0 ? `+${attack.bonus}` : `${attack.bonus}`}${attack.mode === "advantage" ? " (ADV)" : attack.mode === "disadvantage" ? " (DIS)" : ""}`,
+                    diceBreakdown: formatAttackDiceBreakdown(attack),
+                    formula: formatD20Formula(attack.bonus, attack.mode),
                     total: attack.total,
                     subtitle: isRangedDelivery
                       ? "Ranged Spell Attack Roll"
@@ -3211,6 +3317,11 @@ async function setupTargetToolModes(
                   saveOrAttack: ddbSpell?.saveOrAttack,
                 });
                 let effectiveSpellRollMode = rollMode;
+                const hasSpellBuffAdv = Boolean(buffMods.hasSpellAdvantage || buffMods.hasAttackAdvantage || situational.mode === "advantage");
+                if (hasSpellBuffAdv) {
+                  const hasDis = rollMode === "disadvantage" || (targetIsUnseenInDarkness && !isMutualDarknessCancelled);
+                  effectiveSpellRollMode = resolveRollMode(true, hasDis);
+                }
                 if (isRangedSpell) {
                   const grid = await getSceneGridInfo();
                   const casterPos = castContext.position ?? activeCaster.position;
@@ -3225,7 +3336,7 @@ async function setupTargetToolModes(
                     ddbChar
                   );
                   if (threat.isThreatened) {
-                    effectiveSpellRollMode = resolveRollMode(rollMode === "advantage", true);
+                    effectiveSpellRollMode = resolveRollMode(effectiveSpellRollMode === "advantage", true);
                   }
                 }
 
@@ -3321,16 +3432,25 @@ async function setupTargetToolModes(
                     `[${beamInfo.beamUnit} ${b}] ${roll.formatted}${dmgStr}${hexSuffix}`,
                   );
 
+                  const beamRollBreakdown = roll.mode === "advantage" && roll.rolls && roll.rolls.length > 1
+                    ? `[${roll.rolls.join(", ")}] ➔ ${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`
+                    : roll.mode === "disadvantage" && roll.rolls && roll.rolls.length > 1
+                    ? `[${roll.rolls.join(", ")}] ➔ ${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`
+                    : `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`;
+
                   subRolls.push({
                     unitLabel: `${beamInfo.beamUnit.toUpperCase()} ${b}`,
                     targetName: bTarget,
                     targetId: beamTargetId,
                     toHit: {
                       total: roll.total,
-                      diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
+                      diceBreakdown: beamRollBreakdown,
                       formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
                       isCrit: roll.isCrit,
                       isMiss: roll.isMiss,
+                      mode: roll.mode,
+                      isAdvantage: roll.mode === "advantage",
+                      isDisadvantage: roll.mode === "disadvantage",
                       targetAc: bAc,
                       isHit: hitRes.isHit,
                       hitLabel: hitRes.hitLabel,
@@ -3433,13 +3553,16 @@ async function setupTargetToolModes(
                   diceBreakdown: subRolls
                     .map((s) => `${s.toHit?.total ?? 0}`)
                     .join(", "),
-                  formula: `${beamInfo.totalBeams} ${beamInfo.beamUnit}s (${ddbSpell?.damage || ""} ${damageType} each)`,
+                  formula: `${beamInfo.totalBeams} ${beamInfo.beamUnit}s (${ddbSpell?.damage || ""} ${damageType} each)${effectiveSpellRollMode === "advantage" ? " (ADV)" : effectiveSpellRollMode === "disadvantage" ? " (DIS)" : ""}`,
                   total: totalNumericDmg,
                   subtitle: anyCrit
                     ? `Critical Hit! • ${beamInfo.totalBeams} ${beamInfo.beamUnit}s`
                     : `${beamInfo.totalBeams} ${beamInfo.beamUnit}s • ${damageType}`,
                   isCrit: anyCrit,
                   isMiss: allMiss,
+                  rollMode: effectiveSpellRollMode,
+                  isAdvantage: effectiveSpellRollMode === "advantage",
+                  isDisadvantage: effectiveSpellRollMode === "disadvantage",
                   pendingDamage: totalNumericDmg > 0 ? totalNumericDmg : undefined,
                   damageType,
                   damageResolutionStatus: damageMode === "auto" ? "applied" : "pending",
@@ -3468,6 +3591,11 @@ async function setupTargetToolModes(
                   saveOrAttack: ddbSpell?.saveOrAttack,
                 });
                 let effectiveSpellRollMode = rollMode;
+                const hasSpellBuffAdv = Boolean(buffMods.hasSpellAdvantage || buffMods.hasAttackAdvantage || situational.mode === "advantage");
+                if (hasSpellBuffAdv) {
+                  const hasDis = rollMode === "disadvantage" || (targetIsUnseenInDarkness && !isMutualDarknessCancelled);
+                  effectiveSpellRollMode = resolveRollMode(true, hasDis);
+                }
                 if (isRangedSpell) {
                   const grid = await getSceneGridInfo();
                   const casterPos = castContext.position ?? activeCaster.position;
@@ -3482,7 +3610,7 @@ async function setupTargetToolModes(
                     ddbChar
                   );
                   if (threat.isThreatened) {
-                    effectiveSpellRollMode = resolveRollMode(rollMode === "advantage", true);
+                    effectiveSpellRollMode = resolveRollMode(effectiveSpellRollMode === "advantage", true);
                   }
                 }
 
@@ -3529,8 +3657,8 @@ async function setupTargetToolModes(
                     actionName: spellName.toUpperCase(),
                     actionType: "TO HIT",
                     dieType: 20,
-                    diceBreakdown: `${roll.d20} ${roll.bonus >= 0 ? `+ ${roll.bonus}` : `- ${Math.abs(roll.bonus)}`}`,
-                    formula: `1d20${roll.bonus >= 0 ? `+${roll.bonus}` : `${roll.bonus}`}${roll.mode === "advantage" ? " (ADV)" : roll.mode === "disadvantage" ? " (DIS)" : ""}`,
+                    diceBreakdown: formatAttackDiceBreakdown(roll),
+                    formula: formatD20Formula(roll.bonus, roll.mode),
                     total: roll.total,
                     subtitle: roll.isCrit
                       ? "Critical Hit!"
@@ -4026,7 +4154,7 @@ async function setupTargetToolModes(
           canCast &&
           (isTeleportSpell(selectedSpell) || isAoESpell || isPointTargeted)
         ) {
-          const castContext = await captureCastContext(playerRole, playerID);
+          const castContext = await captureCastContext(playerRole, playerID, preferredCasterId);
           if (!castContext) {
             if (playerRole === "GM") {
               OBR.notification.show("Please select a character token on the map to cast as.", "WARNING");
@@ -4375,6 +4503,11 @@ async function setupTargetToolModes(
       }
     },
     onDeactivate(context) {
+      if (aimingRafId !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(aimingRafId);
+        aimingRafId = null;
+      }
+      pendingAimingEvent = null;
       activeOverlayMode = "none";
       invalidateAimingEnvironmentCache();
       clearAimingOverlay();
@@ -4417,12 +4550,27 @@ async function setupTargetToolModes(
       },
     ],
     shortcut: "R",
-    onToolClick(_context, event) {
+    async onToolClick(_context, event) {
+      let target = event.target;
+      if (!isValidCombatTargetToken(target)) {
+        const sceneItems = await OBR.scene.items.getItems();
+        const grid = await getSceneGridInfo();
+        const matched = resolveCombatTargetTokenAtPoint(
+          event.pointerPosition,
+          sceneItems,
+          grid,
+          event.target,
+          isValidCombatTargetToken,
+        );
+        if (matched) {
+          target = matched;
+        }
+      }
       // User clicked on an object with an attached target
-      if (isValidCombatTargetToken(event.target)) {
+      if (isValidCombatTargetToken(target)) {
         getSortedTargets().then((targets) => {
           const selected: Image | undefined = targets.filter(
-            (image) => image.attachedTo === event.target!.id,
+            (image) => image.attachedTo === target!.id,
           )[0];
           if (selected != undefined) {
             removeTarget(selected, targets);

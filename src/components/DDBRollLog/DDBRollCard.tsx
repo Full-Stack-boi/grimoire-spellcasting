@@ -145,6 +145,31 @@ function renderFormattedFormula(formula?: string) {
     return formula;
 }
 
+function renderFormattedBreakdown(breakdown?: string) {
+    if (!breakdown) return null;
+    const match = breakdown.match(/^\[(\d+),\s*(\d+)\](\s*(?:➔|->|→)\s*(\d+)(.*))$/);
+    if (match) {
+        const [, d1Str, d2Str, rest, chosenStr] = match;
+        const d1 = parseInt(d1Str, 10);
+        const d2 = parseInt(d2Str, 10);
+        const chosen = parseInt(chosenStr, 10);
+        const d1IsChosen = d1 === chosen;
+        const d2IsChosen = !d1IsChosen && d2 === chosen;
+
+        return (
+            <>
+                [
+                <span className={d1IsChosen ? "ddb-die-kept" : "ddb-die-dropped"}>{d1}</span>
+                ,{" "}
+                <span className={d2IsChosen ? "ddb-die-kept" : "ddb-die-dropped"}>{d2}</span>
+                ]
+                {rest}
+            </>
+        );
+    }
+    return breakdown;
+}
+
 export interface DDBRollCardProps {
     data: DDBRollCardData;
 }
@@ -210,19 +235,39 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
     const isMiss = Boolean(data.isMiss);
     const isGrouped = Boolean(data.subRolls && data.subRolls.length > 0);
     const isConditionTrigger = Boolean(data.isConditionTrigger || data.actionName?.includes("(TRIGGER)"));
+    const hasSubAdv = Boolean(
+        data.subRolls?.some(
+            (s) =>
+                s.toHit?.mode === "advantage" ||
+                s.toHit?.isAdvantage ||
+                s.toHit?.formula?.includes("(ADV)") ||
+                s.toHit?.diceBreakdown?.includes("ADV")
+        )
+    );
+    const hasSubDis = Boolean(
+        data.subRolls?.some(
+            (s) =>
+                s.toHit?.mode === "disadvantage" ||
+                s.toHit?.isDisadvantage ||
+                s.toHit?.formula?.includes("(DIS)") ||
+                s.toHit?.diceBreakdown?.includes("DIS")
+        )
+    );
     const isDisadvantage = Boolean(
         data.isDisadvantage ||
         data.rollMode === "disadvantage" ||
         data.formula?.includes("(DIS)") ||
         data.diceBreakdown?.includes("DIS") ||
-        data.subtitle?.toLowerCase().includes("disadvantage")
+        data.subtitle?.toLowerCase().includes("disadvantage") ||
+        hasSubDis
     );
     const isAdvantage = Boolean(
         data.isAdvantage ||
         data.rollMode === "advantage" ||
         data.formula?.includes("(ADV)") ||
         data.diceBreakdown?.includes("ADV") ||
-        data.subtitle?.toLowerCase().includes("advantage")
+        data.subtitle?.toLowerCase().includes("advantage") ||
+        hasSubAdv
     );
 
     const isHeal = Boolean(data.actionType === "HEAL" || data.subtitle?.toLowerCase().includes("healing"));
@@ -328,6 +373,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
         resistance?: boolean;
         vulnerability?: boolean;
     }> | null>(null);
+    const [isResolving, setIsResolving] = useState(false);
 
     useEffect(() => {
         const sourceDamageTypes = data.damageComponents?.length
@@ -398,267 +444,366 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
 
     const handleApplyFull = async (e: React.MouseEvent) => {
         e.stopPropagation();
+        if (isResolving) return;
+        setIsResolving(true);
 
-        // 1. Check if card has grouped subrolls with targets
-        if (data.subRolls && data.subRolls.length > 0) {
-            const targetMap = aggregateSubRollDamages(data.subRolls);
-            if (targetMap.size > 0) {
-                const appliedNotes: string[] = [];
-                let totalEffective = 0;
-                for (const [tId, alloc] of targetMap.entries()) {
-                    const res = await applyDamage(tId, alloc.totalDamage, alloc.damageType || data.damageType);
-                    const eff = res?.effectiveDamage ?? alloc.totalDamage;
-                    totalEffective += eff;
-                    const defenseText = res?.defenseNote ? ` (${res.defenseNote})` : "";
-                    appliedNotes.push(`${alloc.targetName} (-${eff}${defenseText})`);
+        try {
+            // 1. Check if card has grouped subrolls with targets
+            if (data.subRolls && data.subRolls.length > 0) {
+                const targetMap = aggregateSubRollDamages(data.subRolls);
+                if (targetMap.size > 0) {
+                    const appliedNotes: string[] = [];
+                    let totalEffective = 0;
+                    for (const [tId, alloc] of targetMap.entries()) {
+                        const actionKey = `dmg:${data.id}:sub:${tId}:full`;
+                        const res = await applyDamage(tId, alloc.totalDamage, alloc.damageType || data.damageType, undefined, { actionKey });
+                        if (res?.alreadyResolved) {
+                            OBR.notification.show(`${alloc.targetName}: Damage already applied by another DM.`, "INFO");
+                        }
+                        const eff = res?.effectiveDamage ?? alloc.totalDamage;
+                        totalEffective += eff;
+                        const defenseText = res?.defenseNote ? ` (${res.defenseNote})` : "";
+                        appliedNotes.push(`${alloc.targetName} (-${eff}${defenseText})`);
+                    }
+                    OBR.notification.show(`Applied damage: ${appliedNotes.join(", ")}`, "SUCCESS");
+
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: totalEffective,
+                        note: `Applied: ${appliedNotes.join(", ")}`,
+                    });
+                    return;
                 }
-                OBR.notification.show(`Applied damage: ${appliedNotes.join(", ")}`, "SUCCESS");
+            }
 
+            // 2. Fallback for single target
+            let targetId = data.targetId;
+            let targetName = data.targetName;
+            if (!targetId) {
+                try {
+                    const selection = await OBR.player.getSelection();
+                    if (selection && selection.length > 0) {
+                        targetId = selection[0];
+                        const items = await OBR.scene.items.getItems([targetId]);
+                        if (items[0]?.name) targetName = items[0].name;
+                    }
+                } catch {}
+            }
+
+            if (data.damageComponents?.length && targetId) {
+                let appliedTotal = 0;
+                const notes: string[] = [];
+                let anyDefeated = false;
+                let anyAlreadyResolved = false;
+                for (const component of data.damageComponents) {
+                    const actionKey = `dmg:${data.id}:${targetId}:${component.damageType || "base"}:full`;
+                    const result = await applyDamage(targetId, component.total, component.damageType, undefined, { actionKey });
+                    if (result?.alreadyResolved) anyAlreadyResolved = true;
+                    appliedTotal += result?.effectiveDamage ?? component.total;
+                    if (result?.defenseNote) notes.push(`${component.damageType}: ${result.defenseNote}`);
+                    if (result?.targetDefeated) anyDefeated = true;
+                }
+                if (anyAlreadyResolved) {
+                    OBR.notification.show("Damage was already applied by another DM.", "INFO");
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: appliedTotal,
+                        note: "Already applied by another DM",
+                        hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
+                    });
+                    return;
+                }
+                if (anyDefeated) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        casterTokenId: data.casterId,
+                        targetTokenId: targetId,
+                        targetName: targetName || data.targetName,
+                        damageTotal: appliedTotal,
+                    }).catch(console.error);
+                }
+                const note = notes.join("; ") || undefined;
+                OBR.notification.show(
+                    `Applied -${appliedTotal} damage${note ? ` • ${note}` : ""} to ${targetName || "target token"}.`,
+                    "SUCCESS",
+                );
                 await updateRollCardResolution(data.id, {
                     status: "applied",
-                    appliedAmount: totalEffective,
-                    note: `Applied: ${appliedNotes.join(", ")}`,
+                    appliedAmount: appliedTotal,
+                    note: note || (targetName ? `Applied to ${targetName}` : "Applied full damage"),
+                    hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
                 });
                 return;
             }
-        }
 
-        // 2. Fallback for single target
-        let targetId = data.targetId;
-        let targetName = data.targetName;
-        if (!targetId) {
-            try {
-                const selection = await OBR.player.getSelection();
-                if (selection && selection.length > 0) {
-                    targetId = selection[0];
-                    const items = await OBR.scene.items.getItems([targetId]);
-                    if (items[0]?.name) targetName = items[0].name;
+            let effectiveDamage = pendingDmg;
+            let defenseNote: string | undefined;
+            if (targetId && pendingDmg > 0) {
+                const actionKey = `dmg:${data.id}:${targetId}:full`;
+                const res = await applyDamage(targetId, pendingDmg, data.damageType, undefined, { actionKey });
+                if (res?.alreadyResolved) {
+                    OBR.notification.show("Damage was already applied by another DM.", "INFO");
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: res.effectiveDamage,
+                        note: "Already applied by another DM",
+                        hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
+                    });
+                    return;
                 }
-            } catch {}
-        }
+                effectiveDamage = res?.effectiveDamage ?? pendingDmg;
+                defenseNote = res?.defenseNote;
+                const noteText = defenseNote ? ` • ${defenseNote}` : "";
+                OBR.notification.show(`Applied -${effectiveDamage} damage${noteText} to ${targetName || "target token"}.`, "SUCCESS");
+                if (res?.targetDefeated) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        casterTokenId: data.casterId,
+                        targetTokenId: targetId,
+                        targetName: targetName || data.targetName,
+                        damageTotal: effectiveDamage,
+                    }).catch(console.error);
+                }
+            } else {
+                OBR.notification.show(`Damage approved (-${pendingDmg}). Select a token on the map to deduct HP.`, "INFO");
+            }
 
-        if (data.damageComponents?.length && targetId) {
-            let appliedTotal = 0;
-            const notes: string[] = [];
-            let anyDefeated = false;
-            for (const component of data.damageComponents) {
-                const result = await applyDamage(targetId, component.total, component.damageType);
-                appliedTotal += result?.effectiveDamage ?? component.total;
-                if (result?.defenseNote) notes.push(`${component.damageType}: ${result.defenseNote}`);
-                if (result?.targetDefeated) anyDefeated = true;
-            }
-            if (anyDefeated) {
-                dispatchCombatFeatureTrigger("on_target_defeated", {
-                    casterTokenId: data.casterId,
-                    targetTokenId: targetId,
-                    targetName: targetName || data.targetName,
-                    damageTotal: appliedTotal,
-                }).catch(console.error);
-            }
-            const note = notes.join("; ") || undefined;
-            OBR.notification.show(
-                `Applied -${appliedTotal} damage${note ? ` • ${note}` : ""} to ${targetName || "target token"}.`,
-                "SUCCESS",
-            );
             await updateRollCardResolution(data.id, {
                 status: "applied",
-                appliedAmount: appliedTotal,
-                note: note || (targetName ? `Applied to ${targetName}` : "Applied full damage"),
+                appliedAmount: effectiveDamage,
+                note: defenseNote ? `${targetName || "Target"}: -${effectiveDamage} (${defenseNote})` : (targetName ? `Applied to ${targetName}` : "Applied Full"),
                 hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
             });
-            return;
+        } finally {
+            setIsResolving(false);
         }
-
-        let effectiveDamage = pendingDmg;
-        let defenseNote: string | undefined;
-        if (targetId && pendingDmg > 0) {
-            const res = await applyDamage(targetId, pendingDmg, data.damageType);
-            effectiveDamage = res?.effectiveDamage ?? pendingDmg;
-            defenseNote = res?.defenseNote;
-            const noteText = defenseNote ? ` • ${defenseNote}` : "";
-            OBR.notification.show(`Applied -${effectiveDamage} damage${noteText} to ${targetName || "target token"}.`, "SUCCESS");
-            if (res?.targetDefeated) {
-                dispatchCombatFeatureTrigger("on_target_defeated", {
-                    casterTokenId: data.casterId,
-                    targetTokenId: targetId,
-                    targetName: targetName || data.targetName,
-                    damageTotal: effectiveDamage,
-                }).catch(console.error);
-            }
-        } else {
-            OBR.notification.show(`Damage approved (-${pendingDmg}). Select a token on the map to deduct HP.`, "INFO");
-        }
-
-        await updateRollCardResolution(data.id, {
-            status: "applied",
-            appliedAmount: effectiveDamage,
-            note: defenseNote ? `${targetName || "Target"}: -${effectiveDamage} (${defenseNote})` : (targetName ? `Applied to ${targetName}` : "Applied Full"),
-            hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
-        });
     };
 
     const handleApplyHalf = async (e: React.MouseEvent) => {
         e.stopPropagation();
+        if (isResolving) return;
+        setIsResolving(true);
 
-        // 1. Check if card has grouped subrolls with targets
-        if (data.subRolls && data.subRolls.length > 0) {
-            const targetMap = aggregateSubRollDamages(data.subRolls);
-            if (targetMap.size > 0) {
-                const appliedNotes: string[] = [];
-                let totalHalf = 0;
-                for (const [tId, alloc] of targetMap.entries()) {
-                    const half = Math.max(0, Math.floor(alloc.totalDamage / 2));
-                    if (half > 0) {
-                        const res = await applyDamage(tId, half, alloc.damageType || data.damageType);
-                        const eff = res?.effectiveDamage ?? half;
-                        totalHalf += eff;
-                        const defenseText = res?.defenseNote ? ` (${res.defenseNote})` : "";
-                        appliedNotes.push(`${alloc.targetName} (-${eff}${defenseText})`);
+        try {
+            // 1. Check if card has grouped subrolls with targets
+            if (data.subRolls && data.subRolls.length > 0) {
+                const targetMap = aggregateSubRollDamages(data.subRolls);
+                if (targetMap.size > 0) {
+                    const appliedNotes: string[] = [];
+                    let totalHalf = 0;
+                    for (const [tId, alloc] of targetMap.entries()) {
+                        const half = Math.max(0, Math.floor(alloc.totalDamage / 2));
+                        if (half > 0) {
+                            const actionKey = `dmg:${data.id}:sub:${tId}:half`;
+                            const res = await applyDamage(tId, half, alloc.damageType || data.damageType, undefined, { actionKey });
+                            if (res?.alreadyResolved) {
+                                OBR.notification.show(`${alloc.targetName}: Half damage already applied.`, "INFO");
+                            }
+                            const eff = res?.effectiveDamage ?? half;
+                            totalHalf += eff;
+                            const defenseText = res?.defenseNote ? ` (${res.defenseNote})` : "";
+                            appliedNotes.push(`${alloc.targetName} (-${eff}${defenseText})`);
+                        }
                     }
-                }
-                OBR.notification.show(`Applied half damage: ${appliedNotes.join(", ")}`, "SUCCESS");
+                    OBR.notification.show(`Applied half damage: ${appliedNotes.join(", ")}`, "SUCCESS");
 
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: totalHalf,
+                        note: `Half damage: ${appliedNotes.join(", ")}`,
+                    });
+                    return;
+                }
+            }
+
+            // 2. Fallback for single target
+            let targetId = data.targetId;
+            let targetName = data.targetName;
+            if (!targetId) {
+                try {
+                    const selection = await OBR.player.getSelection();
+                    if (selection && selection.length > 0) {
+                        targetId = selection[0];
+                        const items = await OBR.scene.items.getItems([targetId]);
+                        if (items[0]?.name) targetName = items[0].name;
+                    }
+                } catch {}
+            }
+
+            if (data.damageComponents?.length && targetId) {
+                let appliedTotal = 0;
+                const notes: string[] = [];
+                let anyAlreadyResolved = false;
+                for (const component of data.damageComponents) {
+                    const half = Math.floor(component.total / 2);
+                    const actionKey = `dmg:${data.id}:${targetId}:${component.damageType || "base"}:half`;
+                    const result = await applyDamage(targetId, half, component.damageType, undefined, { actionKey });
+                    if (result?.alreadyResolved) anyAlreadyResolved = true;
+                    appliedTotal += result?.effectiveDamage ?? half;
+                    if (result?.defenseNote) notes.push(`${component.damageType}: ${result.defenseNote}`);
+                }
+                if (anyAlreadyResolved) {
+                    OBR.notification.show("Damage was already applied by another DM.", "INFO");
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: appliedTotal,
+                        note: "Already applied by another DM",
+                        hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
+                    });
+                    return;
+                }
+                const note = notes.join("; ") || undefined;
+                OBR.notification.show(
+                    `Applied half damage (-${appliedTotal}) to ${targetName || "target token"}${note ? ` • ${note}` : ""}.`,
+                    "SUCCESS",
+                );
                 await updateRollCardResolution(data.id, {
                     status: "applied",
-                    appliedAmount: totalHalf,
-                    note: `Half damage: ${appliedNotes.join(", ")}`,
+                    appliedAmount: appliedTotal,
+                    note: note || (targetName ? `Half damage to ${targetName}` : "Half damage"),
+                    hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
                 });
                 return;
             }
-        }
 
-        // 2. Fallback for single target
-        let targetId = data.targetId;
-        let targetName = data.targetName;
-        if (!targetId) {
-            try {
-                const selection = await OBR.player.getSelection();
-                if (selection && selection.length > 0) {
-                    targetId = selection[0];
-                    const items = await OBR.scene.items.getItems([targetId]);
-                    if (items[0]?.name) targetName = items[0].name;
+            let effectiveHalf = halfDmg;
+            let defenseNote: string | undefined;
+            if (targetId && halfDmg > 0) {
+                const actionKey = `dmg:${data.id}:${targetId}:half`;
+                const res = await applyDamage(targetId, halfDmg, data.damageType, undefined, { actionKey });
+                if (res?.alreadyResolved) {
+                    OBR.notification.show("Damage was already applied by another DM.", "INFO");
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: res.effectiveDamage,
+                        note: "Already applied by another DM",
+                        hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
+                    });
+                    return;
                 }
-            } catch {}
-        }
-
-        if (data.damageComponents?.length && targetId) {
-            let appliedTotal = 0;
-            const notes: string[] = [];
-            for (const component of data.damageComponents) {
-                const half = Math.floor(component.total / 2);
-                const result = await applyDamage(targetId, half, component.damageType);
-                appliedTotal += result?.effectiveDamage ?? half;
-                if (result?.defenseNote) notes.push(`${component.damageType}: ${result.defenseNote}`);
+                effectiveHalf = res?.effectiveDamage ?? halfDmg;
+                defenseNote = res?.defenseNote;
+                const noteText = defenseNote ? ` • ${defenseNote}` : "";
+                OBR.notification.show(`Applied half damage (-${effectiveHalf}${noteText}) to ${targetName || "target token"}.`, "SUCCESS");
+                if (res?.targetDefeated) {
+                    dispatchCombatFeatureTrigger("on_target_defeated", {
+                        casterTokenId: data.casterId,
+                        targetTokenId: targetId,
+                        targetName: targetName || data.targetName,
+                        damageTotal: effectiveHalf,
+                    }).catch(console.error);
+                }
+            } else {
+                OBR.notification.show(`Half damage approved (-${halfDmg}).`, "INFO");
             }
-            const note = notes.join("; ") || undefined;
-            OBR.notification.show(
-                `Applied half damage (-${appliedTotal}) to ${targetName || "target token"}${note ? ` • ${note}` : ""}.`,
-                "SUCCESS",
-            );
+
             await updateRollCardResolution(data.id, {
                 status: "applied",
-                appliedAmount: appliedTotal,
-                note: note || (targetName ? `Half damage to ${targetName}` : "Half damage"),
+                appliedAmount: effectiveHalf,
+                note: defenseNote ? `${targetName || "Target"}: -${effectiveHalf} (${defenseNote})` : (targetName ? `Half damage to ${targetName}` : "Half Damage (Resistance / Save Passed)"),
                 hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
             });
-            return;
+        } finally {
+            setIsResolving(false);
         }
-
-        let effectiveHalf = halfDmg;
-        let defenseNote: string | undefined;
-        if (targetId && halfDmg > 0) {
-            const res = await applyDamage(targetId, halfDmg, data.damageType);
-            effectiveHalf = res?.effectiveDamage ?? halfDmg;
-            defenseNote = res?.defenseNote;
-            const noteText = defenseNote ? ` • ${defenseNote}` : "";
-            OBR.notification.show(`Applied half damage (-${effectiveHalf}${noteText}) to ${targetName || "target token"}.`, "SUCCESS");
-            if (res?.targetDefeated) {
-                dispatchCombatFeatureTrigger("on_target_defeated", {
-                    casterTokenId: data.casterId,
-                    targetTokenId: targetId,
-                    targetName: targetName || data.targetName,
-                    damageTotal: effectiveHalf,
-                }).catch(console.error);
-            }
-        } else {
-            OBR.notification.show(`Half damage approved (-${halfDmg}).`, "INFO");
-        }
-
-        await updateRollCardResolution(data.id, {
-            status: "applied",
-            appliedAmount: effectiveHalf,
-            note: defenseNote ? `${targetName || "Target"}: -${effectiveHalf} (${defenseNote})` : (targetName ? `Half damage to ${targetName}` : "Half Damage (Resistance / Save Passed)"),
-            hitApprovalStatus: data.requiresHitApproval ? "confirmed" : undefined,
-        });
     };
 
     const handleApplyHeal = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        let targetId = data.targetId;
-        let targetName = data.targetName;
-        if (!targetId) {
-            try {
-                const selection = await OBR.player.getSelection();
-                if (selection && selection.length > 0) {
-                    targetId = selection[0];
-                    const items = await OBR.scene.items.getItems([targetId]);
-                    if (items[0]?.name) targetName = items[0].name;
+        if (isResolving) return;
+        setIsResolving(true);
+
+        try {
+            let targetId = data.targetId;
+            let targetName = data.targetName;
+            if (!targetId) {
+                try {
+                    const selection = await OBR.player.getSelection();
+                    if (selection && selection.length > 0) {
+                        targetId = selection[0];
+                        const items = await OBR.scene.items.getItems([targetId]);
+                        if (items[0]?.name) targetName = items[0].name;
+                    }
+                } catch {}
+            }
+
+            let restored = pendingHeal;
+            if (targetId && pendingHeal > 0) {
+                const actionKey = `heal:${data.id}:${targetId}`;
+                const res = await applyHeal(targetId, pendingHeal, { actionKey });
+                if (res?.alreadyResolved) {
+                    OBR.notification.show("Healing was already applied by another DM.", "INFO");
+                    await updateRollCardResolution(data.id, {
+                        status: "applied",
+                        appliedAmount: res.hpRestored,
+                        note: "Already healed by another DM",
+                    });
+                    return;
                 }
-            } catch {}
-        }
+                restored = res?.hpRestored ?? pendingHeal;
+                OBR.notification.show(`Applied +${restored} HP heal to ${targetName || "target token"}.`, "SUCCESS");
+            } else {
+                OBR.notification.show(`Heal approved (+${pendingHeal}). Select a token on the map to restore HP.`, "INFO");
+            }
 
-        let restored = pendingHeal;
-        if (targetId && pendingHeal > 0) {
-            const res = await applyHeal(targetId, pendingHeal);
-            restored = res?.hpRestored ?? pendingHeal;
-            OBR.notification.show(`Applied +${restored} HP heal to ${targetName || "target token"}.`, "SUCCESS");
-        } else {
-            OBR.notification.show(`Heal approved (+${pendingHeal}). Select a token on the map to restore HP.`, "INFO");
+            await updateRollCardResolution(data.id, {
+                status: "applied",
+                appliedAmount: restored,
+                note: targetName ? `Healed ${targetName} (+${restored})` : `Healed +${restored}`,
+            });
+        } finally {
+            setIsResolving(false);
         }
-
-        await updateRollCardResolution(data.id, {
-            status: "applied",
-            appliedAmount: restored,
-            note: targetName ? `Healed ${targetName} (+${restored})` : `Healed +${restored}`,
-        });
     };
 
     const handleShieldReaction = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        const attackTotal = data.attackTotal ?? (typeof data.total === "number" ? data.total : parseInt(String(data.total), 10) || 0);
-        const naturalD20 = data.rollD20 ?? 10;
-        const targetAc = data.targetAc ?? 10;
-        const reaction = evaluateShieldReaction(attackTotal, naturalD20, targetAc);
-        if (reaction.shieldBlocks) {
-            await updateRollCardResolution(data.id, {
-                status: "shielded",
-                appliedAmount: 0,
-                note: reaction.reason,
-                hitApprovalStatus: data.requiresHitApproval ? "missed" : undefined,
-            });
-            OBR.notification.show(`Shield spell (+5 AC) deflected the attack! (Attack ${attackTotal} vs AC ${targetAc + 5})`, "SUCCESS");
-        } else {
-            await updateRollCardResolution(data.id, {
-                status: "pending",
-                note: reaction.reason,
-                hitApprovalStatus: data.requiresHitApproval ? "pending" : undefined,
-            });
-            OBR.notification.show(`Shield (+5 AC) was not enough! ${reaction.reason}`, "WARNING");
+        if (isResolving) return;
+        setIsResolving(true);
+
+        try {
+            const attackTotal = data.attackTotal ?? (typeof data.total === "number" ? data.total : parseInt(String(data.total), 10) || 0);
+            const naturalD20 = data.rollD20 ?? 10;
+            const targetAc = data.targetAc ?? 10;
+            const reaction = evaluateShieldReaction(attackTotal, naturalD20, targetAc);
+            if (reaction.shieldBlocks) {
+                await updateRollCardResolution(data.id, {
+                    status: "shielded",
+                    appliedAmount: 0,
+                    note: reaction.reason,
+                    hitApprovalStatus: data.requiresHitApproval ? "missed" : undefined,
+                });
+                OBR.notification.show(`Shield spell (+5 AC) deflected the attack! (Attack ${attackTotal} vs AC ${targetAc + 5})`, "SUCCESS");
+            } else {
+                await updateRollCardResolution(data.id, {
+                    status: "pending",
+                    note: reaction.reason,
+                    hitApprovalStatus: data.requiresHitApproval ? "pending" : undefined,
+                });
+                OBR.notification.show(`Shield (+5 AC) was not enough! ${reaction.reason}`, "WARNING");
+            }
+        } finally {
+            setIsResolving(false);
         }
     };
 
     const handleDismiss = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        await updateRollCardResolution(data.id, {
-            status: "dismissed",
-            appliedAmount: 0,
-            note: "Dismissed by DM",
-            hitApprovalStatus: data.requiresHitApproval ? "missed" : undefined,
-        });
-        OBR.notification.show(
-            data.requiresHitApproval ? "Monster attack marked as a miss." : "Damage dismissed by DM.",
-            "INFO",
-        );
+        if (isResolving) return;
+        setIsResolving(true);
+
+        try {
+            await updateRollCardResolution(data.id, {
+                status: "dismissed",
+                appliedAmount: 0,
+                note: "Dismissed by DM",
+                hitApprovalStatus: data.requiresHitApproval ? "missed" : undefined,
+            });
+            OBR.notification.show(
+                data.requiresHitApproval ? "Monster attack marked as a miss." : "Damage dismissed by DM.",
+                "INFO",
+            );
+        } finally {
+            setIsResolving(false);
+        }
     };
 
     const handleTargetSaveOutcome = async (
@@ -715,17 +860,19 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                         formula: "",
                     }];
                 for (const component of components) {
+                    const actionKey = `save:${data.id}:${targetId}:${component.damageType || "base"}:${targetResolution.outcome}`;
                     const result = await applyDamage(
                         targetId,
                         component.total,
                         component.damageType,
                         saveMultiplier,
+                        { actionKey }
                     );
-                    if (!result) {
-                        throw new Error(`Damage could not be applied to ${targetResolution.targetName}.`);
+                    if (result?.alreadyResolved) {
+                        OBR.notification.show(`${targetResolution.targetName}: Save damage already applied by another DM.`, "INFO");
                     }
-                    appliedAmount += result.effectiveDamage;
-                    if (result.defenseNote) defenseNotes.push(result.defenseNote);
+                    appliedAmount += result?.effectiveDamage ?? component.total;
+                    if (result?.defenseNote) defenseNotes.push(result.defenseNote);
                 }
             }
 
@@ -818,13 +965,17 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                             const subMiss = Boolean(sub.toHit?.isMiss);
                             const subDis = Boolean(
                                 sub.toHit?.mode === "disadvantage" ||
+                                sub.toHit?.isDisadvantage ||
                                 sub.toHit?.formula?.includes("(DIS)") ||
-                                sub.toHit?.diceBreakdown?.includes("DIS")
+                                sub.toHit?.diceBreakdown?.includes("DIS") ||
+                                (isDisadvantage && !isAdvantage)
                             );
                             const subAdv = Boolean(
                                 sub.toHit?.mode === "advantage" ||
+                                sub.toHit?.isAdvantage ||
                                 sub.toHit?.formula?.includes("(ADV)") ||
-                                sub.toHit?.diceBreakdown?.includes("ADV")
+                                sub.toHit?.diceBreakdown?.includes("ADV") ||
+                                (isAdvantage && !isDisadvantage)
                             );
                             const itemClass = [
                                 "ddb-subroll-item",
@@ -859,7 +1010,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 <span className="ddb-subroll-label">TO HIT</span>
                                                 <div className="ddb-subroll-value-row">
                                                     <span className="ddb-subroll-total-val">{sub.toHit.total}</span>
-                                                    <span className="ddb-subroll-breakdown-val">({sub.toHit.diceBreakdown})</span>
+                                                    <span className="ddb-subroll-breakdown-val">({renderFormattedBreakdown(sub.toHit.diceBreakdown)})</span>
                                                 </div>
                                             </div>
                                         )}
@@ -935,6 +1086,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-apply-full"
                                                     onClick={handleApplyHeal}
+                                                    disabled={isResolving}
                                                     title="Apply healing to target HP (capped at Max HP)"
                                                 >
                                                     <CheckIcon />
@@ -944,6 +1096,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-dismiss"
                                                     onClick={handleDismiss}
+                                                    disabled={isResolving}
                                                     title="Dismiss heal without restoring HP"
                                                 >
                                                     <DismissIcon />
@@ -956,6 +1109,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-apply-full"
                                                     onClick={handleApplyFull}
+                                                    disabled={isResolving}
                                                     title={
                                                         hasDamageImmunity
                                                             ? "Target is immune (0 damage)"
@@ -973,6 +1127,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-apply-half"
                                                     onClick={handleApplyHalf}
+                                                    disabled={isResolving}
                                                     title={
                                                         hasDamageImmunity
                                                             ? "Target is immune (0 damage)"
@@ -981,7 +1136,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                             : hasDamageVulnerability
                                                             ? `Target is vulnerable (${halfDmg} doubled to ${effectivePreviewHalfDmg})`
                                                             : "Apply half damage (Resistance or Uncanny Dodge)"
-                                                    }
+                                                     }
                                                 >
                                                     <HalfDamageIcon />
                                                     <span>{data.requiresHitApproval ? `Confirm Hit • Half (-${effectivePreviewHalfDmg})` : `Half (-${effectivePreviewHalfDmg})`}</span>
@@ -990,6 +1145,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-dismiss"
                                                     onClick={handleDismiss}
+                                                    disabled={isResolving}
                                                     title="Dismiss damage without reducing HP"
                                                 >
                                                     <DismissIcon />
@@ -1082,7 +1238,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                 {renderDieIcon(data.dieType, 20)}
                             </span>
                             <span className={breakdownClass}>
-                                {data.diceBreakdown}
+                                {renderFormattedBreakdown(data.diceBreakdown)}
                             </span>
                         </div>
                         <div className="ddb-roll-card-formula">
@@ -1240,6 +1396,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 type="button"
                                                 className="ddb-gm-action-btn btn-apply-full"
                                                 onClick={handleApplyHeal}
+                                                disabled={isResolving}
                                                 title="Apply healing to target HP (capped at Max HP)"
                                             >
                                                 <CheckIcon />
@@ -1249,6 +1406,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 type="button"
                                                 className="ddb-gm-action-btn btn-dismiss"
                                                 onClick={handleDismiss}
+                                                disabled={isResolving}
                                                 title="Dismiss heal without restoring HP"
                                             >
                                                 <DismissIcon />
@@ -1261,6 +1419,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 type="button"
                                                 className="ddb-gm-action-btn btn-apply-full"
                                                 onClick={handleApplyFull}
+                                                disabled={isResolving}
                                                 title={
                                                     hasDamageImmunity
                                                         ? "Target is immune (0 damage)"
@@ -1278,6 +1437,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 type="button"
                                                 className="ddb-gm-action-btn btn-apply-half"
                                                 onClick={handleApplyHalf}
+                                                disabled={isResolving}
                                                 title={
                                                     hasDamageImmunity
                                                         ? "Target is immune (0 damage)"
@@ -1296,6 +1456,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                     type="button"
                                                     className="ddb-gm-action-btn btn-shield-reaction"
                                                     onClick={handleShieldReaction}
+                                                    disabled={isResolving}
                                                     title="Reaction: Shield spell (+5 AC)"
                                                 >
                                                     <ShieldIcon />
@@ -1306,6 +1467,7 @@ export const DDBRollCard: React.FC<DDBRollCardProps> = ({ data }) => {
                                                 type="button"
                                                 className="ddb-gm-action-btn btn-dismiss"
                                                 onClick={handleDismiss}
+                                                disabled={isResolving}
                                                 title="Dismiss damage without reducing HP"
                                             >
                                                 <DismissIcon />
