@@ -511,6 +511,60 @@ export async function snapActionDockMobile(mode: MobileDockMode): Promise<void> 
     }
 }
 
+export const MOBILE_AIMING_BAR_HEIGHT = 58;
+
+export async function resizeActionDockMobileAimingBar(): Promise<void> {
+    let { width: viewWidth, height: viewHeight } = getCachedViewportSize();
+    try {
+        const [w, h] = await Promise.all([OBR.viewport.getWidth(), OBR.viewport.getHeight()]);
+        if (w && h && w > 200 && h > 200) {
+            viewWidth = w;
+            viewHeight = h;
+            updateCachedViewportSize(w, h);
+        }
+    } catch {}
+
+    const popoverWidth = Math.max(300, viewWidth - 12);
+    const popoverHeight = MOBILE_AIMING_BAR_HEIGHT;
+    const popoverLeft = Math.max(0, Math.round((viewWidth - popoverWidth) / 2));
+    const popoverTop = Math.max(MOBILE_TOP_SAFE_MARGIN, Math.round(viewHeight - popoverHeight - 8));
+
+    const dockSearch = new URLSearchParams(typeof window !== "undefined" ? window.location.search || "" : "");
+    dockSearch.delete("view");
+    dockSearch.delete("mode");
+    dockSearch.delete("dockHeight");
+    dockSearch.delete("obrref");
+    const searchStr = dockSearch.toString() ? `?${dockSearch.toString()}` : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const url = `${origin}/action-dock${searchStr}`;
+
+    try {
+        await OBR.popover.open({
+            id: actionDockPopoverId,
+            url,
+            width: popoverWidth,
+            height: popoverHeight,
+            anchorReference: "POSITION",
+            anchorPosition: {
+                left: popoverLeft,
+                top: popoverTop,
+            },
+            anchorOrigin: {
+                horizontal: "LEFT",
+                vertical: "TOP",
+            },
+            transformOrigin: {
+                horizontal: "LEFT",
+                vertical: "TOP",
+            },
+            hidePaper: true,
+            disableClickAway: true,
+        });
+    } catch (err) {
+        console.error("Failed to resize mobile ActionDock to aiming bar:", err);
+    }
+}
+
 export async function resizeActionDockMobile(height: number): Promise<void> {
     let { width: viewWidth, height: viewHeight } = getCachedViewportSize();
     try {

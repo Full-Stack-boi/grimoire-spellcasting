@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import "./MobileActionDock.scss";
 
 import type {
@@ -18,6 +18,17 @@ import {
     IconClose,
     IconDragon,
     IconHeart,
+    IconAim,
+    IconSword,
+    IconDamage,
+    IconCast,
+    IconFeature,
+    IconInspiration,
+    IconSearch,
+    IconGrid,
+    IconList,
+    IconChevronDown,
+    IconChevronRight,
 } from "../shared/Bg3Icons";
 import { FaShieldHalved } from "react-icons/fa6";
 import {
@@ -25,6 +36,8 @@ import {
     getSavedMobileDockHeight,
     saveMobileDockHeight,
     resizeActionDockMobile,
+    resizeActionDockMobileAimingBar,
+    snapActionDockMobile,
     getCachedViewportSize,
     moveMobileFab,
     getSavedMobileFabPosition,
@@ -62,6 +75,7 @@ export interface MobileActionDockProps {
     onHeal: (amount: number) => void;
     onInitiativeRoll: () => void;
     weapons: DDBWeaponAttack[];
+    onSelectWeapon?: (weapon: DDBWeaponAttack, mode?: "melee" | "thrown") => void;
     onWeaponAttack?: (weapon: DDBWeaponAttack, rollMode?: "melee" | "thrown") => void;
     onWeaponDamage?: (weapon: DDBWeaponAttack, riderName?: string | null, rollMode?: "melee" | "thrown") => void;
     spells: DockSpell[];
@@ -82,6 +96,9 @@ export interface MobileActionDockProps {
     mobileMode: MobileDockMode;
     onEditMonster?: (m: MonsterStatblock) => void;
     initialShowHpModal?: boolean;
+    isAiming?: boolean;
+    aimingName?: string;
+    onCancelAiming?: () => void;
 }
 
 export type MobileTab = "ACTIONS" | "SPELLS" | "FEATURES" | "ITEMS" | "SHEET" | "BESTIARY";
@@ -104,6 +121,7 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
     onHeal,
     onInitiativeRoll,
     weapons,
+    onSelectWeapon,
     onWeaponAttack,
     onWeaponDamage,
     spells,
@@ -124,15 +142,94 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
     mobileMode,
     onEditMonster,
     initialShowHpModal,
+    isAiming,
+    aimingName,
+    onCancelAiming,
 }) => {
     const [activeTab, setActiveTab] = useState<MobileTab>("ACTIONS");
     const [actionFilter, setActionFilter] = useState<string>("ALL");
     const [showHpModal, setShowHpModal] = useState(initialShowHpModal ?? false);
     const [showDiceRoller, setShowDiceRoller] = useState<boolean>(false);
     const [hpInput, setHpInput] = useState<number>(5);
+    const [searchQuery, setSearchQuery] = useState<string>("");
+    const [viewMode, setViewMode] = useState<"cards" | "compact">("cards");
+    const [collapsedLevels, setCollapsedLevels] = useState<Record<number, boolean>>({});
+    const [isAimingBarMinimized, setIsAimingBarMinimized] = useState<boolean>(true);
+
+    const toggleLevelCollapse = (lvl: number) => {
+        setCollapsedLevels((prev) => ({ ...prev, [lvl]: !prev[lvl] }));
+    };
+
+    const filteredWeapons = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        return weapons.filter((w) => {
+            if (actionFilter === "MELEE" && w.type !== "melee") return false;
+            if (actionFilter === "RANGED" && w.type !== "ranged" && !w.hasThrown) return false;
+            if (!q) return true;
+            return (
+                w.name.toLowerCase().includes(q) ||
+                (w.damageType && w.damageType.toLowerCase().includes(q)) ||
+                (w.properties && w.properties.some((p) => p.toLowerCase().includes(q)))
+            );
+        });
+    }, [weapons, actionFilter, searchQuery]);
+
+    const filteredSpellGroups = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return spellGroups;
+        return spellGroups
+            .map((group) => ({
+                ...group,
+                spells: group.spells.filter(
+                    (s) =>
+                        s.name.toLowerCase().includes(q) ||
+                        (s.school && s.school.toLowerCase().includes(q)) ||
+                        (s.damage && s.damage.toLowerCase().includes(q)) ||
+                        (s.damageType && s.damageType.toLowerCase().includes(q)) ||
+                        (s.rangeText && s.rangeText.toLowerCase().includes(q)) ||
+                        (s.notes && s.notes.toLowerCase().includes(q)) ||
+                        (s.hitOrDc && s.hitOrDc.toLowerCase().includes(q))
+                ),
+            }))
+            .filter((group) => group.spells.length > 0);
+    }, [spellGroups, searchQuery]);
+
+    const filteredFeatures = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return features;
+        return features.filter(
+            (f) =>
+                f.name.toLowerCase().includes(q) ||
+                (f.description && f.description.toLowerCase().includes(q)) ||
+                (f.source && f.source.toLowerCase().includes(q))
+        );
+    }, [features, searchQuery]);
+
+    const filteredInventory = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return inventory;
+        return inventory.filter(
+            (item) =>
+                item.name.toLowerCase().includes(q) ||
+                (item.type && item.type.toLowerCase().includes(q))
+        );
+    }, [inventory, searchQuery]);
 
     // Continuous Drag Resizing State (GPU-accelerated, physical screen coordinates)
     const [sheetHeight, setSheetHeight] = useState<number>(() => getSavedMobileDockHeight());
+
+    // Automatic sheet minimization to Aiming Bar during tactical aiming
+    useEffect(() => {
+        if (isAiming) {
+            setIsAimingBarMinimized(true);
+            resizeActionDockMobileAimingBar().catch(() => {});
+        } else {
+            setIsAimingBarMinimized(false);
+            if (mobileMode === "expanded") {
+                snapActionDockMobile("expanded").catch(() => {});
+            }
+        }
+    }, [isAiming, mobileMode]);
     const dragStartScreenY = useRef<number | null>(null);
     const dragStartH = useRef<number>(sheetHeight);
     const isResizingRef = useRef<boolean>(false);
@@ -466,7 +563,48 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 2. EXPANDED MOBILE ACTION SHEET MODE
+    // 2. COMPACT AIMING BAR (When Aiming on Mobile to unblock map view)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (isAiming && isAimingBarMinimized) {
+        return (
+            <div className="mobile-aiming-bar-container">
+                <div className="mobile-aiming-bar-info">
+                    <IconAim size={16} className="aiming-pulse-icon" />
+                    <div className="mobile-aiming-bar-text">
+                        <span className="mobile-aiming-bar-label">AIMING</span>
+                        <span className="mobile-aiming-bar-name">{aimingName || "Tap target on map"}</span>
+                    </div>
+                </div>
+                <div className="mobile-aiming-bar-actions">
+                    <button
+                        type="button"
+                        className="mobile-aiming-bar-btn expand"
+                        onClick={() => {
+                            setIsAimingBarMinimized(false);
+                            snapActionDockMobile("expanded").catch(() => {});
+                        }}
+                        title="Expand Full Sheet"
+                    >
+                        Expand
+                    </button>
+                    {onCancelAiming && (
+                        <button
+                            type="button"
+                            className="mobile-aiming-bar-btn cancel"
+                            onClick={onCancelAiming}
+                            title="Cancel Aiming"
+                        >
+                            <IconClose size={12} />
+                            <span>Cancel</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. EXPANDED MOBILE ACTION SHEET MODE
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="mobile-sheet-container expanded">
@@ -584,7 +722,7 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                         onClick={onToggleInspiration}
                         title={heroicInspiration ? "Heroic Inspiration Active" : "No Heroic Inspiration (Tap to toggle)"}
                     >
-                        ★
+                        <IconInspiration size={12} />
                     </button>
 
                     {/* Close / Minimize to FAB Button */}
@@ -598,6 +736,43 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                     </button>
                 </div>
             </header>
+
+            {/* Tactical Aiming Banner HUD */}
+            {isAiming && (
+                <div className="mobile-aiming-hud-banner">
+                    <div className="mobile-aiming-hud-info">
+                        <IconAim size={14} className="aiming-pulse-icon" />
+                        <div className="mobile-aiming-text-cluster">
+                            <span className="mobile-aiming-title">AIMING</span>
+                            <span className="mobile-aiming-desc">{aimingName || "Tap target on map"}</span>
+                        </div>
+                    </div>
+                    <div className="mobile-aiming-hud-actions">
+                        <button
+                            type="button"
+                            className="mobile-aiming-minimize-btn"
+                            onClick={() => {
+                                setIsAimingBarMinimized(true);
+                                resizeActionDockMobileAimingBar().catch(() => {});
+                            }}
+                            title="Minimize to Aiming Bar"
+                        >
+                            Minimize
+                        </button>
+                        {onCancelAiming && (
+                            <button
+                                type="button"
+                                className="mobile-aiming-cancel-btn"
+                                onClick={onCancelAiming}
+                                title="Cancel Aiming"
+                            >
+                                <IconClose size={11} />
+                                <span>Cancel</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Active Conditions Strip */}
             {conditions && conditions.length > 0 && (
@@ -615,10 +790,14 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                 color: "#fecaca",
                                 border: "1px solid #b91c1c",
                                 cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
                             }}
                             title="Tap to remove condition"
                         >
-                            {cond} ✕
+                            <span>{cond}</span>
+                            <IconClose size={8} />
                         </span>
                     ))}
                 </div>
@@ -700,6 +879,50 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
             >
+                {/* Search & View Mode Toolbar */}
+                {activeTab !== "SHEET" && activeTab !== "BESTIARY" && !boundMonster && (
+                    <div className="mobile-deck-toolbar">
+                        <div className="mobile-dock-search-box">
+                            <IconSearch size={12} className="mobile-search-icon" />
+                            <input
+                                type="text"
+                                placeholder={`Search ${activeTab.toLowerCase()}...`}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="mobile-search-input"
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    className="mobile-search-clear-btn"
+                                    onClick={() => setSearchQuery("")}
+                                    title="Clear search"
+                                >
+                                    <IconClose size={10} />
+                                </button>
+                            )}
+                        </div>
+                        <div className="mobile-view-mode-toggle">
+                            <button
+                                type="button"
+                                className={`mobile-view-mode-btn ${viewMode === "cards" ? "active" : ""}`}
+                                onClick={() => setViewMode("cards")}
+                                title="Cards View"
+                            >
+                                <IconGrid size={11} />
+                            </button>
+                            <button
+                                type="button"
+                                className={`mobile-view-mode-btn ${viewMode === "compact" ? "active" : ""}`}
+                                onClick={() => setViewMode("compact")}
+                                title="Compact Row View"
+                            >
+                                <IconList size={11} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* 1. MONSTER STATBLOCK MODE */}
                 {boundMonster && activeTab === "ACTIONS" && (
                     <MonsterStatblockView
@@ -726,47 +949,107 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                             ))}
                         </div>
 
-                        {weapons.length === 0 ? (
+                        {filteredWeapons.length === 0 ? (
                             <div style={{ textAlign: "center", color: "#64748b", padding: 24, fontSize: 13 }}>
-                                No weapons or unarmed strikes available.
+                                {searchQuery ? "No weapons matching search." : "No weapons or unarmed strikes available."}
                             </div>
-                        ) : (
-                            weapons
-                                .filter((w) => {
-                                    if (actionFilter === "MELEE") return w.type === "melee";
-                                    if (actionFilter === "RANGED") return w.type === "ranged" || Boolean(w.hasThrown);
-                                    return true;
-                                })
-                                .map((weapon) => {
-                                    const rangeBadge = weapon.rangeText || (weapon.rangeFeet && weapon.rangeFeet > 5 ? `${weapon.rangeFeet} ft` : "Melee");
-                                    return (
-                                        <div key={weapon.id} className="mobile-action-card">
-                                            <div className="mobile-action-title-row">
-                                                <span className="mobile-action-name">{weapon.name}</span>
-                                                <span className="mobile-action-badge">{rangeBadge}</span>
-                                            </div>
-                                            <div className="mobile-action-desc">
-                                                {weapon.properties?.join(", ") || "Standard weapon"}
-                                            </div>
-                                            <div className="mobile-action-btn-row">
+                        ) : viewMode === "cards" ? (
+                            filteredWeapons.map((weapon) => {
+                                const isRanged = weapon.type === "ranged";
+                                const hasReach = weapon.properties?.some((p) => p.toLowerCase().includes("reach"));
+                                const rangeBadge = weapon.rangeText || (weapon.reachFeet ? `${weapon.reachFeet} ft Reach` : (hasReach ? "10 ft Reach" : (isRanged ? `${weapon.rangeFeet || 60} ft` : "5 ft Reach")));
+                                return (
+                                    <div key={weapon.id} className="mobile-action-card">
+                                        <div className="mobile-action-title-row">
+                                            <span className="mobile-action-name">{weapon.name}</span>
+                                            <span className="mobile-action-badge">{rangeBadge}</span>
+                                        </div>
+                                        <div className="mobile-action-desc">
+                                            {weapon.properties?.join(", ") || "Standard weapon"}
+                                        </div>
+                                        <div className="mobile-action-btn-row">
+                                            {onSelectWeapon && (
                                                 <button
                                                     type="button"
-                                                    className="mobile-action-btn attack"
-                                                    onClick={() => onWeaponAttack?.(weapon)}
+                                                    className="mobile-action-btn aim"
+                                                    onClick={() => onSelectWeapon(weapon, "melee")}
+                                                    title="Aim at a token on the map"
                                                 >
-                                                    ⚔️ Attack ({weapon.toHit >= 0 ? `+${weapon.toHit}` : weapon.toHit})
+                                                    <IconAim size={13} />
+                                                    <span>Aim</span>
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="mobile-action-btn attack"
+                                                onClick={() => onWeaponAttack?.(weapon)}
+                                                title="Roll Attack directly into chat"
+                                            >
+                                                <IconSword size={13} />
+                                                <span>Attack ({weapon.toHit >= 0 ? `+${weapon.toHit}` : weapon.toHit})</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="mobile-action-btn damage"
+                                                onClick={() => onWeaponDamage?.(weapon, null)}
+                                                title="Roll weapon damage"
+                                            >
+                                                <IconDamage size={13} />
+                                                <span>Damage ({weapon.damage || "1d4"})</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="mobile-compact-list">
+                                {filteredWeapons.map((weapon) => {
+                                    const isRanged = weapon.type === "ranged";
+                                    const hasReach = weapon.properties?.some((p) => p.toLowerCase().includes("reach"));
+                                    const rangeBadge = weapon.rangeText || (weapon.reachFeet ? `${weapon.reachFeet} ft` : (hasReach ? "10 ft" : (isRanged ? `${weapon.rangeFeet || 60} ft` : "5 ft")));
+                                    return (
+                                        <div key={weapon.id} className="mobile-compact-row">
+                                            <div className="mobile-compact-info">
+                                                <span className="mobile-compact-name">{weapon.name}</span>
+                                                <span className="mobile-compact-sub">
+                                                    <span className="mobile-compact-badge">{rangeBadge}</span>
+                                                    <span>{weapon.toHit >= 0 ? `+${weapon.toHit}` : weapon.toHit} to hit</span>
+                                                    <span>{weapon.damage}</span>
+                                                </span>
+                                            </div>
+                                            <div className="mobile-compact-actions">
+                                                {onSelectWeapon && (
+                                                    <button
+                                                        type="button"
+                                                        className="mobile-compact-btn aim"
+                                                        onClick={() => onSelectWeapon(weapon, "melee")}
+                                                        title="Aim weapon"
+                                                    >
+                                                        <IconAim size={12} />
+                                                        <span>Aim</span>
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    className="mobile-compact-btn attack"
+                                                    onClick={() => onWeaponAttack?.(weapon)}
+                                                    title="Roll Attack"
+                                                >
+                                                    <IconSword size={12} />
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    className="mobile-action-btn damage"
+                                                    className="mobile-compact-btn damage"
                                                     onClick={() => onWeaponDamage?.(weapon, null)}
+                                                    title="Roll Damage"
                                                 >
-                                                    💥 Damage ({weapon.damage || "1d4"})
+                                                    <IconDamage size={12} />
                                                 </button>
                                             </div>
                                         </div>
                                     );
-                                })
+                                })}
+                            </div>
                         )}
                     </>
                 )}
@@ -797,53 +1080,108 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                             })}
                         </div>
 
-                        {spells.length === 0 ? (
+                        {filteredSpellGroups.length === 0 ? (
                             <div style={{ textAlign: "center", color: "#64748b", padding: 24, fontSize: 13 }}>
-                                No prepared spells found.
+                                {searchQuery ? "No spells matching search." : "No prepared spells found."}
                             </div>
                         ) : (
-                            spellGroups.map((group) => (
-                                <div key={group.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", marginTop: 4 }}>
-                                        {group.label}
-                                    </div>
-                                    {group.spells.map((spell) => (
-                                        <div key={spell.id} className="mobile-action-card">
-                                            <div className="mobile-action-title-row">
-                                                <span className="mobile-action-name">{spell.name}</span>
-                                                <span className="mobile-action-badge">
-                                                    {spell.school} • {spell.castingTime}
-                                                </span>
+                            filteredSpellGroups.map((group) => {
+                                const isCollapsed = Boolean(collapsedLevels[group.level]);
+                                const slotInfo = group.level > 0 ? getSlotInfo(group.level) : null;
+                                return (
+                                    <div key={group.label} className="mobile-spell-group-section">
+                                        <div
+                                            className="mobile-spell-level-header"
+                                            onClick={() => toggleLevelCollapse(group.level)}
+                                        >
+                                            <div className="mobile-level-title-group">
+                                                {isCollapsed ? <IconChevronRight size={11} /> : <IconChevronDown size={11} />}
+                                                <span className="mobile-level-title-text">{group.label} ({group.spells.length})</span>
                                             </div>
-                                            <div className="mobile-action-desc">
-                                                Range: {spell.rangeText || "Self"}
-                                                {spell.damage && ` • Damage: ${spell.damage}`}
-                                            </div>
-                                            <div className="mobile-action-btn-row">
-                                                <button
-                                                    type="button"
-                                                    className="mobile-action-btn cast"
-                                                    onClick={() => onCastSpell(spell.id, spell.level)}
-                                                >
-                                                    ✨ Cast {spell.level === 0 ? "Cantrip" : `Level ${spell.level}`}
-                                                </button>
-                                            </div>
+                                            {group.level > 0 && slotInfo && slotInfo.max > 0 && (
+                                                <div className="mobile-header-slot-pips" onClick={(e) => e.stopPropagation()}>
+                                                    {Array.from({ length: slotInfo.max }).map((_, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className={`mobile-slot-pip ${i < slotInfo.remaining ? "used" : ""}`}
+                                                            onClick={() => onToggleSlotPip(group.level, i)}
+                                                            title={`Slot ${group.level} pip ${i + 1}`}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-                            ))
+                                        {!isCollapsed && (
+                                            viewMode === "cards" ? (
+                                                <div className="mobile-spells-list-cards">
+                                                    {group.spells.map((spell) => (
+                                                        <div key={spell.id} className="mobile-action-card">
+                                                            <div className="mobile-action-title-row">
+                                                                <span className="mobile-action-name">{spell.name}</span>
+                                                                <span className="mobile-action-badge">
+                                                                    {spell.school} • {spell.castingTime}
+                                                                </span>
+                                                            </div>
+                                                            <div className="mobile-action-desc">
+                                                                Range: {spell.rangeText || "Self"}
+                                                                {spell.damage && ` • Damage: ${spell.damage}`}
+                                                            </div>
+                                                            <div className="mobile-action-btn-row">
+                                                                <button
+                                                                    type="button"
+                                                                    className="mobile-action-btn cast"
+                                                                    onClick={() => onCastSpell(spell.id, spell.level)}
+                                                                >
+                                                                    <IconCast size={13} />
+                                                                    <span>Cast {spell.level === 0 ? "Cantrip" : `Level ${spell.level}`}</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="mobile-compact-list">
+                                                    {group.spells.map((spell) => (
+                                                        <div key={spell.id} className="mobile-compact-row">
+                                                            <div className="mobile-compact-info">
+                                                                <span className="mobile-compact-name">{spell.name}</span>
+                                                                <span className="mobile-compact-sub">
+                                                                    <span className="mobile-compact-badge">{spell.school || "Spell"}</span>
+                                                                    <span>{spell.rangeText || "Self"}</span>
+                                                                    {spell.damage && <span>{spell.damage}</span>}
+                                                                </span>
+                                                            </div>
+                                                            <div className="mobile-compact-actions">
+                                                                <button
+                                                                    type="button"
+                                                                    className="mobile-compact-btn cast"
+                                                                    onClick={() => onCastSpell(spell.id, spell.level)}
+                                                                    title={`Cast ${spell.name}`}
+                                                                >
+                                                                    <IconCast size={12} />
+                                                                    <span>Cast</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                );
+                            })
                         )}
                     </>
                 )}
 
                 {/* 4. PLAYER FEATURES TAB */}
                 {!boundMonster && activeTab === "FEATURES" && (
-                    features.length === 0 ? (
+                    filteredFeatures.length === 0 ? (
                         <div style={{ textAlign: "center", color: "#64748b", padding: 24, fontSize: 13 }}>
-                            No active class or racial features found.
+                            {searchQuery ? "No features matching search." : "No active class or racial features found."}
                         </div>
-                    ) : (
-                        features.map((feat) => (
+                    ) : viewMode === "cards" ? (
+                        filteredFeatures.map((feat) => (
                             <div key={feat.id} className="mobile-action-card">
                                 <div className="mobile-action-title-row">
                                     <span className="mobile-action-name">{feat.name}</span>
@@ -862,22 +1200,47 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                         className="mobile-action-btn feature"
                                         onClick={() => onActivateFeature(feat)}
                                     >
-                                        ⚡ Use Feature
+                                        <IconFeature size={13} />
+                                        <span>Use Feature</span>
                                     </button>
                                 </div>
                             </div>
                         ))
+                    ) : (
+                        <div className="mobile-compact-list">
+                            {filteredFeatures.map((feat) => (
+                                <div key={feat.id} className="mobile-compact-row">
+                                    <div className="mobile-compact-info">
+                                        <span className="mobile-compact-name">{feat.name}</span>
+                                        <span className="mobile-compact-sub">
+                                            {feat.limitedUse ? `${feat.limitedUse.max - feat.limitedUse.used}/${feat.limitedUse.max} uses` : "Passive / At-Will"}
+                                        </span>
+                                    </div>
+                                    <div className="mobile-compact-actions">
+                                        <button
+                                            type="button"
+                                            className="mobile-compact-btn feature"
+                                            onClick={() => onActivateFeature(feat)}
+                                            title={`Use ${feat.name}`}
+                                        >
+                                            <IconFeature size={12} />
+                                            <span>Use</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )
                 )}
 
                 {/* 5. INVENTORY TAB */}
                 {!boundMonster && activeTab === "ITEMS" && (
-                    inventory.length === 0 ? (
+                    filteredInventory.length === 0 ? (
                         <div style={{ textAlign: "center", color: "#64748b", padding: 24, fontSize: 13 }}>
-                            Inventory is empty.
+                            {searchQuery ? "No items matching search." : "Inventory is empty."}
                         </div>
-                    ) : (
-                        inventory.map((item) => (
+                    ) : viewMode === "cards" ? (
+                        filteredInventory.map((item) => (
                             <div key={item.id} className="mobile-action-card">
                                 <div className="mobile-action-title-row">
                                     <span className="mobile-action-name">{item.name}</span>
@@ -888,6 +1251,20 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                 </div>
                             </div>
                         ))
+                    ) : (
+                        <div className="mobile-compact-list">
+                            {filteredInventory.map((item) => (
+                                <div key={item.id} className="mobile-compact-row">
+                                    <div className="mobile-compact-info">
+                                        <span className="mobile-compact-name">{item.name}</span>
+                                        <span className="mobile-compact-sub">
+                                            <span className="mobile-compact-badge">Qty: {item.quantity || 1}</span>
+                                            <span>{item.type || "Item"}</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )
                 )}
 

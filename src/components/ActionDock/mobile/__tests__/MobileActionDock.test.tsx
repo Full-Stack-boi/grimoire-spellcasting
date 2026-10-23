@@ -303,4 +303,96 @@ describe("MobileActionDock Component", () => {
     expect(html).toContain("Take 5 Damage");
     expect(html).toContain("Heal 5 HP");
   });
+
+  it("renders Compact Aiming Bar on mobile when isAiming is active", () => {
+    const handleCancelAiming = vi.fn();
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={null}
+        caster={null}
+        casterName="Hero"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={30}
+        maxHp={30}
+        tempHp={0}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[]}
+        spellGroups={[]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        isAiming={true}
+        aimingName="Longsword (5 ft)"
+        onCancelAiming={handleCancelAiming}
+        onSelectWeapon={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("mobile-aiming-bar-container");
+    expect(html).toContain("AIMING");
+    expect(html).toContain("Longsword (5 ft)");
+    expect(html).toContain("mobile-aiming-bar-btn expand");
+    expect(html).toContain("mobile-aiming-bar-btn cancel");
+  });
+
+  it("renders Aim button on weapon cards and search toolbar when expanded", () => {
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={null}
+        caster={null}
+        casterName="Hero"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={30}
+        maxHp={30}
+        tempHp={0}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[]}
+        spellGroups={[]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        isAiming={false}
+        onSelectWeapon={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("mobile-action-btn aim"); // Aim button rendered on weapon card
+    expect(html).toContain("mobile-deck-toolbar");
+    expect(html).toContain("mobile-dock-search-box");
+    expect(html).toContain("mobile-view-mode-toggle");
+  });
 });

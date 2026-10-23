@@ -167,11 +167,12 @@ export const ActionDock: React.FC = () => {
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
-    // Physical dimension guard: if the iframe was resized by OBR to <=120px, it is physically a FAB.
-    // This completely prevents the expanded sheet from squishing into a miniature 64px box.
+    // Physical dimension guard: if the iframe was resized by OBR to <=120px in both dimensions, it is physically a FAB.
+    // This allows wide, low-profile layouts like the Aiming Bar (~58px height, full width) while preventing
+    // the expanded sheet from squishing into a 64x64 FAB container.
     const effectiveMobileMode: MobileDockMode = useMemo(() => {
         if (typeof window !== "undefined") {
-            if (windowDimensions.width <= 120 || windowDimensions.height <= 120) {
+            if (windowDimensions.width <= 120 && windowDimensions.height <= 120) {
                 return "fab";
             }
         }
@@ -918,9 +919,10 @@ export const ActionDock: React.FC = () => {
     const handleSelectWeapon = useCallback(async (weapon: DDBWeaponAttack, mode: "melee" | "thrown" = "melee", attackCount = 1) => {
         const isRanged = weapon.type === "ranged" || mode === "thrown";
         const spellId = isRanged ? "ranged_weapon_attack" : "melee_weapon_attack";
+        const hasReachProp = weapon.properties?.some(p => p.toLowerCase().includes("reach")) ?? false;
         const effectiveRange = isRanged
             ? (mode === "thrown" ? (weapon.thrownLongRange || weapon.thrownRange || 20) : (weapon.longRangeFeet || weapon.rangeFeet || 60))
-            : (weapon.reachFeet || 5);
+            : (weapon.reachFeet ?? (hasReachProp ? 10 : 5));
         const resolvedCasterId = getResolvedCasterId();
         await setSelectedSpell(
             spellId,
@@ -940,7 +942,7 @@ export const ActionDock: React.FC = () => {
         await OBR.tool.activateMode(toolID, effectsToolModeID);
         const rangeDisplay = isRanged
             ? (mode === "thrown" ? `${weapon.thrownRange || 20}/${weapon.thrownLongRange || 60} ft Thrown` : `${weapon.rangeFeet || 60}${weapon.longRangeFeet ? `/${weapon.longRangeFeet}` : ""} ft Range`)
-            : `${weapon.reachFeet || 5} ft Reach`;
+            : `${effectiveRange} ft Reach`;
         OBR.notification.show(`Aiming ${weapon.name} (${rangeDisplay}${attackCount > 1 ? ` - ${attackCount} Attacks` : ""})`, "INFO");
     }, [getResolvedCasterId, riderChoice, setSelected]);
 
@@ -1825,6 +1827,7 @@ export const ActionDock: React.FC = () => {
                     onHeal={(amount) => handleHpHeal(amount)}
                     onInitiativeRoll={handleInitiativeRoll}
                     weapons={weaponsList}
+                    onSelectWeapon={handleSelectWeapon}
                     onWeaponAttack={handleWeaponAttackRoll}
                     onWeaponDamage={handleWeaponDamageRoll}
                     spells={dockSpells}
@@ -1844,6 +1847,9 @@ export const ActionDock: React.FC = () => {
                     onToggleSnap={handleToggleMobileSnap}
                     mobileMode={effectiveMobileMode}
                     onEditMonster={isGM && boundMonster && isCustomMonster(boundMonster) ? (m) => setEditingMonster(m) : undefined}
+                    isAiming={Boolean(aimingWeapon || (selectedSpell && selectedSpell !== "none"))}
+                    aimingName={aimingWeapon?.name || dockSpells.find(s => s.id === selectedSpell)?.name || (selectedSpell === "flurry_of_blows" ? "Flurry of Blows" : selectedSpell === "bonus_unarmed_strike" ? "Bonus Unarmed Strike" : selectedSpell || "")}
+                    onCancelAiming={handleCancelAiming}
                 />
             </div>
         );
