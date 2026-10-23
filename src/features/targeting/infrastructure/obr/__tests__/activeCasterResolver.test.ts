@@ -259,4 +259,65 @@ describe("activeCasterResolver", () => {
         expect(resolved?.id).toBe("player-wizard");
         expect(resolved?.name).toBe("Gandalf");
     });
+    it("allows GM to switch to any clicked token even if toolMetadataSelectedCaster is present", async () => {
+        const wizardToken = {
+            id: "player-wizard",
+            layer: "CHARACTER",
+            position: { x: 100, y: 100 },
+            name: "Gandalf",
+            metadata: {}
+        };
+        const oozeToken = {
+            id: "enemy-ooze",
+            layer: "CHARACTER",
+            position: { x: 300, y: 300 },
+            name: "Gray Ooze",
+            metadata: {}
+        };
+        mockSceneItems.push(wizardToken, oozeToken);
+
+        // GM previously had Gandalf selected in ActionDock dropdown
+        mockPlayerMetadata[toolMetadataSelectedCaster] = "player-wizard";
+
+        // GM clicks Gray Ooze on the map
+        mockSelection = ["enemy-ooze"];
+
+        const resolved = await resolveActiveCaster("GM", "gm-user");
+        expect(resolved).not.toBeNull();
+        expect(resolved?.id).toBe("enemy-ooze");
+        expect(resolved?.name).toBe("Gray Ooze");
+    });
+
+    it("allows player to switch between owned character tokens on map click", async () => {
+        const char1 = {
+            id: "char-1",
+            layer: "CHARACTER",
+            position: { x: 100, y: 100 },
+            name: "Fighter Bob",
+            metadata: {
+                "eu.armindo.embers/bound-player": { playerId: "player-1", playerName: "Player 1" }
+            }
+        };
+        const char2 = {
+            id: "char-2",
+            layer: "CHARACTER",
+            position: { x: 200, y: 200 },
+            name: "Rogue Alice",
+            metadata: {
+                "eu.armindo.embers/bound-player": { playerId: "player-1", playerName: "Player 1" }
+            }
+        };
+        mockSceneItems.push(char1, char2);
+
+        // Previously active char-1
+        mockPlayerMetadata[toolMetadataSelectedCaster] = "char-1";
+
+        // Player clicks char-2 on map
+        mockSelection = ["char-2"];
+
+        const resolved = await resolveActiveCaster("PLAYER", "player-1");
+        expect(resolved).not.toBeNull();
+        expect(resolved?.id).toBe("char-2");
+        expect(resolved?.name).toBe("Rogue Alice");
+    });
 });

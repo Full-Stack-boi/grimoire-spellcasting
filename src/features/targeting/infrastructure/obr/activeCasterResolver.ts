@@ -3,7 +3,12 @@ import { LOCAL_STORAGE_KEYS, getSettingsValue } from "../../../../components/Set
 import { getPlayerOwnedTokens, getMyPrimaryCharacterToken, isCharacterToken } from "../../../player/playerCharacterService";
 import { getLinkedDDBCharacterId, getAllCachedDDBCharacters } from "../../../../services/ddbService";
 import { getBoundMonsterFromToken } from "../../../monsters/monsterService";
-import { toolMetadataSelectedCaster } from "../../../../effectsTool";
+import {
+    toolMetadataSelectedCaster,
+    toolMetadataSelectedSpell,
+    toolMetadataSelectedWeapon,
+    toolMetadataMonsterAoeAction,
+} from "../../../../effectsTool";
 
 export interface ActiveCasterInfo {
     item: Item;
@@ -70,7 +75,28 @@ export async function resolveActiveCaster(
     // =========================================================================
     const playerMeta = typeof OBR.player?.getMetadata === "function" ? await OBR.player.getMetadata() : {};
     const explicitCasterId = playerMeta[toolMetadataSelectedCaster] as string | undefined;
-    if (explicitCasterId) {
+    const isAiming = Boolean(
+        playerMeta[toolMetadataSelectedSpell] ||
+        playerMeta[toolMetadataSelectedWeapon] ||
+        playerMeta[toolMetadataMonsterAoeAction]
+    );
+
+    let shouldApplyExplicitBinding = Boolean(explicitCasterId);
+    if (explicitCasterId && !isAiming && purpose !== "cast" && selection && selection.length === 1) {
+        if (isDM) {
+            // GM selected a token on the map while not aiming -> map selection takes precedence!
+            shouldApplyExplicitBinding = false;
+        } else {
+            // Player selected a token -> if it's their own token, switch to it; if unowned enemy, preserve caster
+            const owned = await getPlayerOwnedTokens(playerID, characterItems);
+            const isSelectedOwned = owned.some(t => t.id === selection[0]);
+            if (isSelectedOwned || owned.length === 0) {
+                shouldApplyExplicitBinding = false;
+            }
+        }
+    }
+
+    if (shouldApplyExplicitBinding && explicitCasterId) {
         const boundItem = characterItems.find(item => item.id === explicitCasterId)
             || sceneItems.find(item => item.id === explicitCasterId);
         if (boundItem) {
@@ -91,7 +117,8 @@ export async function resolveActiveCaster(
     // =========================================================================
     if (isDM) {
         if (selection && selection.length === 1) {
-            const selected = characterItems.find(item => item.id === selection[0]);
+            const selected = characterItems.find(item => item.id === selection[0])
+                || sceneItems.find(item => item.id === selection[0] && (item.layer === "CHARACTER" || item.type === "IMAGE"));
             if (selected) {
                 const casterInfo: ActiveCasterInfo = {
                     item: selected,
@@ -164,7 +191,8 @@ export async function resolveActiveCaster(
     // - In "cast" mode: ONLY resolve if the player actually owns that token, preventing accidental
     //   spellcasting on behalf of an enemy or ally being targeted.
     if (selection && selection.length === 1) {
-        const selected = characterItems.find(item => item.id === selection[0]);
+        const selected = characterItems.find(item => item.id === selection[0])
+            || sceneItems.find(item => item.id === selection[0] && (item.layer === "CHARACTER" || item.type === "IMAGE"));
         if (selected) {
             const isOwned = ownedTokens.some(t => t.id === selected.id);
             if (purpose === "view" || isOwned || ownedTokens.length === 0) {

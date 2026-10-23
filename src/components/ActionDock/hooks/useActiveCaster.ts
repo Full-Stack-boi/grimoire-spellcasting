@@ -62,81 +62,93 @@ export function useActiveCaster(applyDdbSlots: (character: DDBParsedCharacter, m
         return syncPromise;
     }, []);
 
-    useEffect(() => {
-        if (!obr.ready || !obr.sceneReady || !obr.player?.role) return;
+    const updateCaster = useCallback(async (forcedRole?: "GM" | "PLAYER", forcedId?: string) => {
+        try {
+            const role = forcedRole || obr.player?.role;
+            const id = forcedId || obr.player?.id;
+            if (!role || !id) return;
+            const active = await resolveActiveCaster(role, id);
+            setCaster(active);
 
-        const updateCaster = async () => {
-            try {
-                const role = obr.player!.role;
-                const id = obr.player!.id;
-                const active = await resolveActiveCaster(role, id);
-                setCaster(active);
-
-                if (active?.item) {
-                    setActiveBuffs(getTokenBuffs(active.item));
-                    const characterId = getLinkedDDBCharacterId(active.item);
-                    if (characterId) {
-                        setBoundMonster(null);
-                        const applyCharacter = (character: DDBParsedCharacter) => {
-                            setSyncedDdbChar(character);
-                            applyDdbSlots(character, "merge");
-                            if (character.senses) {
-                                const currentVision = active.item!.metadata[TOKEN_VISION_METADATA_KEY] as unknown;
-                                if (!currentVision || JSON.stringify(currentVision) !== JSON.stringify(character.senses)) {
-                                    OBR.scene.items.updateItems([active.item!.id], items => {
-                                        for (const item of items) item.metadata[TOKEN_VISION_METADATA_KEY] = character.senses;
-                                    }).catch(console.error);
-                                }
+            if (active?.item) {
+                setActiveBuffs(getTokenBuffs(active.item));
+                const characterId = getLinkedDDBCharacterId(active.item);
+                if (characterId) {
+                    setBoundMonster(null);
+                    const applyCharacter = (character: DDBParsedCharacter) => {
+                        setSyncedDdbChar(character);
+                        applyDdbSlots(character, "merge");
+                        if (character.senses) {
+                            const currentVision = active.item!.metadata[TOKEN_VISION_METADATA_KEY] as unknown;
+                            if (!currentVision || JSON.stringify(currentVision) !== JSON.stringify(character.senses)) {
+                                OBR.scene.items.updateItems([active.item!.id], items => {
+                                    for (const item of items) item.metadata[TOKEN_VISION_METADATA_KEY] = character.senses;
+                                }).catch(console.error);
                             }
-                        };
-                        const cached = getCachedDDBCharacter(characterId);
-                        if (cached) {
-                            applyCharacter(cached);
-                        } else {
-                            fetchDDBCharacter(characterId).then(fresh => {
-                                if (fresh) {
-                                    cacheDDBCharacter(fresh);
-                                    applyCharacter(fresh);
-                                }
-                            }).catch(console.error);
                         }
+                    };
+                    const cached = getCachedDDBCharacter(characterId);
+                    if (cached) {
+                        applyCharacter(cached);
                     } else {
-                        const monster = getBoundMonsterFromToken(active.item);
-                        if (monster) {
-                            setBoundMonster(monster);
-                            const vitals = extractTokenVitals(active.item.metadata);
-                            const monsterChar = monsterToDdbCharacter(monster, active.item, vitals);
-                            setSyncedDdbChar(monsterChar);
-                            applyDdbSlots(monsterChar, "replace");
-                            if (monsterChar.senses) {
-                                const currentVision = active.item.metadata[TOKEN_VISION_METADATA_KEY] as unknown;
-                                if (!currentVision || JSON.stringify(currentVision) !== JSON.stringify(monsterChar.senses)) {
-                                    OBR.scene.items.updateItems([active.item.id], items => {
-                                        for (const item of items) item.metadata[TOKEN_VISION_METADATA_KEY] = monsterChar.senses;
-                                    }).catch(console.error);
-                                }
+                        fetchDDBCharacter(characterId).then(fresh => {
+                            if (fresh) {
+                                cacheDDBCharacter(fresh);
+                                applyCharacter(fresh);
                             }
-                        } else {
-                            setBoundMonster(null);
-                            setSyncedDdbChar(null);
-                        }
+                        }).catch(console.error);
                     }
                 } else {
-                    setBoundMonster(null);
-                    setActiveBuffs([]);
-                    setSyncedDdbChar(null);
+                    const monster = getBoundMonsterFromToken(active.item);
+                    if (monster) {
+                        setBoundMonster(monster);
+                        const vitals = extractTokenVitals(active.item.metadata);
+                        const monsterChar = monsterToDdbCharacter(monster, active.item, vitals);
+                        setSyncedDdbChar(monsterChar);
+                        applyDdbSlots(monsterChar, "replace");
+                        if (monsterChar.senses) {
+                            const currentVision = active.item.metadata[TOKEN_VISION_METADATA_KEY] as unknown;
+                            if (!currentVision || JSON.stringify(currentVision) !== JSON.stringify(monsterChar.senses)) {
+                                OBR.scene.items.updateItems([active.item.id], items => {
+                                    for (const item of items) item.metadata[TOKEN_VISION_METADATA_KEY] = monsterChar.senses;
+                                }).catch(console.error);
+                            }
+                        }
+                    } else {
+                        setBoundMonster(null);
+                        setSyncedDdbChar(null);
+                    }
                 }
-
-                const metadata = obr.player!.metadata;
-                const currentSelected = metadata?.[toolMetadataSelectedSpell] as string | undefined;
-                await setSelectedSpell(currentSelected || null);
-            } catch (error) {
-                console.error("ActionDock update error:", error);
+            } else {
+                setBoundMonster(null);
+                setActiveBuffs([]);
+                setSyncedDdbChar(null);
             }
-        };
 
+            const metadata = typeof OBR.player?.getMetadata === "function"
+                ? await OBR.player.getMetadata().catch(() => obr.player?.metadata || {})
+                : (obr.player?.metadata || {});
+            const currentSelected = metadata?.[toolMetadataSelectedSpell] as string | undefined;
+            await setSelectedSpell(currentSelected || null);
+        } catch (error) {
+            console.error("ActionDock update error:", error);
+        }
+    }, [obr.player?.role, obr.player?.id, obr.player?.metadata, applyDdbSlots]);
+
+    // Initial mount and readiness trigger
+    useEffect(() => {
+        if (!obr.ready || !obr.sceneReady || !obr.player?.role) return;
         updateCaster();
-    }, [obr.ready, obr.sceneReady, obr.player, applyDdbSlots]);
+    }, [obr.ready, obr.sceneReady, obr.player?.role, updateCaster]);
+
+    // Live subscription to OBR.player changes (selection and metadata updates)
+    useEffect(() => {
+        if (!obr.ready || !obr.sceneReady) return;
+        const unsub = OBR.player.onChange(player => {
+            updateCaster(player.role, player.id);
+        });
+        return () => unsub();
+    }, [obr.ready, obr.sceneReady, updateCaster]);
 
     useEffect(() => {
         if (!obr.ready || !obr.sceneReady || !caster?.item) return;
