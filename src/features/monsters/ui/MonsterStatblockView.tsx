@@ -26,7 +26,7 @@ import { rollAttack, rollFormula, formatD20DiceBreakdown, formatD20Formula } fro
 import { broadcastDDBRoll } from "../../../services/rollLogService";
 import type { DDBRollCardData } from "../../../types/ddbRollLog";
 import { MonsterExportModal } from "./MonsterExportModal";
-import { FaPen } from "react-icons/fa6";
+import { FaPen, FaDiceD20, FaCrosshairs } from "react-icons/fa6";
 import { checkMonsterAttackRange } from "../domain/monsterAttackRange";
 import { hasResolvableSaveDamage, parseMonsterSaveMechanics } from "../domain/monsterSaveMechanics";
 import { combineD20RollModes, resolveConditionRules } from "../../combat/domain/conditionRules";
@@ -710,7 +710,8 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
                   onClick={handleRollHp}
                   title={`Re-roll HP for ${token?.name || "Token"} (${monster.hitPoints.formula})`}
                 >
-                  🎲 Re-roll HP
+                  <FaDiceD20 size={12} />
+                  <span>Re-roll HP</span>
                 </button>
 
                 <button
@@ -787,7 +788,8 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
             onClick={handleRollHp}
             title="Re-roll token HP formula and update vitals"
           >
-            🎲 Roll HP ({monster.hitPoints.formula})
+            <FaDiceD20 size={12} />
+            <span>Roll HP ({monster.hitPoints.formula})</span>
           </button>
         )}
 
@@ -1129,7 +1131,8 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
                         onClick={() => void handleAimAction(act)}
                         title={`Aim ${act.name} on the map canvas`}
                       >
-                        🎯 Aim
+                        <FaCrosshairs size={11} />
+                        <span>Aim</span>
                       </button>
                     )}
 
@@ -1141,7 +1144,8 @@ export const MonsterStatblockView: React.FC<MonsterStatblockViewProps> = ({
                         onClick={() => void handleAimSaveAction(act)}
                         title={`Place a ${saveMechanics.areaOfEffect?.sizeFeet ?? ""} ft. ${saveMechanics.areaOfEffect?.shape ?? ""} and resolve saves per target`}
                       >
-                        🎯 Aim Area
+                        <FaCrosshairs size={11} />
+                        <span>Aim Area</span>
                       </button>
                     )}
 

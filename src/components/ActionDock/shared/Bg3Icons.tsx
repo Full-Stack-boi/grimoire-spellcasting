@@ -34,7 +34,50 @@ import {
   FaSquare,
   FaLocationCrosshairs,
   FaUserCheck,
+  FaWandMagicSparkles,
+  FaChevronDown,
+  FaChevronRight,
 } from "react-icons/fa6";
+
+export const IconAim: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaCrosshairs size={size} className={className} aria-hidden="true" />
+);
+
+export const IconSword: React.FC<IconProps> = ({ size = 14, className }) => (
+  <GiBroadsword size={size} className={className} aria-hidden="true" />
+);
+
+export const IconSwords: React.FC<IconProps> = ({ size = 14, className }) => (
+  <GiSwordsPower size={size} className={className} aria-hidden="true" />
+);
+
+export const IconDamage: React.FC<IconProps> = ({ size = 14, className }) => (
+  <GiFlame size={size} className={className} aria-hidden="true" />
+);
+
+export const IconCast: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaWandMagicSparkles size={size} className={className} aria-hidden="true" />
+);
+
+export const IconFeature: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaBoltLightning size={size} className={className} aria-hidden="true" />
+);
+
+export const IconInspiration: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaSun size={size} className={className} aria-hidden="true" />
+);
+
+export const IconShield: React.FC<IconProps> = ({ size = 14, className }) => (
+  <FaShieldHalved size={size} className={className} aria-hidden="true" />
+);
+
+export const IconChevronDown: React.FC<IconProps> = ({ size = 12, className }) => (
+  <FaChevronDown size={size} className={className} aria-hidden="true" />
+);
+
+export const IconChevronRight: React.FC<IconProps> = ({ size = 12, className }) => (
+  <FaChevronRight size={size} className={className} aria-hidden="true" />
+);
 
 export const IconFocusCamera: React.FC<IconProps> = ({
   size = 14,
