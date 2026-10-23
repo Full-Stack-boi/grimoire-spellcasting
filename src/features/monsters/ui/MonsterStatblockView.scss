@@ -804,3 +804,108 @@
   outline: none;
   cursor: pointer;
 }
+
+
+/* Mobile Responsive Overrides */
+@media (max-width: 600px) {
+  .gm-statblock-view-container {
+    padding: 8px 6px;
+    gap: 10px;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    max-height: none !important;
+    touch-action: pan-y;
+  }
+
+  .gm-ability-box,
+  .gm-save-box,
+  .gm-btn-edit,
+  .gm-btn-export,
+  .gm-btn-roll-hp,
+  .gm-btn-roll-init {
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+
+  .gm-statblock-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .gm-statblock-name {
+    font-size: 17px;
+  }
+
+  .gm-statblock-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .gm-btn-edit,
+  .gm-btn-export {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .gm-statblock-vitals {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .gm-abilities-grid,
+  .gm-saving-throws-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 3px;
+    padding: 4px 2px;
+  }
+
+  .gm-ability-box,
+  .gm-save-box {
+    padding: 4px 2px;
+  }
+
+  .gm-ability-name,
+  .gm-save-name {
+    font-size: 8.5px;
+  }
+
+  .gm-ability-score {
+    font-size: 11px;
+  }
+
+  .gm-ability-mod,
+  .gm-save-bonus {
+    font-size: 11px;
+  }
+
+  .gm-action-card {
+    padding: 8px 10px;
+  }
+
+  .gm-action-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .gm-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .gm-btn-roll-action,
+  .gm-btn-aim-action,
+  .gm-btn-aim-save {
+    flex: 1 1 auto;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12px;
+    touch-action: manipulation;
+  }
+}

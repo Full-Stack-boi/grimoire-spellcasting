@@ -25,6 +25,7 @@ import {
 import { MonsterExportModal } from "./MonsterExportModal";
 import { HomebrewMonsterModal } from "./HomebrewMonsterModal";
 import { MonsterStatblockView } from "./MonsterStatblockView";
+import { isMobileViewport } from "../../../components/ActionDock/domain/popover";
 
 const MONSTER_TYPES: MonsterType[] = [
   "Aberration",
@@ -74,9 +75,10 @@ const CR_OPTIONS = [
 interface GmMonsterDrawerProps {
   onClose?: () => void;
   onCastSpell?: (spellId: string, casterTokenId?: string) => void | Promise<void>;
+  isMobile?: boolean;
 }
 
-export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell }) => {
+export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell, isMobile: propIsMobile }) => {
   // Monster Catalog State
   const [monsters, setMonsters] = useState<MonsterStatblock[]>(() => getAllMonsters());
   const [selectedMonster, setSelectedMonster] = useState<MonsterStatblock | null>(() => {
@@ -85,6 +87,26 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
   });
   const [pendingDeleteMonster, setPendingDeleteMonster] = useState<MonsterStatblock | null>(null);
   const [deleteError, setDeleteError] = useState("");
+
+  // Mobile Master-Detail States
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof propIsMobile === "boolean") return propIsMobile;
+    if (typeof window !== "undefined") {
+      return isMobileViewport(window.innerWidth);
+    }
+    return false;
+  });
+  const [mobileViewMode, setMobileViewMode] = useState<"list" | "detail">("list");
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== "undefined") {
+        setIsMobile(isMobileViewport(window.innerWidth));
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Filter States
   const [search, setSearch] = useState("");
@@ -335,7 +357,7 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
   return (
     <div className="gm-bestiary-container">
       {/* ---------------- TOP FILTER CONTROLS ---------------- */}
-      <div className="gm-bestiary-topbar">
+      <div className={`gm-bestiary-topbar ${isMobile && mobileViewMode === "detail" ? "mobile-hidden" : ""}`}>
         <div className="gm-bestiary-search-wrapper">
           <input
             type="text"
@@ -432,7 +454,13 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
       {/* ---------------- 2-COLUMN MAIN BODY ---------------- */}
       <div className="gm-bestiary-body">
         {/* LEFT COLUMN: LIST */}
-        <div className="gm-bestiary-list-pane">
+        <div className={`gm-bestiary-list-pane ${isMobile && mobileViewMode === "detail" ? "mobile-hidden" : ""}`}>
+          {isMobile && selectedMonster && mobileViewMode === "list" && (
+            <div className="gm-mobile-active-preview-chip" onClick={() => setMobileViewMode("detail")}>
+              <span>Viewing: <strong>{selectedMonster.name}</strong></span>
+              <button type="button" className="gm-mobile-view-stat-btn">View Statblock →</button>
+            </div>
+          )}
           {filteredMonsters.length === 0 ? (
             <div className="gm-monster-empty-list">No monsters matching filter.</div>
           ) : (
@@ -442,7 +470,12 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
                 <div
                   key={m.id}
                   className={`gm-monster-list-item ${isSelected ? "selected" : ""}`}
-                  onClick={() => setSelectedMonster(m)}
+                  onClick={() => {
+                    setSelectedMonster(m);
+                    if (isMobile) {
+                      setMobileViewMode("detail");
+                    }
+                  }}
                 >
                   <div className="gm-monster-item-top">
                     <span className="gm-monster-item-name">{m.name}</span>
@@ -506,7 +539,32 @@ export const GmMonsterDrawer: React.FC<GmMonsterDrawerProps> = ({ onCastSpell })
         </div>
 
         {/* RIGHT COLUMN: STATBLOCK DETAILS */}
-        <div className="gm-bestiary-detail-pane">
+        <div className={`gm-bestiary-detail-pane ${isMobile && mobileViewMode === "list" ? "mobile-hidden" : ""}`}>
+          {isMobile && (
+            <div
+              className="gm-mobile-back-bar"
+              onClick={() => setMobileViewMode("list")}
+              role="button"
+              tabIndex={0}
+              title="Back to Monster Catalog"
+            >
+              <button
+                type="button"
+                className="gm-mobile-back-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMobileViewMode("list");
+                }}
+              >
+                ← Back to Monster List
+              </button>
+              {selectedMonster && (
+                <span className="gm-mobile-back-title">
+                  {selectedMonster.name} (CR {selectedMonster.challengeRating})
+                </span>
+              )}
+            </div>
+          )}
           {selectedMonster ? (
             <MonsterStatblockView
               monster={selectedMonster}

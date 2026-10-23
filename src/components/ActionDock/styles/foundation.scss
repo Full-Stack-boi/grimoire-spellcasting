@@ -39,6 +39,19 @@ body,
     pointer-events: none;
     box-sizing: border-box;
     overflow: visible;
+
+    &.mobile {
+        pointer-events: auto;
+        touch-action: pan-y;
+
+        &.fab {
+            pointer-events: none;
+
+            > * {
+                pointer-events: auto;
+            }
+        }
+    }
 }
 
 .ddb-dock-outer-wrapper > * {

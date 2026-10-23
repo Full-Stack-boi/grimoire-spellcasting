@@ -58,47 +58,48 @@ export const SituationalRollBar: React.FC<SituationalRollBarProps> = ({
   const displayBonus =
     state.bonus > 0 ? `+${state.bonus}` : state.bonus < 0 ? `${state.bonus}` : "+0";
 
+  const bonusText = state.diceBonus
+    ? `${state.diceBonus}${state.bonus !== 0 ? (state.bonus > 0 ? `+${state.bonus}` : state.bonus) : ""}`
+    : displayBonus;
+
   const isStacked = layout === "stacked";
   const barTitle = scope === "checks"
-    ? "Configure situational Advantage/Disadvantage and Modifiers for your next Check or Saving Throw. Resets automatically after rolling."
-    : "Configure situational Advantage/Disadvantage and Modifiers for your next Attack roll. Resets automatically after rolling.";
+    ? "Situational Advantage / Modifiers for next Check or Save (Auto-resets after rolling)"
+    : "Situational Advantage / Modifiers for next Attack roll (Auto-resets after rolling)";
 
   if (isStacked) {
     return (
       <div
-        className={`situational-roll-bar stacked ${hasOverride ? "has-override" : ""} ${className}`}
+        className={`situational-roll-bar stacked ${compact ? "compact" : ""} ${hasOverride ? "has-override" : ""} ${className}`}
         title={barTitle}
       >
-        {/* Top Row: Roll Mode Selection & Reset */}
+        {/* Row 1: ADV / NORM / DIS Mode & Reset */}
         <div className="srb-row srb-row-top">
-          <div className="srb-mode-cluster">
-            <span className="srb-label">Roll Mod:</span>
-            <div className="srb-mode-group">
-              <button
-                type="button"
-                className={`srb-mode-btn ${state.mode === "advantage" ? "active adv" : ""}`}
-                onClick={() => handleModeChange("advantage")}
-                title="Roll next action with Advantage (roll 2d20, keep highest)"
-              >
-                ADV
-              </button>
-              <button
-                type="button"
-                className={`srb-mode-btn ${state.mode === "normal" ? "active norm" : ""}`}
-                onClick={() => handleModeChange("normal")}
-                title="Roll normally"
-              >
-                NORM
-              </button>
-              <button
-                type="button"
-                className={`srb-mode-btn ${state.mode === "disadvantage" ? "active dis" : ""}`}
-                onClick={() => handleModeChange("disadvantage")}
-                title="Roll next action with Disadvantage (roll 2d20, keep lowest)"
-              >
-                DIS
-              </button>
-            </div>
+          <div className="srb-mode-group" role="group" aria-label="Roll Mode">
+            <button
+              type="button"
+              className={`srb-mode-btn adv ${state.mode === "advantage" ? "active" : ""}`}
+              onClick={() => handleModeChange("advantage")}
+              title="Advantage (roll 2d20, keep highest)"
+            >
+              ADV
+            </button>
+            <button
+              type="button"
+              className={`srb-mode-btn norm ${state.mode === "normal" ? "active" : ""}`}
+              onClick={() => handleModeChange("normal")}
+              title="Normal roll"
+            >
+              NORM
+            </button>
+            <button
+              type="button"
+              className={`srb-mode-btn dis ${state.mode === "disadvantage" ? "active" : ""}`}
+              onClick={() => handleModeChange("disadvantage")}
+              title="Disadvantage (roll 2d20, keep lowest)"
+            >
+              DIS
+            </button>
           </div>
 
           {hasOverride && (
@@ -107,7 +108,8 @@ export const SituationalRollBar: React.FC<SituationalRollBarProps> = ({
                 type="button"
                 className="srb-reset-btn"
                 onClick={() => resetSituationalRollState(scope)}
-                title="Reset to Normal & +0"
+                title="Reset modifiers to Normal & +0"
+                aria-label="Reset roll modifier"
               >
                 ↺
               </button>
@@ -116,136 +118,42 @@ export const SituationalRollBar: React.FC<SituationalRollBarProps> = ({
           )}
         </div>
 
-        {/* Bottom Row: Stepper & Quick Pills */}
+        {/* Row 2: Capsule Stepper & Quick Pills */}
         <div className="srb-row srb-row-bottom">
-          <div className="srb-mod-section">
-            <span className="srb-sublabel">Bonus:</span>
+          <div className="srb-stepper-capsule">
             <button
               type="button"
-              className="srb-stepper-btn"
+              className="srb-stepper-btn minus"
               onClick={() => handleBonusStep(-1)}
               title="Decrease modifier by 1"
+              aria-label="Decrease modifier by 1"
             >
-              -
+              −
             </button>
             <span
               className={`srb-value-badge ${
-                state.bonus > 0 ? "positive" : state.bonus < 0 ? "negative" : "neutral"
+                state.bonus > 0 || state.diceBonus ? "positive" : state.bonus < 0 ? "negative" : "neutral"
               }`}
             >
-              {state.diceBonus ? `${state.diceBonus}${state.bonus !== 0 ? (state.bonus > 0 ? `+${state.bonus}` : `${state.bonus}`) : ""}` : displayBonus}
+              {bonusText}
             </span>
             <button
               type="button"
-              className="srb-stepper-btn"
+              className="srb-stepper-btn plus"
               onClick={() => handleBonusStep(1)}
               title="Increase modifier by 1"
+              aria-label="Increase modifier by 1"
             >
               +
             </button>
-
-            {!compact && (
-              <div className="srb-quick-pills">
-                <button
-                  type="button"
-                  className={`srb-pill ${state.bonus === 2 && !state.diceBonus ? "active" : ""}`}
-                  onClick={() => handleQuickBonus(2)}
-                  title="Situational +2 (e.g. cover, circumstance)"
-                >
-                  +2
-                </button>
-                <button
-                  type="button"
-                  className={`srb-pill ${state.diceBonus === "1d4" ? "active" : ""}`}
-                  onClick={() => handleQuickBonus(0, "1d4")}
-                  title="Add 1d4 (e.g. Bless, Guidance)"
-                >
-                  +1d4
-                </button>
-                <button
-                  type="button"
-                  className={`srb-pill ${state.bonus === -2 && !state.diceBonus ? "active" : ""}`}
-                  onClick={() => handleQuickBonus(-2)}
-                  title="Situational -2 (e.g. heavy weather, penalty)"
-                >
-                  -2
-                </button>
-              </div>
-            )}
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  return (
-    <div
-      className={`situational-roll-bar ${compact ? "compact" : ""} ${hasOverride ? "has-override" : ""} ${className}`}
-      title={barTitle}
-    >
-      <span className="srb-label">Roll Mod:</span>
-
-      {/* Mode selection: ADV / NORM / DIS */}
-      <div className="srb-mode-group">
-        <button
-          type="button"
-          className={`srb-mode-btn ${state.mode === "advantage" ? "active adv" : ""}`}
-          onClick={() => handleModeChange("advantage")}
-          title="Roll next action with Advantage (roll 2d20, keep highest)"
-        >
-          ADV
-        </button>
-        <button
-          type="button"
-          className={`srb-mode-btn ${state.mode === "normal" ? "active norm" : ""}`}
-          onClick={() => handleModeChange("normal")}
-          title="Roll normally"
-        >
-          NORM
-        </button>
-        <button
-          type="button"
-          className={`srb-mode-btn ${state.mode === "disadvantage" ? "active dis" : ""}`}
-          onClick={() => handleModeChange("disadvantage")}
-          title="Roll next action with Disadvantage (roll 2d20, keep lowest)"
-        >
-          DIS
-        </button>
-      </div>
-
-      {/* Modifier Adjustment */}
-      <div className="srb-mod-section">
-        <button
-          type="button"
-          className="srb-stepper-btn"
-          onClick={() => handleBonusStep(-1)}
-          title="Decrease modifier by 1"
-        >
-          -
-        </button>
-        <span
-          className={`srb-value-badge ${
-            state.bonus > 0 ? "positive" : state.bonus < 0 ? "negative" : "neutral"
-          }`}
-        >
-          {state.diceBonus ? `${state.diceBonus}${state.bonus !== 0 ? (state.bonus > 0 ? `+${state.bonus}` : `${state.bonus}`) : ""}` : displayBonus}
-        </span>
-        <button
-          type="button"
-          className="srb-stepper-btn"
-          onClick={() => handleBonusStep(1)}
-          title="Increase modifier by 1"
-        >
-          +
-        </button>
-
-        {!compact && (
           <div className="srb-quick-pills">
             <button
               type="button"
               className={`srb-pill ${state.bonus === 2 && !state.diceBonus ? "active" : ""}`}
               onClick={() => handleQuickBonus(2)}
-              title="Situational +2 (e.g. cover, circumstance)"
+              title="Situational +2"
             >
               +2
             </button>
@@ -253,7 +161,7 @@ export const SituationalRollBar: React.FC<SituationalRollBarProps> = ({
               type="button"
               className={`srb-pill ${state.diceBonus === "1d4" ? "active" : ""}`}
               onClick={() => handleQuickBonus(0, "1d4")}
-              title="Add 1d4 (e.g. Bless, Guidance)"
+              title="Add 1d4 (Bless, Guidance)"
             >
               +1d4
             </button>
@@ -261,27 +169,123 @@ export const SituationalRollBar: React.FC<SituationalRollBarProps> = ({
               type="button"
               className={`srb-pill ${state.bonus === -2 && !state.diceBonus ? "active" : ""}`}
               onClick={() => handleQuickBonus(-2)}
-              title="Situational -2 (e.g. heavy weather, penalty)"
+              title="Situational -2"
             >
-              -2
+              −2
             </button>
           </div>
-        )}
+        </div>
       </div>
+    );
+  }
 
-      {hasOverride && (
+  // Inline Layout (Single sleek horizontal row)
+  return (
+    <div
+      className={`situational-roll-bar inline ${compact ? "compact" : ""} ${hasOverride ? "has-override" : ""} ${className}`}
+      title={barTitle}
+    >
+      {/* 1. Mode selection: ADV / NORM / DIS */}
+      <div className="srb-mode-group" role="group" aria-label="Roll Mode">
         <button
           type="button"
-          className="srb-reset-btn"
-          onClick={() => resetSituationalRollState(scope)}
-          title="Reset to Normal & +0"
+          className={`srb-mode-btn adv ${state.mode === "advantage" ? "active" : ""}`}
+          onClick={() => handleModeChange("advantage")}
+          title="Advantage (roll 2d20, keep highest)"
         >
-          ↺
+          ADV
         </button>
-      )}
+        <button
+          type="button"
+          className={`srb-mode-btn norm ${state.mode === "normal" ? "active" : ""}`}
+          onClick={() => handleModeChange("normal")}
+          title="Normal roll"
+        >
+          NORM
+        </button>
+        <button
+          type="button"
+          className={`srb-mode-btn dis ${state.mode === "disadvantage" ? "active" : ""}`}
+          onClick={() => handleModeChange("disadvantage")}
+          title="Disadvantage (roll 2d20, keep lowest)"
+        >
+          DIS
+        </button>
+      </div>
 
+      <div className="srb-divider" />
+
+      {/* 2. Unified Stepper Capsule [-] [+0] [+] */}
+      <div className="srb-stepper-capsule">
+        <button
+          type="button"
+          className="srb-stepper-btn minus"
+          onClick={() => handleBonusStep(-1)}
+          title="Decrease modifier by 1"
+          aria-label="Decrease modifier by 1"
+        >
+          −
+        </button>
+        <span
+          className={`srb-value-badge ${
+            state.bonus > 0 || state.diceBonus ? "positive" : state.bonus < 0 ? "negative" : "neutral"
+          }`}
+        >
+          {bonusText}
+        </span>
+        <button
+          type="button"
+          className="srb-stepper-btn plus"
+          onClick={() => handleBonusStep(1)}
+          title="Increase modifier by 1"
+          aria-label="Increase modifier by 1"
+        >
+          +
+        </button>
+      </div>
+
+      {/* 3. Quick Chips (+2, +1d4, -2) */}
+      <div className="srb-quick-pills">
+        <button
+          type="button"
+          className={`srb-pill ${state.bonus === 2 && !state.diceBonus ? "active" : ""}`}
+          onClick={() => handleQuickBonus(2)}
+          title="Situational +2"
+        >
+          +2
+        </button>
+        <button
+          type="button"
+          className={`srb-pill ${state.diceBonus === "1d4" ? "active" : ""}`}
+          onClick={() => handleQuickBonus(0, "1d4")}
+          title="Add 1d4 (Bless, Guidance)"
+        >
+          +1d4
+        </button>
+        <button
+          type="button"
+          className={`srb-pill ${state.bonus === -2 && !state.diceBonus ? "active" : ""}`}
+          onClick={() => handleQuickBonus(-2)}
+          title="Situational -2"
+        >
+          −2
+        </button>
+      </div>
+
+      {/* 4. Reset Button & Tag */}
       {hasOverride && (
-        <span className="srb-auto-reset-tag">1-shot auto-reset</span>
+        <div className="srb-override-cluster">
+          <button
+            type="button"
+            className="srb-reset-btn"
+            onClick={() => resetSituationalRollState(scope)}
+            title="Reset to Normal & +0"
+            aria-label="Reset roll modifier"
+          >
+            ↺
+          </button>
+          <span className="srb-auto-reset-tag">1-shot</span>
+        </div>
       )}
     </div>
   );
