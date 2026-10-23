@@ -280,7 +280,7 @@ export const CustomDiceRoller: React.FC<CustomDiceRollerProps> = ({ onClose, cas
                         onClick={onClose}
                         title="Close Dice Roller"
                     >
-                        <IconClose size={13} />
+                        <IconClose size={18} />
                     </button>
                 </div>
             </div>
@@ -488,3 +488,4 @@ export const CustomDiceRoller: React.FC<CustomDiceRollerProps> = ({ onClose, cas
     );
 };
 export default CustomDiceRoller;
+

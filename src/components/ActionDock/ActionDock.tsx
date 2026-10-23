@@ -68,7 +68,7 @@ import { getWeaponAnimationVariant } from "./domain/weaponAnimationVariant";
 import "./overlays/BG3FlyoutBar.scss";
 import { ActionGridTooltipProvider } from "./actions/ActionGridTile";
 import { DEFAULT_WEAPONS } from "./domain/constants";
-import { closeActionDock } from "./domain/popover";
+import { closeActionDock, type MobileDockMode } from "./domain/popover";
 import {
     calculateResponsivePopoverDimensions,
 } from "../../utils/popoverSizing";
@@ -118,6 +118,13 @@ const HomebrewMonsterModal = React.lazy(() =>
 import { updateBoundMonsterOnTokens, isCustomMonster } from "../../features/monsters/monsterService";
 import type { MonsterStatblock } from "../../features/monsters/domain/types";
 
+import { MobileActionDock } from "./mobile/MobileActionDock";
+import {
+    snapActionDockMobile,
+    getMobileDockMode,
+    isMobileViewport,
+} from "./domain/popover";
+
 export { getFeatureFlyoutKind };
 export {
     actionDockPopoverId,
@@ -134,6 +141,47 @@ export type { DetailDrawerItem } from "./domain/types";
 
 export const ActionDock: React.FC = () => {
     const obr = useOBR();
+
+    const [isMobile, setIsMobile] = useState<boolean>(() => {
+        if (typeof window !== "undefined") {
+            return isMobileViewport(window.innerWidth);
+        }
+        return false;
+    });
+    const [mobileSnapMode, setMobileSnapMode] = useState<MobileDockMode>(() => getMobileDockMode());
+    const [windowDimensions, setWindowDimensions] = useState<{ width: number; height: number }>(() => ({
+        width: typeof window !== "undefined" ? window.innerWidth : 1000,
+        height: typeof window !== "undefined" ? window.innerHeight : 800,
+    }));
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (typeof window !== "undefined") {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                setWindowDimensions({ width: w, height: h });
+                setIsMobile(isMobileViewport(w));
+            }
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+    // Physical dimension guard: if the iframe was resized by OBR to <=120px, it is physically a FAB.
+    // This completely prevents the expanded sheet from squishing into a miniature 64px box.
+    const effectiveMobileMode: MobileDockMode = useMemo(() => {
+        if (typeof window !== "undefined") {
+            if (windowDimensions.width <= 120 || windowDimensions.height <= 120) {
+                return "fab";
+            }
+        }
+        return mobileSnapMode;
+    }, [mobileSnapMode, windowDimensions.width, windowDimensions.height]);
+
+    const handleToggleMobileSnap = (nextMode: MobileDockMode) => {
+        setMobileSnapMode(nextMode);
+        void snapActionDockMobile(nextMode);
+    };
 
     const [isVisible, setIsVisible] = useState<boolean>(() => {
         try {
@@ -160,6 +208,8 @@ export const ActionDock: React.FC = () => {
             channel.onmessage = (event) => {
                 if (event.data?.type === "VISIBILITY_CHANGE" && typeof event.data.isOpen === "boolean") {
                     handleVisibility(event.data.isOpen);
+                } else if (event.data?.type === "MOBILE_MODE_CHANGE" && event.data.mode) {
+                    setMobileSnapMode(event.data.mode);
                 }
             };
         } catch {}
@@ -167,6 +217,8 @@ export const ActionDock: React.FC = () => {
         const handleStorage = (event: StorageEvent) => {
             if (event.key === "embers:action-dock-open") {
                 handleVisibility(event.newValue !== "0");
+            } else if (event.key === "embers:action-dock-mobile-mode" && (event.newValue === "fab" || event.newValue === "expanded")) {
+                setMobileSnapMode(event.newValue);
             }
         };
         window.addEventListener("storage", handleStorage);
@@ -1741,6 +1793,61 @@ export const ActionDock: React.FC = () => {
             onPactSlotToggle={togglePactPip}
         />
     );
+    if (isMobile) {
+        return (
+            <div
+                className={`ddb-dock-outer-wrapper mobile ${effectiveMobileMode}`}
+                style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                    width: "100%",
+                    height: "100%",
+                    overflow: "hidden",
+                    pointerEvents: effectiveMobileMode === "fab" ? "none" : "auto",
+                    background: effectiveMobileMode === "fab" ? "transparent" : undefined,
+                }}
+                aria-hidden={!isVisible ? true : undefined}
+            >
+                <MobileActionDock
+                    character={syncedDdbChar}
+                    caster={caster}
+                    casterName={casterName}
+                    avatarUrl={casterAvatarUrl}
+                    boundMonster={boundMonster}
+                    characterTokens={isGM ? characterTokens : undefined}
+                    onSelectCaster={handleSelectCaster}
+                    isGM={isGM}
+                    currentHp={currentHpVal}
+                    maxHp={maxHpVal}
+                    tempHp={tempHpVal}
+                    onDamage={(amount) => handleHpDamage(amount)}
+                    onHeal={(amount) => handleHpHeal(amount)}
+                    onInitiativeRoll={handleInitiativeRoll}
+                    weapons={weaponsList}
+                    onWeaponAttack={handleWeaponAttackRoll}
+                    onWeaponDamage={handleWeaponDamageRoll}
+                    spells={dockSpells}
+                    spellGroups={spellGroups}
+                    spellSlots={spellSlots}
+                    getRemainingSlots={getRemainingSlots}
+                    onCastSpell={(spellId, lvl, ability, damageType) => handleCastClick(spellId, lvl, ability, damageType)}
+                    onToggleSlotPip={toggleSlotPip}
+                    features={characterFeatures}
+                    onActivateFeature={handleActivateFeature}
+                    inventory={characterInventory}
+                    conditions={conditions}
+                    onToggleCondition={handleToggleCondition}
+                    heroicInspiration={heroicInspiration}
+                    onToggleInspiration={handleToggleInspiration}
+                    onClose={() => handleToggleMobileSnap("fab")}
+                    onToggleSnap={handleToggleMobileSnap}
+                    mobileMode={effectiveMobileMode}
+                    onEditMonster={isGM && boundMonster && isCustomMonster(boundMonster) ? (m) => setEditingMonster(m) : undefined}
+                />
+            </div>
+        );
+    }
     return (
         <div
             className="ddb-dock-outer-wrapper"

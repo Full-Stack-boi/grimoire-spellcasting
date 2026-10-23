@@ -787,6 +787,74 @@
     box-sizing: border-box;
 }
 
+@media (max-width: 980px) {
+    .ddb-vitals-pillar {
+        width: 190px;
+        min-width: 190px;
+        max-width: 190px;
+    }
+
+    /* 2-Tier Responsive Top Strip on Tablet */
+    .ddb-deck-top-strip {
+        height: auto;
+        min-height: auto;
+        max-height: none;
+        flex-wrap: wrap;
+        padding: 4px 6px;
+        gap: 4px;
+        overflow: visible;
+    }
+
+    .ddb-top-strip-scrollable {
+        width: 100%;
+        flex: 1 1 100%;
+        padding: 0 4px 3px 4px;
+        order: 1;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .ddb-top-strip-pinned-right {
+        width: 100%;
+        flex: 1 1 100%;
+        justify-content: space-between;
+        padding: 2px 4px 1px 4px;
+        order: 2;
+        background: transparent;
+        box-shadow: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+        gap: 5px;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .ddb-deck-search-wrap {
+        width: 110px;
+        min-width: 85px;
+    }
+
+    .ddb-top-strip-pinned-right .situational-roll-bar.compact {
+        flex-shrink: 0;
+    }
+
+    .ddb-top-strip-pinned-right .ddb-resource-tray-toggle {
+        margin-left: 0;
+        padding: 3px 6px;
+        font-size: 10px;
+    }
+
+    .ddb-view-switcher {
+        flex-shrink: 0;
+    }
+
+    .ddb-view-switcher .ddb-view-btn {
+        padding: 3px 6px;
+        font-size: 10px;
+    }
+}
+
 @media (max-width: 680px) {
     .ddb-dock-2col-layout {
         flex-direction: column;

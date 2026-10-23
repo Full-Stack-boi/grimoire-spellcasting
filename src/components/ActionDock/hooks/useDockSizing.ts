@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import OBR from "@owlbear-rodeo/sdk";
 import {
-    actionDockPopoverId,
-    DOCK_SAVED_HEIGHT_KEY,
     getSavedDockHeight,
+    saveDockHeight,
+    resizeActionDock,
     RESOURCE_TRAY_FLOAT_HEIGHT,
 } from "../domain/popover";
 import {
@@ -15,6 +15,9 @@ import { startDockResizePointerSession } from "./dockResizePointerSession";
 
 export function useDockSizing() {
     const resizeSessionCleanupRef = useRef<(() => void) | null>(null);
+    const rafId = useRef<number | null>(null);
+    const pendingHeight = useRef<number | null>(null);
+
     const [panelHeight, setPanelHeight] = useState<number | null>(() => {
         const savedHeight = getSavedDockHeight();
         if (savedHeight) return savedHeight;
@@ -40,13 +43,15 @@ export function useDockSizing() {
         return () => {
             window.removeEventListener("resize", handleResize);
             resizeSessionCleanupRef.current?.();
+            if (rafId.current !== null) {
+                cancelAnimationFrame(rafId.current);
+                rafId.current = null;
+            }
         };
     }, []);
 
     const savePanelHeight = (height: number) => {
-        try {
-            localStorage.setItem(DOCK_SAVED_HEIGHT_KEY, String(height));
-        } catch {}
+        saveDockHeight(height);
     };
 
     const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -96,12 +101,14 @@ export function useDockSizing() {
             lastHeight = nextHeight;
             setPanelHeight(nextHeight);
             savePanelHeight(nextHeight);
-            if (OBR?.popover && typeof OBR.popover.setHeight === "function") {
-                OBR.popover.setHeight(
-                    actionDockPopoverId,
-                    nextHeight + RESOURCE_TRAY_FLOAT_HEIGHT,
-                ).catch((error) => {
-                    console.error("Failed to resize the Action Bar popover:", error);
+
+            pendingHeight.current = nextHeight;
+            if (rafId.current === null) {
+                rafId.current = requestAnimationFrame(() => {
+                    rafId.current = null;
+                    if (pendingHeight.current !== null && resizeActive) {
+                        void resizeActionDock(pendingHeight.current);
+                    }
                 });
             }
         };
@@ -110,6 +117,11 @@ export function useDockSizing() {
             resizeActive = false;
             resizeSessionCleanupRef.current = null;
             setIsDraggingHeight(false);
+            if (rafId.current !== null) {
+                cancelAnimationFrame(rafId.current);
+                rafId.current = null;
+            }
+            void resizeActionDock(lastHeight);
         };
 
         resizeSessionCleanupRef.current = startDockResizePointerSession(
@@ -149,14 +161,7 @@ export function useDockSizing() {
             );
             setPanelHeight(nextHeight);
             savePanelHeight(nextHeight);
-            if (OBR?.popover && typeof OBR.popover.setHeight === "function") {
-                OBR.popover.setHeight(
-                    actionDockPopoverId,
-                    nextHeight + RESOURCE_TRAY_FLOAT_HEIGHT,
-                ).catch((error) => {
-                    console.error("Failed to resize the Action Bar popover:", error);
-                });
-            }
+            await resizeActionDock(nextHeight);
         } catch (error) {
             console.error("Failed to read viewport height while resizing the Action Bar:", error);
         }

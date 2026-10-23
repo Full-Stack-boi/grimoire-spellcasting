@@ -1,0 +1,893 @@
+/* =============================================================================
+   MOBILE ACTION DOCK & FLOATING ACTION BUTTON (FAB)
+   Purpose-built for smart phones, touch targets >= 44px, zero desktop bloat
+   ============================================================================= */
+
+// ── FLOATING ACTION BUTTON (COLLAPSED STATE) ─────────────────────────────────
+.mobile-fab-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  user-select: none;
+  background: transparent !important;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.mobile-fab-button {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 2px solid #fbbf24;
+  background: linear-gradient(145deg, #991b1b 0%, #7f1d1d 50%, #450a0a 100%);
+  color: #fef08a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.85), 0 0 14px rgba(251, 191, 36, 0.45);
+  touch-action: none;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+
+  &:active {
+    transform: scale(0.92);
+    cursor: grabbing;
+  }
+
+  .mobile-fab-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .mobile-fab-icon {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+  }
+
+  .mobile-fab-hp-badge {
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    background: #0f1217;
+    border: 1.5px solid;
+    border-radius: 10px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #f8fafc;
+    line-height: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  }
+}
+
+// ── EXPANDED MOBILE ACTION SHEET ─────────────────────────────────────────────
+.mobile-sheet-container {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  background: #0d1117;
+  border: 1px solid #232936;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e5e7eb;
+  pointer-events: auto;
+  touch-action: pan-y;
+}
+
+.mobile-sheet-drag-handle {
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+
+  .mobile-drag-pill {
+    width: 44px;
+    height: 5px;
+    background: #64748b;
+    border-radius: 3px;
+    transition: background 0.15s ease, width 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  &:hover .mobile-drag-pill,
+  &:active .mobile-drag-pill {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+    width: 56px;
+  }
+}
+
+// ── HEADER & VITALS CLUSTER ──────────────────────────────────────────────────
+.mobile-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #131720;
+  border-bottom: 1px solid #1f2633;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+
+  .mobile-sheet-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid #ca8a04;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .mobile-sheet-name-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+
+    .mobile-sheet-name {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+      line-height: 1.2;
+    }
+
+    .mobile-sheet-sub {
+      font-size: 0.64rem;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.1;
+    }
+
+    .mobile-token-select {
+      font-size: 0.70rem;
+      background: #1a202c;
+      color: #f1f5f9;
+      border: 1px solid #3b4252;
+      border-radius: 4px;
+      padding: 1px 3px;
+      max-width: 110px;
+      cursor: pointer;
+    }
+  }
+}
+
+.mobile-vitals-cluster {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+
+  .mobile-hp-pill {
+    display: flex;
+    flex-direction: column;
+    background: #161a24;
+    border: 1px solid #283244;
+    border-radius: 5px;
+    padding: 2px 5px;
+    cursor: pointer;
+    min-width: 50px;
+    text-align: center;
+
+    .mobile-hp-text {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+
+    .mobile-hp-bar {
+      width: 100%;
+      height: 3px;
+      background: #1e2532;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 2px;
+
+      .mobile-hp-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.2s ease;
+      }
+    }
+  }
+
+  .mobile-ac-badge {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+
+  .mobile-init-btn {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #fde047;
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.4);
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mobile-dice-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #fdba74;
+    background: rgba(249, 115, 22, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.4);
+    padding: 2px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: all 0.15s ease;
+
+    &:hover,
+    &.active {
+      background: rgba(249, 115, 22, 0.35);
+      border-color: #f97316;
+      color: #fff;
+    }
+  }
+
+  .mobile-header-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 13px;
+    padding: 2px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    touch-action: manipulation;
+
+    &:hover,
+    &:active {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+}
+
+// ── SITUATIONAL ROLL MODIFIER BAR ────────────────────────────────────────────
+.mobile-roll-bar-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 8px;
+  background: #0a0d13;
+  border-bottom: 1px solid #1a202c;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// ── NAVIGATION TAB STRIP ─────────────────────────────────────────────────────
+.mobile-tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  background: #11151c;
+  border-bottom: 1px solid #1f2633;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+  touch-action: pan-x;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #94a3b8;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    white-space: nowrap;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: all 0.12s ease;
+
+    &.active {
+      background: #991b1b;
+      color: #ffffff;
+      border-color: #ef4444;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+    }
+  }
+}
+
+
+// ── MOBILE SHEET CONTENT & SLIDE TRANSITIONS ─────────────────────────────────
+.mobile-sheet-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 10px;
+  position: relative;
+  touch-action: pan-y;
+
+  &.slide-left {
+    animation: ddbSlideLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  &.slide-right {
+    animation: ddbSlideRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+@keyframes ddbSlideLeft {
+  0% {
+    opacity: 0.65;
+    transform: translateX(18px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ddbSlideRight {
+  0% {
+    opacity: 0.65;
+    transform: translateX(-18px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+// ── SUBFILTER BAR ────────────────────────────────────────────────────────────
+.mobile-subfilter-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #0d1117;
+  border-bottom: 1px solid #1a202c;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+  touch-action: pan-x;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-subfilter-chip {
+    padding: 3px 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #64748b;
+    background: #14171d;
+    border: 1px solid #232936;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    touch-action: manipulation;
+
+    &.active {
+      color: #f8fafc;
+      background: #1e293b;
+      border-color: #475569;
+    }
+  }
+}
+
+// ── WORKSPACE CONTENT ────────────────────────────────────────────────────────
+.mobile-sheet-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 10px 24px 10px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+
+  // Eliminate nested scroll locks when embedding statblock or checks
+  .gm-statblock-view-container,
+  .ddb-checks-container {
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    max-height: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    touch-action: pan-y !important;
+  }
+}
+
+// ── ACTION CARDS (WEAPONS, MONSTER ACTIONS, SPELLS) ─────────────────────────
+.mobile-action-card {
+  background: #131720;
+  border: 1px solid #232936;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .mobile-action-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+
+    .mobile-action-name {
+      font-size: 0.88rem;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+
+    .mobile-action-badge {
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+  }
+
+  .mobile-action-desc {
+    font-size: 0.74rem;
+    color: #cbd5e1;
+    line-height: 1.35;
+  }
+
+  .mobile-action-btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+
+    .mobile-action-btn {
+      flex: 1;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: filter 0.15s ease;
+
+      &:active {
+        filter: brightness(1.2);
+      }
+
+      &.attack {
+        background: linear-gradient(135deg, #1e3a8a, #2563eb);
+        color: #ffffff;
+      }
+
+      &.damage {
+        background: linear-gradient(135deg, #881337, #e11d48);
+        color: #ffffff;
+      }
+
+      &.cast {
+        background: linear-gradient(135deg, #4c1d95, #7c3aed);
+        color: #ffffff;
+      }
+
+      &.feature {
+        background: linear-gradient(135deg, #143521, #166534);
+        color: #86efac;
+      }
+    }
+  }
+}
+
+// ── SPELL SLOTS BAR ──────────────────────────────────────────────────────────
+.mobile-spell-slots-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #141822;
+  border: 1px solid #232936;
+  border-radius: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+
+  .mobile-slot-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #cbd5e1;
+    white-space: nowrap;
+
+    .mobile-slot-pips {
+      display: flex;
+      gap: 3px;
+
+      .mobile-slot-pip {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid #38bdf8;
+        background: #0f172a;
+        cursor: pointer;
+        touch-action: manipulation;
+
+        &.used {
+          background: #38bdf8;
+          box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+        }
+      }
+    }
+  }
+}
+
+// ── HP QUICK ADJUST MODAL ────────────────────────────────────────────────────
+.mobile-hp-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+  animation: fadeIn 0.15s ease-out;
+
+  .mobile-hp-modal-card {
+    background: linear-gradient(180deg, rgba(22, 27, 34, 0.98) 0%, rgba(13, 17, 23, 0.98) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    padding: 16px 18px;
+    width: 100%;
+    max-width: 310px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .mobile-hp-modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+
+      .mobile-hp-modal-title-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        .mobile-hp-modal-title {
+          font-size: 0.92rem;
+          font-weight: 800;
+          color: #f8fafc;
+          letter-spacing: 0.02em;
+        }
+
+        .mobile-hp-modal-sub {
+          font-size: 0.72rem;
+          color: #94a3b8;
+          font-weight: 600;
+
+          strong {
+            font-weight: 800;
+          }
+
+          .mobile-hp-modal-temp {
+            color: #38bdf8;
+          }
+        }
+      }
+
+      .mobile-hp-modal-close {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+        border-radius: 6px;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: all 0.15s ease;
+
+        &:hover, &:active {
+          background: rgba(255, 255, 255, 0.14);
+          color: #ffffff;
+        }
+      }
+    }
+
+    .mobile-hp-modal-presets {
+      display: flex;
+      gap: 6px;
+
+      .mobile-hp-preset-chip {
+        flex: 1;
+        min-height: 28px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        color: #cbd5e1;
+        font-size: 0.75rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:active, &.active {
+          background: rgba(217, 119, 6, 0.2);
+          border-color: #f59e0b;
+          color: #fbbf24;
+        }
+
+        &.max {
+          color: #38bdf8;
+        }
+      }
+    }
+
+    .mobile-hp-modal-input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      .mobile-hp-stepper-btn {
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 800;
+        min-width: 34px;
+        height: 38px;
+        padding: 0 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.12s ease;
+
+        &.mini {
+          min-width: 28px;
+          font-size: 0.72rem;
+          color: #94a3b8;
+        }
+
+        &.minus:hover, &.minus:active {
+          background: rgba(220, 38, 38, 0.18);
+          border-color: rgba(220, 38, 38, 0.4);
+          color: #fca5a5;
+        }
+
+        &.plus:hover, &.plus:active {
+          background: rgba(22, 163, 74, 0.18);
+          border-color: rgba(22, 163, 74, 0.4);
+          color: #86efac;
+        }
+      }
+
+      .mobile-hp-input-wrap {
+        flex: 1;
+
+        .mobile-hp-modal-input {
+          width: 100%;
+          height: 38px;
+          text-align: center;
+          background: #090d13;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 6px;
+          color: #ffffff;
+          font-size: 1.25rem;
+          font-weight: 800;
+          padding: 0;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+          &:focus {
+            outline: none;
+            border-color: #38bdf8;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 0 8px rgba(56, 189, 248, 0.3);
+          }
+        }
+      }
+    }
+
+    .mobile-hp-modal-btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+
+      .mobile-hp-modal-action {
+        flex: 1;
+        min-height: 42px;
+        border-radius: 8px;
+        border: none;
+        font-weight: 800;
+        font-size: 0.8rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        touch-action: manipulation;
+        transition: transform 0.1s ease, filter 0.15s ease;
+
+        &:active {
+          transform: scale(0.97);
+        }
+
+        &.damage {
+          background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+
+          &:hover {
+            filter: brightness(1.1);
+          }
+        }
+
+        &.heal {
+          background: linear-gradient(135deg, #15803d 0%, #16a34a 100%);
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+
+          &:hover {
+            filter: brightness(1.1);
+          }
+        }
+      }
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Mobile Custom Dice Roller Modal Overlay */
+.mobile-dice-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 12px;
+  box-sizing: border-box;
+  animation: fadeIn 0.15s ease-out;
+
+  .mobile-dice-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+    max-height: 90vh;
+    animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    justify-content: center;
+
+    /* Override Desktop position styles on CustomDiceRoller */
+    .ddb-custom-dice-tray {
+      position: relative !important;
+      bottom: auto !important;
+      left: auto !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: 85vh;
+      margin: 0 !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9);
+      border-radius: 12px;
+
+      .ddb-dice-clear-btn {
+        height: 30px;
+        padding: 0 12px;
+        font-size: 0.76rem;
+      }
+
+      .ddb-dice-close-btn {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+      }
+    }
+  }
+
+  .mobile-dice-loading {
+    padding: 20px;
+    background: #11141a;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+}

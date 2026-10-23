@@ -108,15 +108,19 @@
 }
 
 .ddb-dice-clear-btn {
-    font-size: 0.66rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    padding: 2px 7px;
+    padding: 0 9px;
+    height: 28px;
     background: #1f2532;
     border: 1px solid #374151;
-    color: #9ca3af;
+    color: #cbd5e1;
     border-radius: 4px;
     cursor: pointer;
     transition: all 120ms ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .ddb-dice-clear-btn:hover {
@@ -129,19 +133,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    background: transparent;
-    border: 1px solid transparent;
-    color: #9ca3af;
+    width: 28px;
+    height: 28px;
+    background: #1f2532;
+    border: 1px solid #374151;
+    color: #cbd5e1;
     border-radius: 4px;
     cursor: pointer;
     transition: all 120ms ease;
 }
 
 .ddb-dice-close-btn:hover {
-    background: #272f3d;
-    border-color: #4b5563;
+    background: #374151;
+    border-color: #6b7280;
+    color: #ffffff;
+}
+
+.ddb-dice-close-btn:active {
+    background: #ef4444;
+    border-color: #ef4444;
     color: #ffffff;
 }
 
@@ -664,4 +674,12 @@
 
 .ddb-reroll-btn:hover {
     color: #eab308;
+}
+
+
+/* Mobile: Hide floating launcher button since MobileActionDock has embedded dice launcher / FAB */
+@media (max-width: 600px) {
+  .ddb-floating-dice-launcher {
+    display: none !important;
+  }
 }
