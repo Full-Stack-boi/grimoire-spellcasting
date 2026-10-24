@@ -38,6 +38,19 @@ describe("tokenVitalsService pure logic", () => {
       expect(result?.hpTemp).toBe(5);
       expect(result?.armorClass).toBe(15);
       expect(result?.conditions).toEqual(["poisoned"]);
+      expect(result?.resolvedRollKeys).toEqual([]);
+    });
+
+    it("extracts resolvedRollKeys when present in metadata", () => {
+      const metadata = {
+        [VITALS_METADATA_KEY]: {
+          hpCurrent: 10,
+          hpMax: 10,
+          resolvedRollKeys: ["roll_1", "roll_2"],
+        },
+      };
+      const result = extractTokenVitals(metadata);
+      expect(result?.resolvedRollKeys).toEqual(["roll_1", "roll_2"]);
     });
 
     it("extracts valid vitals from legacy metadata key fallback", () => {

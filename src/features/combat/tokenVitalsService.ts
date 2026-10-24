@@ -157,7 +157,7 @@ export function extractTokenVitals(metadata: Metadata | undefined): TokenVitals 
       ? data.disposition
       : undefined,
     hideNumbers: Boolean(data.hideNumbers),
-    resolvedRollKeys: Array.isArray(data.resolvedRollKeys) ? [...data.resolvedRollKeys] : undefined,
+    resolvedRollKeys: Array.isArray(data.resolvedRollKeys) ? [...data.resolvedRollKeys] : [],
     updatedAt: data.updatedAt ?? Date.now(),
   };
 }
@@ -549,7 +549,7 @@ export async function setTokenVitals(
       hideNumbers: patch.hideNumbers !== undefined ? patch.hideNumbers : current.hideNumbers,
       resolvedRollKeys: patch.resolvedRollKeys !== undefined
         ? [...patch.resolvedRollKeys]
-        : (current.resolvedRollKeys ? [...current.resolvedRollKeys] : undefined),
+        : (Array.isArray(current.resolvedRollKeys) ? [...current.resolvedRollKeys] : []),
       updatedAt: Date.now(),
     };
 
@@ -563,17 +563,34 @@ export async function setTokenVitals(
             abortedDueToDuplicate = true;
             return;
           }
-          const nextResolvedKeys = options?.actionKey
-            ? [...(liveData?.resolvedRollKeys || []), options.actionKey].slice(-50)
-            : (updated.resolvedRollKeys ?? liveData?.resolvedRollKeys);
-
-          // Preserve existing fields on liveData (including disposition) so OBR never generates destructive "op: remove"
+          // Preserve existing fields on liveData so OBR never generates destructive "op: remove"
           const existingVitals = (item.metadata[VITALS_METADATA_KEY] as Record<string, unknown>) || {};
           const rawVitals: Record<string, unknown> = {
             ...existingVitals,
-            ...updated,
-            resolvedRollKeys: nextResolvedKeys,
           };
+
+          for (const [k, v] of Object.entries(updated)) {
+            if (v !== undefined) {
+              rawVitals[k] = v;
+            }
+          }
+
+          // Safely preserve or append resolved roll keys without generating destructive JSON-patch removals
+          const currentKeys = Array.isArray(liveData?.resolvedRollKeys)
+            ? liveData.resolvedRollKeys
+            : (Array.isArray(existingVitals.resolvedRollKeys)
+              ? (existingVitals.resolvedRollKeys as string[])
+              : []);
+
+          const nextResolvedKeys = options?.actionKey
+            ? [...currentKeys, options.actionKey].slice(-50)
+            : (Array.isArray(updated.resolvedRollKeys) && updated.resolvedRollKeys.length > 0
+              ? updated.resolvedRollKeys
+              : currentKeys);
+
+          if (existingVitals.resolvedRollKeys !== undefined || nextResolvedKeys.length > 0) {
+            rawVitals.resolvedRollKeys = nextResolvedKeys;
+          }
 
           // If patch.disposition was NOT explicitly specified, preserve whatever is currently on existingVitals/liveData
           if (patch.disposition === undefined) {
@@ -582,6 +599,10 @@ export async function setTokenVitals(
             } else {
               delete rawVitals.disposition;
             }
+          } else if (patch.disposition === null) {
+            delete rawVitals.disposition;
+          } else {
+            rawVitals.disposition = patch.disposition;
           }
 
           Object.keys(rawVitals).forEach((k) => {
