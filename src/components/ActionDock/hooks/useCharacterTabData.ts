@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { DDBFeatureAction, DDBInventoryItem } from "../../../types/ddb";
 import { getOrdinal } from "../../../assets/spellInfo";
-import type { FeaturesFilter, InventoryFilter, SpellsFilter, DockSpell } from "../domain/types";
+import { isSpecialOrFreeSpell, type FeaturesFilter, type InventoryFilter, type SpellsFilter, type DockSpell } from "../domain/types";
 
 interface UseCharacterTabDataOptions {
     spells: DockSpell[];
@@ -29,7 +29,7 @@ export function useCharacterTabData({
     strength,
 }: UseCharacterTabDataOptions) {
     const filteredAllSpells = useMemo(() => spells.filter(spell => {
-        if (spellsFilter === "SPECIAL" && !spell.hasFreeCast && (spell.usesSpellSlot !== false || spell.level === 0)) return false;
+        if (spellsFilter === "SPECIAL" && !isSpecialOrFreeSpell(spell)) return false;
         if (spellsFilter === "0" && spell.level !== 0) return false;
         if (spellsFilter === "1" && spell.level !== 1) return false;
         if (spellsFilter === "2" && spell.level !== 2) return false;
@@ -42,9 +42,14 @@ export function useCharacterTabData({
         const groups: Array<{ label: string; level: number; spells: DockSpell[]; isSpecial?: boolean }> = [];
         
         // 1. Special & Innate Spells (Free casts, racial/feat limited uses, etc.)
-        const specialSpells = filteredAllSpells.filter(spell => spell.hasFreeCast || (spell.usesSpellSlot === false && spell.level > 0));
+        const specialSpells = filteredAllSpells.filter(isSpecialOrFreeSpell);
         if (specialSpells.length > 0) {
             groups.push({ label: "SPECIAL & INNATE SPELLS", level: -1, spells: specialSpells, isSpecial: true });
+        }
+
+        // When filtering specifically for SPECIAL/FREE spells, return only the special group
+        if (spellsFilter === "SPECIAL") {
+            return groups;
         }
 
         // 2. Cantrips (Level 0)

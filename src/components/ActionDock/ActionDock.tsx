@@ -72,7 +72,7 @@ import { closeActionDock, type MobileDockMode } from "./domain/popover";
 import {
     calculateResponsivePopoverDimensions,
 } from "../../utils/popoverSizing";
-import type { ActionsFilter, DetailDrawerItem, DockSpell, FeaturesFilter, InventoryFilter, MainTab, SpellSlotConfig, SpellsFilter } from "./domain/types";
+import { isSpecialOrFreeSpell, type ActionsFilter, type DetailDrawerItem, type DockSpell, type FeaturesFilter, type InventoryFilter, type MainTab, type SpellSlotConfig, type SpellsFilter } from "./domain/types";
 import { useRollHistory } from "./hooks/useRollHistory";
 import { useDockSizing } from "./hooks/useDockSizing";
 import { InventoryTab } from "./character/InventoryTab";
@@ -2096,7 +2096,7 @@ export const ActionDock: React.FC = () => {
                                             </button>
                                         ))
                                         : (() => {
-                                            const hasSpecialSpells = dockSpells.some(s => s.hasFreeCast || (s.usesSpellSlot === false && s.level > 0));
+                                            const hasSpecialSpells = dockSpells.some(isSpecialOrFreeSpell);
                                             const spellFilterOptions: SpellsFilter[] = syncedDdbChar?.pactMagic
                                                 ? (hasSpecialSpells ? ["ALL", "0", "1", "2", "PACT", "3+", "SPECIAL"] : ["ALL", "0", "1", "2", "PACT", "3+"])
                                                 : (hasSpecialSpells ? ["ALL", "0", "1", "2", "3+", "SPECIAL"] : ["ALL", "0", "1", "2", "3+"]);

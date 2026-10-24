@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { DDBFeatureAction, DDBWeaponAttack } from "../../../types/ddb";
-import type { ActionsFilter, DockSpell, MainTab, SpellsFilter } from "../domain/types";
+import { isSpecialOrFreeSpell, type ActionsFilter, type DockSpell, type MainTab, type SpellsFilter } from "../domain/types";
 import { getWeaponIcon, IconSearch } from "../shared/Bg3Icons";
 import { ActionGridTile } from "./ActionGridTile";
 
@@ -171,6 +171,7 @@ export function Bg3GridContent({
         const seenSpellNames = new Set<string>();
         const activeSearch = (spellSearch || actionSearch).trim().toLowerCase();
         const spellsToShow = spells.filter(spell => {
+            if (spellsFilter === "SPECIAL" && !isSpecialOrFreeSpell(spell)) return false;
             if (spellsFilter === "0" && spell.level !== 0) return false;
             if (spellsFilter === "1" && spell.level !== 1) return false;
             if (spellsFilter === "2" && spell.level !== 2) return false;
@@ -188,6 +189,18 @@ export function Bg3GridContent({
             return <div className="ddb-empty-search-state">
                 <IconSearch size={22} className="ddb-empty-search-icon" />
                 <span className="ddb-empty-search-text">No spells matching your filter</span>
+            </div>;
+        }
+
+        if (spellsFilter === "SPECIAL") {
+            let shortcut = 0;
+            return <div className="ddb-bg3-grid-sections">
+                <section className="ddb-bg3-grid-section" aria-label="Special & Innate Spells">
+                    <h3 className="ddb-bg3-grid-section-title">Special &amp; Innate Spells</h3>
+                    <div className="ddb-bg3-grid-container">
+                        {spellsToShow.map(spell => renderSpellCard(spell, shortcut++))}
+                    </div>
+                </section>
             </div>;
         }
 

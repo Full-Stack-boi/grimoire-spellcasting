@@ -1,7 +1,7 @@
 import React from "react";
 import { getSchoolStyle, getSpellInitials, getSpellMetadata, isSpellUpcastable } from "../../../assets/spellInfo";
 import { IconCastLightning, IconFire, IconSearch, IconSpellInfo } from "../shared/Bg3Icons";
-import type { DockSpell, SpellGroup, SpellsFilter } from "../domain/types";
+import { isSpecialOrFreeSpell, type DockSpell, type SpellGroup, type SpellsFilter } from "../domain/types";
 
 const SPELL_FILTERS: SpellsFilter[] = ["ALL", "SPECIAL", "0", "1", "2", "PACT", "3+"];
 
@@ -54,7 +54,7 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
     renderUpcastPickerRow,
     hasPactMagic = false,
 }) => {
-    const hasSpecialSpells = groups.some(g => g.isSpecial || g.spells.some(s => s.hasFreeCast || (s.usesSpellSlot === false && s.level > 0)));
+    const hasSpecialSpells = groups.some(g => g.isSpecial || g.spells.some(isSpecialOrFreeSpell));
     const spellFilters = SPELL_FILTERS.filter(value => {
         if (value === "PACT" && !hasPactMagic) return false;
         if (value === "SPECIAL" && !hasSpecialSpells) return false;
@@ -92,7 +92,7 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
                         className={`ddb-subfilter-btn ${filter === value ? "active" : ""}`}
                         onClick={() => onFilterChange(value)}
                     >
-                        {value === "SPECIAL" ? "SPECIAL" : value === "0" ? "- 0 -" : value === "1" ? "1ST" : value === "2" ? "2ND" : value}
+                        {value === "SPECIAL" ? "FREE" : value === "0" ? "- 0 -" : value === "1" ? "1ST" : value === "2" ? "2ND" : value}
                     </button>
                 ))}
             </div>

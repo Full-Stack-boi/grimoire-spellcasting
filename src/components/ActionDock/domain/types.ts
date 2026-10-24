@@ -40,6 +40,10 @@ export interface SpellGroup {
     isSpecial?: boolean;
 }
 
+export function isSpecialOrFreeSpell(spell: { hasFreeCast?: boolean; usesSpellSlot?: boolean; level: number }): boolean {
+    return Boolean(spell.hasFreeCast || (spell.usesSpellSlot === false && spell.level > 0));
+}
+
 export type DetailDrawerItem =
     | {
           type: "feature";
