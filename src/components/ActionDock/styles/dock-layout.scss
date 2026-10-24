@@ -485,6 +485,8 @@
     overflow: hidden;
     background: var(--ddb-bg-dark);
     position: relative;
+    container-type: inline-size;
+    container-name: deck-main;
 }
 
 .ddb-floating-resource-tray {
@@ -787,23 +789,14 @@
     box-sizing: border-box;
 }
 
-@media (max-width: 980px) {
-    .ddb-vitals-pillar {
-        width: 190px;
-        min-width: 190px;
-        max-width: 190px;
-    }
-
-    /* 2-Tier Responsive Top Strip on Tablet */
-    .ddb-deck-top-strip {
-        height: auto;
-        min-height: auto;
-        max-height: none;
-        flex-wrap: wrap;
-        padding: 4px 6px;
-        gap: 4px;
-        overflow: visible;
-    }
+@mixin two-tier-top-strip {
+    height: auto;
+    min-height: auto;
+    max-height: none;
+    flex-wrap: wrap;
+    padding: 4px 6px;
+    gap: 4px;
+    overflow: visible;
 
     .ddb-top-strip-scrollable {
         width: 100%;
@@ -828,30 +821,54 @@
         &::-webkit-scrollbar {
             display: none;
         }
+
+        .situational-roll-bar.compact {
+            flex-shrink: 0;
+        }
+
+        .ddb-resource-tray-toggle {
+            margin-left: 0;
+            padding: 3px 6px;
+            font-size: 10px;
+        }
+
+        .ddb-deck-search-wrap {
+            width: 110px;
+            min-width: 85px;
+
+            &:focus-within {
+                width: 140px;
+            }
+        }
+
+        .ddb-view-switcher {
+            flex-shrink: 0;
+
+            .ddb-view-btn {
+                padding: 3px 6px;
+                font-size: 10px;
+            }
+        }
+    }
+}
+
+/* 2-Tier Responsive Top Strip: Container Query (Component level) */
+@container deck-main (max-width: 1060px) {
+    .ddb-deck-top-strip {
+        @include two-tier-top-strip;
+    }
+}
+
+/* 2-Tier Responsive Top Strip: Media Query (Viewport / iframe level) */
+@media (max-width: 1360px) {
+    .ddb-vitals-pillar {
+        width: 200px;
+        min-width: 200px;
+        max-width: 200px;
     }
 
-    .ddb-deck-search-wrap {
-        width: 110px;
-        min-width: 85px;
-    }
-
-    .ddb-top-strip-pinned-right .situational-roll-bar.compact {
-        flex-shrink: 0;
-    }
-
-    .ddb-top-strip-pinned-right .ddb-resource-tray-toggle {
-        margin-left: 0;
-        padding: 3px 6px;
-        font-size: 10px;
-    }
-
-    .ddb-view-switcher {
-        flex-shrink: 0;
-    }
-
-    .ddb-view-switcher .ddb-view-btn {
-        padding: 3px 6px;
-        font-size: 10px;
+    .ddb-deck-top-strip {
+        @include two-tier-top-strip;
     }
 }
 

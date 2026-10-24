@@ -395,4 +395,46 @@ describe("MobileActionDock Component", () => {
     expect(html).toContain("mobile-dock-search-box");
     expect(html).toContain("mobile-view-mode-toggle");
   });
+
+  it("renders mobile HP card with temporary HP badge", () => {
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={null}
+        caster={null}
+        casterName="Hero"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={25}
+        maxHp={30}
+        tempHp={8}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onSetTempHp={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[]}
+        spellGroups={[]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        isAiming={false}
+      />
+    );
+
+    expect(html).toContain("+8");
+    expect(html).toContain("mobile-hp-temp-fill");
+  });
 });

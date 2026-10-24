@@ -73,6 +73,7 @@ export interface MobileActionDockProps {
     tempHp: number;
     onDamage: (amount: number) => void;
     onHeal: (amount: number) => void;
+    onSetTempHp?: (temp: number) => void;
     onInitiativeRoll: () => void;
     weapons: DDBWeaponAttack[];
     onSelectWeapon?: (weapon: DDBWeaponAttack, mode?: "melee" | "thrown") => void;
@@ -119,6 +120,7 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
     tempHp,
     onDamage,
     onHeal,
+    onSetTempHp,
     onInitiativeRoll,
     weapons,
     onSelectWeapon,
@@ -676,6 +678,12 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                 className="mobile-hp-fill"
                                 style={{ width: `${hpRatio * 100}%`, background: hpColor }}
                             />
+                            {tempHp > 0 && (
+                                <div
+                                    className="mobile-hp-temp-fill"
+                                    style={{ width: `${Math.min(100 - (hpRatio * 100), (tempHp / (totalMaxHp || 1)) * 100)}%` }}
+                                />
+                            )}
                         </div>
                     </div>
 
@@ -1400,6 +1408,34 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                 <span>Heal {hpInput} HP</span>
                             </button>
                         </div>
+                        {onSetTempHp && (
+                            <div className="mobile-hp-modal-btn-row temp-row">
+                                <button
+                                    type="button"
+                                    className="mobile-hp-modal-action temp"
+                                    onClick={() => {
+                                        onSetTempHp(hpInput);
+                                        setShowHpModal(false);
+                                    }}
+                                >
+                                    <FaShieldHalved size={14} />
+                                    <span>Set {hpInput} Temp HP</span>
+                                </button>
+                                {tempHp > 0 && (
+                                    <button
+                                        type="button"
+                                        className="mobile-hp-modal-action clear-temp"
+                                        onClick={() => {
+                                            onSetTempHp(0);
+                                            setShowHpModal(false);
+                                        }}
+                                        title="Clear temporary hit points to 0"
+                                    >
+                                        <span>Clear Temp (0)</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

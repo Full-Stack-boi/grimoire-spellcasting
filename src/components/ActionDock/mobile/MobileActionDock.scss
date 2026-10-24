@@ -218,9 +218,17 @@
       border-radius: 2px;
       overflow: hidden;
       margin-top: 2px;
+      display: flex;
 
       .mobile-hp-fill {
         height: 100%;
+        border-radius: 2px;
+        transition: width 0.2s ease;
+      }
+
+      .mobile-hp-temp-fill {
+        height: 100%;
+        background: #38bdf8;
         border-radius: 2px;
         transition: width 0.2s ease;
       }
@@ -1324,6 +1332,34 @@
             filter: brightness(1.1);
           }
         }
+
+        &.temp {
+          background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+
+          &:hover {
+            filter: brightness(1.1);
+          }
+        }
+
+        &.clear-temp {
+          flex: 0 0 auto;
+          padding: 0 12px;
+          background: rgba(255, 255, 255, 0.08);
+          color: #94a3b8;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+
+          &:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border-color: #ef4444;
+          }
+        }
+      }
+
+      &.temp-row {
+        margin-top: 6px;
       }
     }
   }

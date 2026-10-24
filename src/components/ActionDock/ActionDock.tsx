@@ -1825,6 +1825,7 @@ export const ActionDock: React.FC = () => {
                     tempHp={tempHpVal}
                     onDamage={(amount) => handleHpDamage(amount)}
                     onHeal={(amount) => handleHpHeal(amount)}
+                    onSetTempHp={setDirectTempHp}
                     onInitiativeRoll={handleInitiativeRoll}
                     weapons={weaponsList}
                     onSelectWeapon={handleSelectWeapon}

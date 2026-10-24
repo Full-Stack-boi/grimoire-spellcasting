@@ -10,6 +10,7 @@ export const DOCK_VIEWPORT_SIZE_KEY = "embers:viewport-dimensions";
 export const DOCK_MOBILE_MODE_KEY = "embers:action-dock-mobile-mode";
 export const RESOURCE_TRAY_FLOAT_HEIGHT = 40;
 export const MOBILE_DOCK_BREAKPOINT = 600;
+export const TABLET_DOCK_BREAKPOINT = 1360;
 
 export function isMobileViewport(viewWidth: number): boolean {
     return viewWidth > 0 && viewWidth <= MOBILE_DOCK_BREAKPOINT;
@@ -259,7 +260,7 @@ export function computeDockLayout(
     }
 
     const savedH = getSavedDockHeight();
-    const isTablet = viewWidth <= 980 && !isMobile;
+    const isTablet = viewWidth <= TABLET_DOCK_BREAKPOINT && !isMobile;
     const defaultDockHeight = isTablet
         ? Math.min(360, Math.max(260, Math.round(viewHeight * 0.32)))
         : Math.min(280, Math.max(220, Math.round(viewHeight * 0.28)));
