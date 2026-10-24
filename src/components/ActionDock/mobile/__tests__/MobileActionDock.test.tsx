@@ -549,28 +549,30 @@ describe("MobileActionDock Component", () => {
     const html = renderToStaticMarkup(
       <MobileActionDock
         character={{
-          id: "170484944",
+          id: 170484944,
           name: "Warlock Sorcerer",
+          avatarUrl: "",
           level: 6,
           classes: [{ name: "Warlock", level: 3 }, { name: "Sorcerer", level: 3 }],
           stats: { str: 8, dex: 14, con: 16, int: 10, wis: 12, cha: 18 },
           modifiers: { str: -1, dex: 2, con: 3, int: 0, wis: 1, cha: 4 },
-          savingThrows: { str: -1, dex: 2, con: 6, int: 0, wis: 4, cha: 7 },
-          skills: {},
           armorClass: 16,
           initiative: 2,
           speed: 30,
           hp: { current: 45, max: 45, temp: 0 },
           proficiencyBonus: 3,
           spellSaveDC: 15,
+          spellSaveDCDisplay: "15",
           spellAttackBonus: 7,
+          spellAttackBonusDisplay: "+7",
           spellCastingAbility: "CHA",
+          spellSlots: {},
           spells: [],
           weapons: mockWeapons,
           features: [],
           inventory: [],
-          spellSlots: [],
-        }}
+          senses: {} as any,
+        } as unknown as import("../../../../types/ddb").DDBParsedCharacter}
         caster={null}
         casterName="Warlock Sorcerer"
         avatarUrl="http://localhost:5173/embers.svg"

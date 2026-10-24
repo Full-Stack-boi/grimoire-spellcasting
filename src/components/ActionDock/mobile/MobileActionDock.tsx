@@ -698,13 +698,14 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
 
     // Active weapon riders resolution
     const resolvedWeaponRiders = useMemo(() => {
-        if (!character) return [];
+        if (!character || !weapons?.[0]) return null;
         return resolveWeaponRiders({
             character,
+            weapon: weapons[0],
             activeBuffs: [],
             riderChoice,
         });
-    }, [character, riderChoice]);
+    }, [character, weapons, riderChoice]);
 
     const renderMobileResourceStrip = () => {
         const hasActionGems = onToggleAction || onToggleBonusAction;
@@ -1324,10 +1325,10 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
 
                         {/* Weapon Riders Strip (Only when showing weapons) */}
                         {(actionFilter === "ALL" || actionFilter === "MELEE" || actionFilter === "RANGED") &&
-                            resolvedWeaponRiders.length > 0 &&
+                            resolvedWeaponRiders?.availableRiderChoice &&
                             onSelectRiderChoice && (
                                 <div className="mobile-riders-strip">
-                                    <span className="mobile-rider-label">Rider:</span>
+                                    <span className="mobile-rider-label">{resolvedWeaponRiders.availableRiderChoice.riderName}:</span>
                                     <button
                                         type="button"
                                         className={`mobile-rider-chip ${riderChoice === "none" ? "active" : ""}`}
@@ -1335,15 +1336,14 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                     >
                                         None
                                     </button>
-                                    {resolvedWeaponRiders.map((r) => (
+                                    {resolvedWeaponRiders.availableRiderChoice.choices.map((choice) => (
                                         <button
-                                            key={r.id}
+                                            key={choice}
                                             type="button"
-                                            className={`mobile-rider-chip ${riderChoice === r.id ? "active" : ""}`}
-                                            onClick={() => onSelectRiderChoice(riderChoice === r.id ? "none" : r.id)}
-                                            title={r.description || r.name}
+                                            className={`mobile-rider-chip ${riderChoice === choice ? "active" : ""}`}
+                                            onClick={() => onSelectRiderChoice(riderChoice === choice ? "none" : choice)}
                                         >
-                                            {r.name}
+                                            {choice}
                                         </button>
                                     ))}
                                 </div>
@@ -1385,7 +1385,13 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                     <button
                                         type="button"
                                         className="mobile-action-btn attack"
-                                        onClick={() => onWeaponAttack?.(effectiveOffhandWeapon, "melee")}
+                                        onClick={() => {
+                                            if (onTwoWeaponFighting) {
+                                                onTwoWeaponFighting();
+                                            } else {
+                                                onWeaponAttack?.(effectiveOffhandWeapon, "melee");
+                                            }
+                                        }}
                                     >
                                         <IconSword size={13} />
                                         <span>Attack ({effectiveOffhandWeapon.toHit >= 0 ? `+${effectiveOffhandWeapon.toHit}` : effectiveOffhandWeapon.toHit})</span>
@@ -1848,10 +1854,12 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                                                     {isDetailsOpen && (
                                                                         <div className="mobile-detail-accordion">
                                                                             <div className="mobile-detail-row">
-                                                                                <span>Duration: {spell.duration || "Instantaneous"}</span>
-                                                                                {spell.concentration && <span className="mobile-conc-tag">Concentration</span>}
+                                                                                <span>Duration: {spell.rawDdbSpell?.duration || "Instantaneous"}</span>
+                                                                                {spell.rawDdbSpell?.concentration && <span className="mobile-conc-tag">Concentration</span>}
                                                                             </div>
-                                                                            {spell.notes && <div className="mobile-detail-desc">{spell.notes}</div>}
+                                                                            {(spell.rawDdbSpell?.description || spell.notes) && (
+                                                                                <div className="mobile-detail-desc">{spell.rawDdbSpell?.description || spell.notes}</div>
+                                                                            )}
                                                                         </div>
                                                                     )}
 
@@ -2170,7 +2178,7 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                             {isDetailsOpen ? item.description : (item.description?.slice(0, 120) || "Equipment item") + (item.description && item.description.length > 120 ? "..." : "")}
                                         </div>
                                         <div className="mobile-action-btn-row">
-                                            {onToggleEquipItem && item.canEquip !== false && (
+                                            {onToggleEquipItem && (
                                                 <button
                                                     type="button"
                                                     className={`mobile-action-btn equip ${item.equipped ? "active" : ""}`}
@@ -2205,7 +2213,7 @@ export const MobileActionDock: React.FC<MobileActionDockProps> = ({
                                             </span>
                                         </div>
                                         <div className="mobile-compact-actions">
-                                            {onToggleEquipItem && item.canEquip !== false && (
+                                            {onToggleEquipItem && (
                                                 <button
                                                     type="button"
                                                     className={`mobile-compact-btn ${item.equipped ? "active" : ""}`}
