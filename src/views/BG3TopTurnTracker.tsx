@@ -558,8 +558,8 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
         {isGM && <div className="bg3-ribbon-divider" />}
 
         {/* Right Ornate Wing */}
-        <div className="bg3-filigree-wing right">
-          {isGM && (
+        {isGM && (
+          <div className="bg3-filigree-wing right">
             <button
               type="button"
               className="bg3-turn-step-btn next"
@@ -569,24 +569,24 @@ export const BG3TopTurnTracker: React.FC<BG3TopTurnTrackerProps> = ({
             >
               <FaChevronRight size={10} />
             </button>
-          )}
-          <svg className="bg3-filigree-svg flip" viewBox="0 0 16 48" fill="none">
-            <path
-              d="M14 4C10 7 6 13 4 19C2 25 2 31 4 37C6 40 10 43 14 45"
-              stroke="url(#bg3CrimsonGradRight)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-            <circle cx="6" cy="24" r="2" fill="#ef4444" opacity="0.95" />
-            <defs>
-              <linearGradient id="bg3CrimsonGradRight" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#8b1d24" />
-                <stop offset="50%" stopColor="#ef4444" />
-                <stop offset="100%" stopColor="#8b1d24" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
+            <svg className="bg3-filigree-svg flip" viewBox="0 0 16 48" fill="none">
+              <path
+                d="M14 4C10 7 6 13 4 19C2 25 2 31 4 37C6 40 10 43 14 45"
+                stroke="url(#bg3CrimsonGradRight)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+              <circle cx="6" cy="24" r="2" fill="#ef4444" opacity="0.95" />
+              <defs>
+                <linearGradient id="bg3CrimsonGradRight" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#8b1d24" />
+                  <stop offset="50%" stopColor="#ef4444" />
+                  <stop offset="100%" stopColor="#8b1d24" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        )}
       </div>
       {hoveredTooltip &&
         createPortal(

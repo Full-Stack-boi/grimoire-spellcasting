@@ -39,6 +39,7 @@ export function calculateTurnTrackerWidth(combatantCount: number): number {
 }
 
 let isTurnTrackerOpen = false;
+let lastKnownCombatantCount = 4;
 
 export function isTopTurnTrackerOpen(): boolean {
   return isTurnTrackerOpen;
@@ -124,16 +125,22 @@ export async function openTopTurnTrackerPopover(
     if (h && h > 0) cachedViewHeight = h;
   } catch {}
 
+  lastKnownCombatantCount = combatantCount;
   const viewWidth = cachedViewWidth > 0 ? cachedViewWidth : 1440;
+  const isNarrowMobile = viewWidth <= 768;
+  const maxMobileWidth = Math.max(220, viewWidth - 68);
+  const rawTargetWidth = calculateTurnTrackerWidth(combatantCount);
+  const targetWidth = isNarrowMobile ? Math.min(rawTargetWidth, maxMobileWidth) : rawTargetWidth;
+
   const dimensions = calculateResponsivePopoverDimensions(
     viewWidth,
     cachedViewHeight,
-    calculateTurnTrackerWidth(combatantCount),
+    targetWidth,
     DEFAULT_TURN_TRACKER_HEIGHT,
   );
-  const popoverWidth = dimensions.width;
+  const popoverWidth = isNarrowMobile ? Math.min(dimensions.width, maxMobileWidth) : dimensions.width;
   const popoverHeight = dimensions.height;
-  const left = Math.max(8, Math.round((viewWidth - popoverWidth) / 2));
+  const left = isNarrowMobile ? 8 : Math.max(8, Math.round((viewWidth - popoverWidth) / 2));
   const preferredTop =
     typeof customTop === "number" ? customTop : getSavedTurnTrackerTop();
   const top = Math.max(
@@ -174,6 +181,10 @@ export async function openTopTurnTrackerPopover(
       hidePaper: true,
       disableClickAway: true,
     });
+    await Promise.all([
+      Promise.resolve(OBR.popover.setWidth(turnTrackerPopoverId, popoverWidth)).catch(() => {}),
+      Promise.resolve(OBR.popover.setHeight(turnTrackerPopoverId, popoverHeight)).catch(() => {}),
+    ]);
     isTurnTrackerOpen = true;
   } catch (err) {
     console.error("Failed to open BG3 Turn Tracker Popover:", err);
@@ -312,5 +323,5 @@ export async function syncTopTurnTrackerViewport(
 
   cachedViewWidth = viewWidth;
   cachedViewHeight = viewHeight;
-  await openTopTurnTrackerPopover();
+  await openTopTurnTrackerPopover(lastKnownCombatantCount);
 }

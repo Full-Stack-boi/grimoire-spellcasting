@@ -86,7 +86,7 @@ describe("turnTrackerPopoverService", () => {
 
     expect(sdk.popover.open).toHaveBeenCalledWith(
       expect.objectContaining({
-        width: 304,
+        width: 252,
         height: DEFAULT_TURN_TRACKER_HEIGHT,
         anchorPosition: {
           left: 8,

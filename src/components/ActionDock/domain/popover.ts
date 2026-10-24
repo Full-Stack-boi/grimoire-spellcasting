@@ -357,8 +357,12 @@ export async function prewarmActionDock(): Promise<void> {
                 },
                 hidePaper: true,
                 disableClickAway: true,
-            });
-        } catch (err) {
+        });
+        await Promise.all([
+            Promise.resolve(OBR.popover.setWidth(actionDockPopoverId, layout.popoverWidth)).catch(() => {}),
+            Promise.resolve(OBR.popover.setHeight(actionDockPopoverId, layout.popoverHeight)).catch(() => {}),
+        ]);
+    } catch (err) {
             console.warn("[Embers] ActionDock mobile FAB pre-warm failed:", err);
         }
         return;
@@ -432,6 +436,10 @@ export async function openActionDock(): Promise<void> {
             hidePaper: true,
             disableClickAway: true,
         });
+        await Promise.all([
+            OBR.popover.setWidth(actionDockPopoverId, layout.popoverWidth).catch(() => {}),
+            OBR.popover.setHeight(actionDockPopoverId, layout.popoverHeight).catch(() => {}),
+        ]);
     } catch (err) {
         console.error("Failed to open ActionDock popover:", err);
     } finally {

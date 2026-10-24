@@ -53,22 +53,22 @@
 .bg3-filigree-wing {
   display: flex;
   align-items: center;
-  flex: 0 0 76px;
-  width: 76px;
-  min-width: 76px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
   box-sizing: border-box;
 }
 
 .bg3-filigree-wing.left {
   justify-content: flex-end;
   gap: 8px;
-  margin-right: 16px; /* Separation from first portrait */
+  margin-right: 12px;
 }
 
 .bg3-filigree-wing.right {
   justify-content: flex-start;
   gap: 8px;
-  margin-left: 16px; /* Separation from last portrait */
+  margin-left: 12px;
 }
 
 /* Round Badge Medallion: Standalone floating dark-crimson badge */
@@ -436,9 +436,9 @@
   }
 
   .bg3-filigree-wing {
-    flex: 0 0 92px;
-    width: 92px;
-    min-width: 92px;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
     gap: 4px;
   }
 
@@ -451,16 +451,16 @@
   }
 
   .bg3-round-gem {
-    min-width: 38px;
-    height: 38px;
+    min-width: 32px;
+    height: 32px;
     padding: 0 6px;
   }
 
   .bg3-turn-step-btn.prev,
   .bg3-turn-step-btn.next {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
   }
 
   .bg3-portraits-track {
