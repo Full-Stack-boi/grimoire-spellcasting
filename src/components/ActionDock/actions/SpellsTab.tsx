@@ -185,7 +185,7 @@ export const SpellsTab: React.FC<SpellsTabProps> = ({
                                                             }}
                                                             title={`Free special casting: ${spell.freeCast?.max ?? 1} per ${spell.freeCast?.resetType ?? "Long Rest"}`}
                                                         >
-                                                            ✨ FREE {spell.freeCast ? `${spell.freeCast.resetType}` : "CAST"}
+                                                            FREE {spell.freeCast ? `${spell.freeCast.resetType}` : "CAST"}
                                                         </span>
                                                     )}
                                                     {spell.isPrepared && <span className="ddb-prep-pip" title="Prepared">✦</span>}

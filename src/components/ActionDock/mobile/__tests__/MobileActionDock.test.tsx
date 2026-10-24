@@ -437,4 +437,176 @@ describe("MobileActionDock Component", () => {
     expect(html).toContain("+8");
     expect(html).toContain("mobile-hp-temp-fill");
   });
+
+  it("renders FREE filter chip for special/innate spells instead of -1", () => {
+    const mockSpecialSpell = {
+      id: "false_life_innate",
+      name: "False Life",
+      level: 1,
+      school: "Necromancy",
+      castingTime: "1 Action",
+      rangeText: "Self",
+      damage: null,
+      usesSpellSlot: false,
+      hasFreeCast: true,
+      freeCast: { used: 0, max: 1, resetType: "Long Rest" },
+    };
+
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={null}
+        caster={null}
+        casterName="Hero"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={30}
+        maxHp={30}
+        tempHp={0}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[mockSpecialSpell as any]}
+        spellGroups={[
+          {
+            label: "SPECIAL & INNATE SPELLS",
+            level: -1,
+            isSpecial: true,
+            spells: [mockSpecialSpell as any],
+          },
+        ]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        initialTab="SPELLS"
+        isAiming={false}
+      />
+    );
+
+    // Filter chip should say FREE and have special class, NEVER -1 or emojis
+    expect(html).toContain("FREE");
+    expect(html).toContain("mobile-level-filter-chip  special");
+    expect(html).not.toContain("-1 (");
+    expect(html).not.toContain("✨");
+  });
+
+  it("renders concentration badge and break button when concentrating", () => {
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={null}
+        caster={null}
+        casterName="Hero"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={30}
+        maxHp={30}
+        tempHp={0}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[]}
+        spellGroups={[]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        isAiming={false}
+        concentrationSpell={{ id: "hex", name: "Hex" }}
+        onBreakConcentration={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("CONC: Hex");
+    expect(html).toContain("mobile-conc-break-btn");
+  });
+  it("does NOT render Flurry of Blows or Bonus Unarmed Strike for non-Monk characters", () => {
+    const html = renderToStaticMarkup(
+      <MobileActionDock
+        character={{
+          id: "170484944",
+          name: "Warlock Sorcerer",
+          level: 6,
+          classes: [{ name: "Warlock", level: 3 }, { name: "Sorcerer", level: 3 }],
+          stats: { str: 8, dex: 14, con: 16, int: 10, wis: 12, cha: 18 },
+          modifiers: { str: -1, dex: 2, con: 3, int: 0, wis: 1, cha: 4 },
+          savingThrows: { str: -1, dex: 2, con: 6, int: 0, wis: 4, cha: 7 },
+          skills: {},
+          armorClass: 16,
+          initiative: 2,
+          speed: 30,
+          hp: { current: 45, max: 45, temp: 0 },
+          proficiencyBonus: 3,
+          spellSaveDC: 15,
+          spellAttackBonus: 7,
+          spellCastingAbility: "CHA",
+          spells: [],
+          weapons: mockWeapons,
+          features: [],
+          inventory: [],
+          spellSlots: [],
+        }}
+        caster={null}
+        casterName="Warlock Sorcerer"
+        avatarUrl="http://localhost:5173/embers.svg"
+        boundMonster={null}
+        isGM={false}
+        currentHp={45}
+        maxHp={45}
+        tempHp={0}
+        onDamage={vi.fn()}
+        onHeal={vi.fn()}
+        onInitiativeRoll={vi.fn()}
+        weapons={mockWeapons}
+        onWeaponAttack={vi.fn()}
+        onWeaponDamage={vi.fn()}
+        spells={[]}
+        spellGroups={[]}
+        getRemainingSlots={vi.fn(() => 0)}
+        onCastSpell={vi.fn()}
+        onToggleSlotPip={vi.fn()}
+        features={[]}
+        onActivateFeature={vi.fn()}
+        inventory={[]}
+        conditions={[]}
+        onToggleCondition={vi.fn()}
+        heroicInspiration={false}
+        onToggleInspiration={vi.fn()}
+        onClose={vi.fn()}
+        onToggleSnap={vi.fn()}
+        mobileMode="expanded"
+        isAiming={false}
+        onFlurryOfBlows={vi.fn()}
+        onBonusUnarmedStrike={vi.fn()}
+      />
+    );
+
+    expect(html).not.toContain("Flurry of Blows");
+    expect(html).not.toContain("Bonus Unarmed Strike");
+  });
 });
