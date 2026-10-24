@@ -1965,156 +1965,86 @@ export const ActionDock: React.FC = () => {
                 <main className="ddb-action-deck-main">
                     {/* Top Strip */}
                     <div className="ddb-deck-top-strip">
-                        <div
-                            className="ddb-top-strip-scrollable"
-                            onWheel={(e) => {
-                                if (e.deltaY !== 0) {
-                                    e.currentTarget.scrollLeft += e.deltaY;
-                                }
-                            }}
-                        >
-                            {/* Primary Navigation Tabs */}
-                            <div className="ddb-deck-tabs-group">
-                                <button
-                                    className={`ddb-deck-tab-btn ${mainTab === "ACTIONS" ? "active" : ""}`}
-                                    onClick={() => setMainTab("ACTIONS")}
-                                >
-                                    ACTIONS
-                                </button>
-                                <button
-                                    className={`ddb-deck-tab-btn ${mainTab === "SPELLS" ? "active" : ""}`}
-                                    onClick={() => setMainTab("SPELLS")}
-                                >
-                                    SPELLS
-                                </button>
-                                <button
-                                    className={`ddb-deck-tab-btn ${mainTab === "INVENTORY" ? "active" : ""}`}
-                                    onClick={() => setMainTab("INVENTORY")}
-                                >
-                                    INVENTORY
-                                </button>
-                                <button
-                                    className={`ddb-deck-tab-btn ${mainTab === "FEATURES" ? "active" : ""}`}
-                                    onClick={() => setMainTab("FEATURES")}
-                                >
-                                    FEATURES
-                                </button>
-                                {isGM && (
-                                    <button
-                                        className={`ddb-deck-tab-btn ${mainTab === "BESTIARY" ? "active" : ""}`}
-                                        onClick={() => setMainTab("BESTIARY")}
-                                        style={{ color: mainTab === "BESTIARY" ? "#fff" : "#fca5a5" }}
-                                        title="GM Bestiary & Monster Statblocks"
-                                    >
-                                        BESTIARY
-                                    </button>
-                                )}
-                            </div>
-                            {(mainTab === "ACTIONS" || mainTab === "SPELLS") && (
-                                <>
-                                    <div className="ddb-top-strip-divider" />
-                                    <div className="ddb-deck-subfilters">
-                                        {mainTab === "ACTIONS"
-                                            ? (["ALL", "ATTACK", "ACTION", "BONUS ACTION", "REACTION", "OTHER", "LIMITED USE"] as ActionsFilter[]).map(filter => (
-                                                <button
-                                                    key={filter}
-                                                    type="button"
-                                                    className={`ddb-deck-subfilter-btn ${actionsFilter === filter ? "active" : ""}`}
-                                                    onClick={() => setActionsFilter(filter)}
-                                                >
-                                                    {filter === "BONUS ACTION" ? "BONUS" : filter === "LIMITED USE" ? "LIMITED" : filter}
-                                                </button>
-                                            ))
-                                            : (syncedDdbChar?.pactMagic
-                                                ? (["ALL", "0", "1", "2", "PACT", "3+"] as SpellsFilter[])
-                                                : (["ALL", "0", "1", "2", "3+"] as SpellsFilter[])
-                                              ).map(filter => (
-                                                <button
-                                                    key={filter}
-                                                    type="button"
-                                                    className={`ddb-deck-subfilter-btn ${spellsFilter === filter ? "active" : ""}`}
-                                                    onClick={() => setSpellsFilter(filter)}
-                                                >
-                                                    {filter === "0" ? "0" : filter === "1" ? "1ST" : filter === "2" ? "2ND" : filter}
-                                                </button>
-                                            ))}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Top-Right Pinned Controls (Roll Mod, Search, Grid/List Switcher, Close Button) */}
-                        <div className="ddb-top-strip-pinned-right">
-                            <SituationalRollBar compact scope="attack" />
-                            <button
-                                type="button"
-                                className={`ddb-resource-tray-toggle ${isResourceTrayOpen ? "active" : ""}`}
-                                aria-expanded={isResourceTrayOpen}
-                                aria-controls="ddb-turn-resource-tray"
-                                onClick={() => setIsResourceTrayOpen(open => {
-                                    const next = !open;
-                                    try {
-                                        localStorage.setItem("embers:action-dock-resources-open", String(next));
-                                    } catch {}
-                                    return next;
-                                })}
-                                title="Spell slots and class resources"
+                        <div className="ddb-top-strip-tier1">
+                            <div
+                                className="ddb-top-strip-scrollable"
+                                onWheel={(e) => {
+                                    if (e.deltaY !== 0) {
+                                        e.currentTarget.scrollLeft += e.deltaY;
+                                    }
+                                }}
                             >
-                                RESOURCES
-                            </button>
-                            {/* Search Input */}
-                            <div className="ddb-deck-search-wrap">
-                                <IconSearch size={11} className="ddb-search-icon" />
-                                <input
-                                    type="text"
-                                    className="ddb-deck-search-input"
-                                    placeholder={mainTab === "SPELLS" ? "Search spells..." : mainTab === "INVENTORY" ? "Search items..." : "Search actions..."}
-                                    value={mainTab === "SPELLS" ? spellSearch : mainTab === "INVENTORY" ? inventorySearch : actionSearch}
-                                    onChange={e => {
-                                        const val = e.target.value;
-                                        if (mainTab === "SPELLS") setSpellSearch(val);
-                                        else if (mainTab === "INVENTORY") setInventorySearch(val);
-                                        else setActionSearch(val);
-                                    }}
-                                />
-                                {Boolean(mainTab === "SPELLS" ? spellSearch : mainTab === "INVENTORY" ? inventorySearch : actionSearch) && (
+                                {/* Primary Navigation Tabs */}
+                                <div className="ddb-deck-tabs-group">
                                     <button
-                                        type="button"
-                                        className="ddb-search-clear-btn"
-                                        onClick={() => {
-                                            if (mainTab === "SPELLS") setSpellSearch("");
-                                            else if (mainTab === "INVENTORY") setInventorySearch("");
-                                            else setActionSearch("");
-                                        }}
+                                        className={`ddb-deck-tab-btn ${mainTab === "ACTIONS" ? "active" : ""}`}
+                                        onClick={() => setMainTab("ACTIONS")}
                                     >
-                                        ✕
+                                        ACTIONS
                                     </button>
+                                    <button
+                                        className={`ddb-deck-tab-btn ${mainTab === "SPELLS" ? "active" : ""}`}
+                                        onClick={() => setMainTab("SPELLS")}
+                                    >
+                                        SPELLS
+                                    </button>
+                                    <button
+                                        className={`ddb-deck-tab-btn ${mainTab === "INVENTORY" ? "active" : ""}`}
+                                        onClick={() => setMainTab("INVENTORY")}
+                                    >
+                                        INVENTORY
+                                    </button>
+                                    <button
+                                        className={`ddb-deck-tab-btn ${mainTab === "FEATURES" ? "active" : ""}`}
+                                        onClick={() => setMainTab("FEATURES")}
+                                    >
+                                        FEATURES
+                                    </button>
+                                    {isGM && (
+                                        <button
+                                            className={`ddb-deck-tab-btn ${mainTab === "BESTIARY" ? "active" : ""}`}
+                                            onClick={() => setMainTab("BESTIARY")}
+                                            style={{ color: mainTab === "BESTIARY" ? "#fff" : "#fca5a5" }}
+                                            title="GM Bestiary & Monster Statblocks"
+                                        >
+                                            BESTIARY
+                                        </button>
+                                    )}
+                                </div>
+                                {(mainTab === "ACTIONS" || mainTab === "SPELLS") && (
+                                    <>
+                                        <div className="ddb-top-strip-divider" />
+                                        <div className="ddb-deck-subfilters">
+                                            {mainTab === "ACTIONS"
+                                                ? (["ALL", "ATTACK", "ACTION", "BONUS ACTION", "REACTION", "OTHER", "LIMITED USE"] as ActionsFilter[]).map(filter => (
+                                                    <button
+                                                        key={filter}
+                                                        type="button"
+                                                        className={`ddb-deck-subfilter-btn ${actionsFilter === filter ? "active" : ""}`}
+                                                        onClick={() => setActionsFilter(filter)}
+                                                    >
+                                                        {filter === "BONUS ACTION" ? "BONUS" : filter === "LIMITED USE" ? "LIMITED" : filter}
+                                                    </button>
+                                                ))
+                                                : (syncedDdbChar?.pactMagic
+                                                    ? (["ALL", "0", "1", "2", "PACT", "3+"] as SpellsFilter[])
+                                                    : (["ALL", "0", "1", "2", "3+"] as SpellsFilter[])
+                                                   ).map(filter => (
+                                                    <button
+                                                        key={filter}
+                                                        type="button"
+                                                        className={`ddb-deck-subfilter-btn ${spellsFilter === filter ? "active" : ""}`}
+                                                        onClick={() => setSpellsFilter(filter)}
+                                                    >
+                                                        {filter === "0" ? "0" : filter === "1" ? "1ST" : filter === "2" ? "2ND" : filter}
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
 
-                            {/* Hybrid View Switcher Toggle (GRID vs LIST) */}
-                            <div className="ddb-view-switcher">
-                                <button
-                                    type="button"
-                                    className={`ddb-view-btn ${viewMode === "grid" ? "active" : ""}`}
-                                    onClick={() => handleToggleViewMode("grid")}
-                                    title="Baldur's Gate 3 Action Grid View"
-                                >
-                                    <IconGrid size={13} />
-                                    <span>GRID</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`ddb-view-btn ${viewMode === "table" ? "active" : ""}`}
-                                    onClick={() => handleToggleViewMode("table")}
-                                    title="Quick-Action List Table View"
-                                >
-                                    <IconList size={13} />
-                                    <span>LIST</span>
-                                </button>
-                            </div>
-
-                            {/* Close Button */}
+                            {/* Dock Close Button Pinned at Top-Right of Tier 1 */}
                             <button
                                 type="button"
                                 className="ddb-close-dock-btn"
@@ -2124,8 +2054,85 @@ export const ActionDock: React.FC = () => {
                                 <IconClose size={13} />
                             </button>
                         </div>
+
+                        {/* Top-Right Pinned Controls (Tier 2 in responsive mode) */}
+                        <div className="ddb-top-strip-pinned-right">
+                            {/* Left Cluster: Combat Modifiers + Resource Tray Toggle */}
+                            <div className="ddb-toolbar-cluster-left">
+                                <SituationalRollBar compact scope="attack" />
+                                <button
+                                    type="button"
+                                    className={`ddb-resource-tray-toggle ${isResourceTrayOpen ? "active" : ""}`}
+                                    aria-expanded={isResourceTrayOpen}
+                                    aria-controls="ddb-turn-resource-tray"
+                                    onClick={() => setIsResourceTrayOpen(open => {
+                                        const next = !open;
+                                        try {
+                                            localStorage.setItem("embers:action-dock-resources-open", String(next));
+                                        } catch {}
+                                        return next;
+                                    })}
+                                    title="Spell slots and class resources"
+                                >
+                                    <span className="ddb-resource-sparkle">✦</span>
+                                    <span>RESOURCES</span>
+                                </button>
+                            </div>
+
+                            {/* Right Cluster: Search Input + View Mode Switcher */}
+                            <div className="ddb-toolbar-cluster-right">
+                                <div className="ddb-deck-search-wrap">
+                                    <IconSearch size={11} className="ddb-search-icon" />
+                                    <input
+                                        type="text"
+                                        className="ddb-deck-search-input"
+                                        placeholder={mainTab === "SPELLS" ? "Search spells..." : mainTab === "INVENTORY" ? "Search items..." : "Search actions..."}
+                                        value={mainTab === "SPELLS" ? spellSearch : mainTab === "INVENTORY" ? inventorySearch : actionSearch}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (mainTab === "SPELLS") setSpellSearch(val);
+                                            else if (mainTab === "INVENTORY") setInventorySearch(val);
+                                            else setActionSearch(val);
+                                        }}
+                                    />
+                                    {Boolean(mainTab === "SPELLS" ? spellSearch : mainTab === "INVENTORY" ? inventorySearch : actionSearch) && (
+                                        <button
+                                            type="button"
+                                            className="ddb-search-clear-btn"
+                                            onClick={() => {
+                                                if (mainTab === "SPELLS") setSpellSearch("");
+                                                else if (mainTab === "INVENTORY") setInventorySearch("");
+                                                else setActionSearch("");
+                                            }}
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="ddb-view-switcher">
+                                    <button
+                                        type="button"
+                                        className={`ddb-view-btn ${viewMode === "grid" ? "active" : ""}`}
+                                        onClick={() => handleToggleViewMode("grid")}
+                                        title="Baldur's Gate 3 Action Grid View"
+                                    >
+                                        <IconGrid size={13} />
+                                        <span>GRID</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`ddb-view-btn ${viewMode === "table" ? "active" : ""}`}
+                                        onClick={() => handleToggleViewMode("table")}
+                                        title="Quick-Action List Table View"
+                                    >
+                                        <IconList size={13} />
+                                        <span>LIST</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    {/* Workspace Area: BG3 Grid or Classic Table + Drawer */}
                     <div className="ddb-action-content-workspace">
                         {/* BALDUR'S GATE 3 SUB-ACTION & UPCAST FLYOUT BAR (Overlays action cards area completely) */}
                         {(activeFlyoutSpell || activeFlyoutFeatureData || activeFlyoutWeaponData) && (

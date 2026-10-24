@@ -266,16 +266,27 @@
 
   /* Compact Variant */
   &.compact {
-    padding: 2px 4px;
+    padding: 1px 4px;
     gap: 4px;
+    height: 24px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
 
-    .srb-mode-group .srb-mode-btn {
-      padding: 2px 5px;
-      font-size: 0.62rem;
+    .srb-mode-group {
+      border-radius: 4px;
+
+      .srb-mode-btn {
+        padding: 2px 5px;
+        font-size: 0.62rem;
+        border-radius: 3px;
+      }
     }
 
     .srb-stepper-capsule {
       height: 20px;
+      border-radius: 4px;
 
       .srb-stepper-btn {
         width: 18px;
@@ -285,12 +296,16 @@
       .srb-value-badge {
         min-width: 22px;
         font-size: 0.65rem;
+        line-height: 20px;
       }
     }
 
     .srb-quick-pills .srb-pill {
       font-size: 0.60rem;
       padding: 1px 5px;
+      height: 18px;
+      line-height: 16px;
+      box-sizing: border-box;
     }
   }
 }
